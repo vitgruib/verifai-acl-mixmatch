@@ -1,0 +1,6 @@
+verifai
+gymnasium
+torch
+numpy
+pandas
+matplotlib
