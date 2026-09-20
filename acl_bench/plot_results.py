@@ -87,26 +87,37 @@ def plot_heatmap(df: pd.DataFrame, theme_name: str, out_path: str):
     plt.close(fig)
 
 
-def plot_sampler_lines(df: pd.DataFrame, theme_name: str, out_path: str,
-                        potential_fn: str = "pvl_gae"):
+def plot_sampler_bars(df: pd.DataFrame, theme_name: str, out_path: str):
+    """Grouped bars: mean eval return +/- std across seeds, one group per
+    potential function, one bar per sampler -- the same data as the heatmap,
+    with the seed-to-seed spread made explicit instead of averaged away."""
     theme = THEMES[theme_name]
-    fig, ax = plt.subplots(figsize=(7, 4), dpi=160)
+    stats = (
+        df.groupby(["potential_fn", "sampler"])["eval_return_mean"]
+        .agg(["mean", "std"])
+        .reindex(pd.MultiIndex.from_product([POTENTIAL_ORDER, SAMPLER_ORDER]))
+    )
 
-    sub = df[df["potential_fn"] == potential_fn]
-    for sampler in SAMPLER_ORDER:
-        rows = sub[sub["sampler"] == sampler]
-        if rows.empty:
-            continue
-        x = rows["seed"].astype(str)
-        ax.plot(x, rows["eval_return_mean"], marker="o", markersize=6,
-                linewidth=2, color=CATEGORICAL[sampler], label=sampler)
+    fig, ax = plt.subplots(figsize=(10, 4.2), dpi=160)
+    n_groups, n_bars = len(POTENTIAL_ORDER), len(SAMPLER_ORDER)
+    width = 0.8 / n_bars
+    x = np.arange(n_groups)
 
-    ax.set_xlabel("seed")
-    ax.set_ylabel("held-out eval return")
-    ax.set_title(f"Eval return by seed, potential_fn={potential_fn}", fontsize=11)
-    ax.grid(True, color=theme["grid"], linewidth=0.8)
+    for i, sampler in enumerate(SAMPLER_ORDER):
+        means = [stats.loc[(pfn, sampler), "mean"] for pfn in POTENTIAL_ORDER]
+        stds = [stats.loc[(pfn, sampler), "std"] for pfn in POTENTIAL_ORDER]
+        offset = (i - (n_bars - 1) / 2) * width
+        ax.bar(x + offset, means, width * 0.9, yerr=stds, capsize=3,
+               color=CATEGORICAL[sampler], label=sampler,
+               error_kw=dict(ecolor=theme["secondary"], linewidth=1))
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(POTENTIAL_ORDER, rotation=20, ha="right")
+    ax.set_ylabel("held-out eval return (mean +/- std over 5 seeds)")
+    ax.set_title("Eval return by potential function, grouped by sampler", fontsize=11)
+    ax.grid(True, axis="y", color=theme["grid"], linewidth=0.8)
     ax.set_axisbelow(True)
-    legend = ax.legend(frameon=False, labelcolor=theme["secondary"])
+    ax.legend(frameon=False, labelcolor=theme["secondary"], ncol=3, loc="upper left")
     style(ax, theme)
     fig.tight_layout()
     fig.savefig(out_path, facecolor=theme["surface"])
@@ -118,8 +129,8 @@ def main():
     df = pd.read_csv(path)
     for theme_name in ("light", "dark"):
         plot_heatmap(df, theme_name, f"results/heatmap_{theme_name}.png")
-        plot_sampler_lines(df, theme_name, f"results/sampler_lines_{theme_name}.png")
-    print("wrote results/heatmap_{light,dark}.png and sampler_lines_{light,dark}.png")
+        plot_sampler_bars(df, theme_name, f"results/sampler_bars_{theme_name}.png")
+    print("wrote results/heatmap_{light,dark}.png and sampler_bars_{light,dark}.png")
 
 
 if __name__ == "__main__":
