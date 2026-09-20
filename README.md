@@ -120,9 +120,19 @@ happened to pick.
 
 ## Results
 
-<!-- RESULTS_TABLE -->
+Full grid: 3 samplers x 6 potential functions x 5 seeds = 90 runs, 150k
+environment steps each, ~12.8s/run on a laptop CPU (~19 minutes total,
+115,380 episodes) -- the entire point of moving off MetaDrive/Scenic for
+this sweep. Raw data: [`results/grid_results.csv`](results/grid_results.csv).
 
-<!-- RESULTS_NARRATIVE -->
+Mean held-out eval return per (sampler, potential function) cell, averaged
+over 5 seeds:
+
+| sampler | pvl_gae (current) | l1_value_loss | max_mc | td_error_l2 | alp | intermediate_difficulty |
+|---|---|---|---|---|---|---|
+| random | 277 | 229 | 237 | 226 | 277 | 252 |
+| halton | 275 | 248 | 229 | 269 | 326 | 229 |
+| mab    | 247 | 299 | 273 | **337** | 277 | 292 |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="results/heatmap_dark.png">
@@ -130,9 +140,48 @@ happened to pick.
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="results/sampler_lines_dark.png">
-  <img src="results/sampler_lines_light.png" alt="Eval return by seed for each sampler, under the default pvl_gae potential function">
+  <source media="(prefers-color-scheme: dark)" srcset="results/sampler_bars_dark.png">
+  <img src="results/sampler_bars_light.png" alt="Grouped bar chart of eval return by potential function, one bar per sampler, with error bars showing standard deviation across 5 seeds">
 </picture>
+
+**Samplers, averaged over all six potential functions:** `mab` 287.7 +/- 90.2,
+`halton` 262.6 +/- 92.5, `random` 249.6 +/- 82.5. The feedback-driven bandit
+sampler comes out ahead on average, which is the direction you'd hope for
+(steering new tasks toward regions the policy is still failing matches how
+VerifAI's samplers are meant to be used for falsification), but with 5 seeds
+the gap is not statistically clean: a paired t-test on `mab` vs `random`
+across the 6 potential functions gives p=0.14. Treat "mab wins" as a
+plausible trend this framework can now go re-test at a larger seed count or
+timestep budget, not a settled result.
+
+**Potential functions, averaged over all three samplers:** `alp` (293.3) and
+`td_error_l2` (277.5) score highest, `max_mc` (246.0) lowest, with the
+current default `pvl_gae` (266.5) in the middle of the pack. Nothing here
+should be read as "replace PVL with ALP" outright, though -- see the next
+point.
+
+**The biggest single finding is an interaction effect, not a main effect.**
+`td_error_l2` is simultaneously the *best* score paired with `mab` (337,
+the best cell in the whole grid) and the *worst* score paired with `random`
+(226, tied for worst). A learning-potential function's usefulness depends on
+which sampler is proposing the tasks it scores -- exactly the premise of
+doing mix-and-match testing instead of separately picking "the best sampler"
+and "the best potential function" and assuming they compose. The runner-up
+cell, `halton` + `alp` (326), is a different sampler *and* a different
+potential function from the top cell, reinforcing that no single component
+dominates in isolation.
+
+**A negative result worth reporting honestly:** the crude task-diversity
+metric we log (mean per-dimension std of sampled task params, normalized to
+the task space) came out essentially identical across samplers -- `random`
+0.2888, `halton` 0.2878, `mab` 0.2906, all near the theoretical std of a
+uniform distribution (1/sqrt(12) = 0.2887). At `replay_prob=0.5`, half of
+all episodes replay already-buffered tasks, which dilutes any concentration
+effect Halton's low-discrepancy coverage or MAB's UCB-driven focusing would
+otherwise produce in this aggregate statistic. This metric isn't sensitive
+enough to show *how* the samplers differ in what they propose, only that
+their downstream training effect differs -- a real limitation of the current
+logging, not a claim that the samplers behave identically.
 
 ## Limitations
 
