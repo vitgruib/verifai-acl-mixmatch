@@ -1,9 +1,12 @@
 """Render results/grid_results.csv into the two charts used in the README:
 
-  1. A sequential-blue heatmap of mean held-out eval return, sampler x
-     learning-potential function (averaged over seeds).
-  2. Training-return curves for the three samplers under the default
-     potential function (pvl_gae), one categorical hue per sampler.
+  1. A sequential-blue heatmap per environment (own color scale -- reward
+     scales aren't comparable across CartPole/Acrobot/Pendulum), sampler x
+     potential-function-condition (the 6 named functions plus "none", the
+     ACL-off ablation), averaged over seeds.
+  2. A 2x2 ablation summary per environment: {non-adaptive sampler, adaptive
+     sampler} x {ACL off ("none"), ACL on (avg of the 6 potential functions)}
+     -- directly isolating "not using one or both" of the two components.
 
 Produces light- and dark-mode PNGs so the README can pick the right one via
 a <picture> tag, per the palette in the dataviz skill (references/palette.md).
@@ -21,7 +24,7 @@ import matplotlib.pyplot as plt
 
 # --- palette (see dataviz skill references/palette.md) ---
 SEQ_BLUE = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
-CATEGORICAL = {"random": "#2a78d6", "halton": "#eb6834", "mab": "#1baf7a"}
+ABLATION_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # slots 1-4
 
 THEMES = {
     "light": dict(surface="#fcfcfb", primary="#0b0b0b", secondary="#52514e",
@@ -30,9 +33,12 @@ THEMES = {
                  muted="#898781", grid="#2c2c2a"),
 }
 
-POTENTIAL_ORDER = ["pvl_gae", "l1_value_loss", "max_mc", "td_error_l2", "alp",
+POTENTIAL_ORDER = ["none", "pvl_gae", "l1_value_loss", "max_mc", "td_error_l2", "alp",
                     "intermediate_difficulty"]
-SAMPLER_ORDER = ["random", "halton", "mab"]
+SAMPLER_ORDER = ["random", "halton", "ce", "mab", "bo"]
+NON_ADAPTIVE = {"random", "halton"}
+ADAPTIVE = {"ce", "mab", "bo"}
+ENV_ORDER = ["cartpole", "acrobot", "pendulum"]
 
 
 def style(ax, theme):
@@ -48,78 +54,87 @@ def style(ax, theme):
 
 def plot_heatmap(df: pd.DataFrame, theme_name: str, out_path: str):
     theme = THEMES[theme_name]
-    pivot = (
-        df.groupby(["sampler", "potential_fn"])["eval_return_mean"]
-        .mean()
-        .reindex(pd.MultiIndex.from_product([SAMPLER_ORDER, POTENTIAL_ORDER]))
-        .unstack()
-        .reindex(index=SAMPLER_ORDER, columns=POTENTIAL_ORDER)
-    )
-
+    envs = [e for e in ENV_ORDER if e in df["env"].unique()]
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE)
-    fig, ax = plt.subplots(figsize=(9, 3.6), dpi=160)
-    im = ax.imshow(pivot.values, cmap=cmap, aspect="auto")
 
-    ax.set_xticks(range(len(POTENTIAL_ORDER)))
-    ax.set_xticklabels(POTENTIAL_ORDER, rotation=25, ha="right")
-    ax.set_yticks(range(len(SAMPLER_ORDER)))
-    ax.set_yticklabels(SAMPLER_ORDER)
-    ax.set_title("Mean held-out eval return: sampler x learning-potential function",
-                 fontsize=11, pad=12)
+    fig, axes = plt.subplots(len(envs), 1, figsize=(10, 3.4 * len(envs)), dpi=160)
+    axes = np.atleast_1d(axes)
 
-    vmin, vmax = np.nanmin(pivot.values), np.nanmax(pivot.values)
-    for i in range(pivot.shape[0]):
-        for j in range(pivot.shape[1]):
-            v = pivot.values[i, j]
-            if np.isnan(v):
-                continue
-            frac = (v - vmin) / (vmax - vmin + 1e-9)
-            label_color = theme["primary"] if frac < 0.6 else theme["surface"]
-            ax.text(j, i, f"{v:.0f}", ha="center", va="center",
-                    color=label_color, fontsize=9)
+    for ax, env in zip(axes, envs):
+        sub = df[df["env"] == env]
+        pivot = (
+            sub.groupby(["sampler", "potential_fn"])["eval_return_mean"]
+            .mean()
+            .reindex(pd.MultiIndex.from_product([SAMPLER_ORDER, POTENTIAL_ORDER]))
+            .unstack()
+            .reindex(index=SAMPLER_ORDER, columns=POTENTIAL_ORDER)
+        )
+        im = ax.imshow(pivot.values, cmap=cmap, aspect="auto")
+        ax.set_xticks(range(len(POTENTIAL_ORDER)))
+        ax.set_xticklabels(POTENTIAL_ORDER, rotation=25, ha="right")
+        ax.set_yticks(range(len(SAMPLER_ORDER)))
+        ax.set_yticklabels(SAMPLER_ORDER)
+        ax.set_title(f"{env} -- mean held-out eval return (own color scale)",
+                     fontsize=11, pad=10)
 
-    style(ax, theme)
-    cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-    cbar.ax.yaxis.set_tick_params(color=theme["secondary"], labelcolor=theme["secondary"])
-    cbar.outline.set_edgecolor(theme["grid"])
+        vmin, vmax = np.nanmin(pivot.values), np.nanmax(pivot.values)
+        for i in range(pivot.shape[0]):
+            for j in range(pivot.shape[1]):
+                v = pivot.values[i, j]
+                if np.isnan(v):
+                    continue
+                frac = (v - vmin) / (vmax - vmin + 1e-9)
+                label_color = theme["primary"] if frac < 0.6 else theme["surface"]
+                ax.text(j, i, f"{v:.0f}", ha="center", va="center",
+                        color=label_color, fontsize=9)
+
+        style(ax, theme)
+        cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
+        cbar.ax.yaxis.set_tick_params(color=theme["secondary"], labelcolor=theme["secondary"])
+        cbar.outline.set_edgecolor(theme["grid"])
+
     fig.tight_layout()
     fig.savefig(out_path, facecolor=theme["surface"])
     plt.close(fig)
 
 
-def plot_sampler_bars(df: pd.DataFrame, theme_name: str, out_path: str):
-    """Grouped bars: mean eval return +/- std across seeds, one group per
-    potential function, one bar per sampler -- the same data as the heatmap,
-    with the seed-to-seed spread made explicit instead of averaged away."""
+def plot_ablation_bars(df: pd.DataFrame, theme_name: str, out_path: str):
+    """2x2 per env: {non-adaptive, adaptive} sampler x {ACL off, ACL on}."""
     theme = THEMES[theme_name]
-    stats = (
-        df.groupby(["potential_fn", "sampler"])["eval_return_mean"]
-        .agg(["mean", "std"])
-        .reindex(pd.MultiIndex.from_product([POTENTIAL_ORDER, SAMPLER_ORDER]))
-    )
+    envs = [e for e in ENV_ORDER if e in df["env"].unique()]
+    conditions = ["neither (baseline)", "adaptive sampler only", "ACL only",
+                  "both (sampler + ACL)"]
 
-    fig, ax = plt.subplots(figsize=(10, 4.2), dpi=160)
-    n_groups, n_bars = len(POTENTIAL_ORDER), len(SAMPLER_ORDER)
-    width = 0.8 / n_bars
-    x = np.arange(n_groups)
+    def cell(sub, adaptive: bool, acl: bool):
+        samplers = ADAPTIVE if adaptive else NON_ADAPTIVE
+        mask = sub["sampler"].isin(samplers)
+        mask &= (sub["potential_fn"] != "none") if acl else (sub["potential_fn"] == "none")
+        vals = sub.loc[mask, "eval_return_mean"]
+        return vals.mean(), vals.std()
 
-    for i, sampler in enumerate(SAMPLER_ORDER):
-        means = [stats.loc[(pfn, sampler), "mean"] for pfn in POTENTIAL_ORDER]
-        stds = [stats.loc[(pfn, sampler), "std"] for pfn in POTENTIAL_ORDER]
-        offset = (i - (n_bars - 1) / 2) * width
-        ax.bar(x + offset, means, width * 0.9, yerr=stds, capsize=3,
-               color=CATEGORICAL[sampler], label=sampler,
+    fig, axes = plt.subplots(1, len(envs), figsize=(4.2 * len(envs), 4.6), dpi=160)
+    axes = np.atleast_1d(axes)
+
+    for ax, env in zip(axes, envs):
+        sub = df[df["env"] == env]
+        means, stds = zip(
+            cell(sub, False, False), cell(sub, True, False),
+            cell(sub, False, True), cell(sub, True, True),
+        )
+        x = np.arange(4)
+        ax.bar(x, means, yerr=stds, capsize=4, color=ABLATION_COLORS,
                error_kw=dict(ecolor=theme["secondary"], linewidth=1))
+        ax.set_xticks(x)
+        ax.set_xticklabels(conditions, rotation=20, ha="right", fontsize=8.5)
+        ax.set_title(env, fontsize=11)
+        ax.grid(True, axis="y", color=theme["grid"], linewidth=0.8)
+        ax.set_axisbelow(True)
+        style(ax, theme)
+        if ax is axes[0]:
+            ax.set_ylabel("held-out eval return (mean +/- std)")
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(POTENTIAL_ORDER, rotation=20, ha="right")
-    ax.set_ylabel("held-out eval return (mean +/- std over 5 seeds)")
-    ax.set_title("Eval return by potential function, grouped by sampler", fontsize=11)
-    ax.grid(True, axis="y", color=theme["grid"], linewidth=0.8)
-    ax.set_axisbelow(True)
-    ax.legend(frameon=False, labelcolor=theme["secondary"], ncol=3, loc="upper left")
-    style(ax, theme)
-    fig.tight_layout()
+    fig.suptitle("Ablation: not using one or both components", fontsize=12, color=theme["primary"])
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(out_path, facecolor=theme["surface"])
     plt.close(fig)
 
@@ -129,8 +144,8 @@ def main():
     df = pd.read_csv(path)
     for theme_name in ("light", "dark"):
         plot_heatmap(df, theme_name, f"results/heatmap_{theme_name}.png")
-        plot_sampler_bars(df, theme_name, f"results/sampler_bars_{theme_name}.png")
-    print("wrote results/heatmap_{light,dark}.png and sampler_bars_{light,dark}.png")
+        plot_ablation_bars(df, theme_name, f"results/ablation_{theme_name}.png")
+    print("wrote results/heatmap_{light,dark}.png and results/ablation_{light,dark}.png")
 
 
 if __name__ == "__main__":

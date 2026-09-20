@@ -1,6 +1,13 @@
 verifai
+scenic
 gymnasium
 torch
 numpy
 pandas
 matplotlib
+
+# For VerifAI's BayesOptSampler (used by the "bo" sampler).
+GPy
+GPyOpt
+# GPyOpt still imports the now-removed `pkg_resources`; pin setuptools back.
+setuptools<81
