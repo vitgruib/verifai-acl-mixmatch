@@ -99,6 +99,7 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
     obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
     ep_rewards: list[float] = []
     ep_values: list[float] = []
+    ep_steps = 0
 
     num_iterations = cfg.total_timesteps // cfg.num_steps
     global_step = 0
@@ -121,6 +122,8 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
             b_values[t] = value.flatten()
 
             next_obs, reward, terminated, truncated, _ = env.step(int(action.item()))
+            ep_steps += 1
+            truncated = truncated or ep_steps >= cfg.max_episode_steps
             done = terminated or truncated
             b_rewards[t] = reward
             b_dones[t] = float(done)
@@ -129,9 +132,13 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
 
             obs = next_obs
             if done:
-                next_value = 0.0 if terminated else float(
-                    agent.get_value(torch.as_tensor(next_obs, dtype=torch.float32).unsqueeze(0))
-                )
+                if terminated:
+                    next_value = 0.0
+                else:
+                    with torch.no_grad():
+                        next_value = float(
+                            agent.get_value(torch.as_tensor(next_obs, dtype=torch.float32).unsqueeze(0))
+                        )
                 raw_lp = curriculum.report_episode(task_idx, mode, ep_rewards, ep_values, next_value)
 
                 log.episode_returns.append(sum(ep_rewards))
@@ -144,6 +151,7 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
                 env = make_env(params)
                 obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
                 ep_rewards, ep_values = [], []
+                ep_steps = 0
 
         with torch.no_grad():
             next_value = agent.get_value(
