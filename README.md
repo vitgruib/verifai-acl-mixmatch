@@ -1,63 +1,88 @@
 # verifai-acl-mixmatch
 
-Mix-and-match testing of **VerifAI's falsification samplers** (random,
-quasi-random Halton, multi-armed bandit) against **Automatic Curriculum
-Learning (ACL) learning-potential functions** (the current GAE/PVL score,
-plus five alternatives pulled from the curriculum-learning literature), run
-on a fast, parameterized CartPole so the full 3 x 6 grid can actually be
-trained end-to-end instead of just designed on paper.
+Mix-and-match testing of **Scenic-mediated VerifAI samplers** (random,
+quasi-random Halton, cross-entropy, multi-armed bandit, Bayesian
+optimization) against **Automatic Curriculum Learning (ACL) learning-potential
+functions** (the current GAE/PVL score, five alternatives from the
+curriculum-learning literature, and a "none" ablation), run on three fast
+classic-control environments (CartPole, Acrobot, Pendulum) so the full grid
+can actually be trained end-to-end instead of just designed on paper.
 
 This is a from-scratch re-implementation, not a fork: it takes the
-*architecture* of [vitgruib/SIPACL](https://github.com/vitgruib/SIPACL) --
-a Scenic/MetaDrive driving policy trained under a Prioritized-Level-Replay
-(PLR) curriculum, where VerifAI proposes new scenes and a GAE-based
-"Positive Value Loss" (PVL) score decides what to replay -- and swaps the
-expensive simulator for CartPole so many sampler x potential-function
-combinations fit in one sitting, per the explicit ask to keep testing in
-"simple, fast environments, like CartPole."
+*architecture* of [vitgruib/SIPACL](https://github.com/vitgruib/SIPACL) -- a
+Scenic/MetaDrive driving policy trained under a Prioritized-Level-Replay
+(PLR) curriculum, where Scenic scenes are sampled through VerifAI and a
+GAE-based "Positive Value Loss" (PVL) score decides what to replay -- and
+swaps the expensive simulator for three classic-control environments so many
+sampler x potential-function combinations fit in one sitting, per the
+explicit ask to keep testing in "simple, fast environments, like CartPole"
+and to cover a few environments including ones with a more complex feature
+space.
 
-## Why CartPole, and how it maps back to SIPACL
+## Architecture, and how it maps back to SIPACL
 
-| SIPACL (Scenic + MetaDrive)                              | This repo (CartPole)                                   |
+| SIPACL (Scenic + MetaDrive)                              | This repo                                   |
 |-----------------------------------------------------------|----------------------------------------------------------|
-| Scenic program samples a driving *scene* (traffic, weather, geometry) | VerifAI `FeatureSpace` samples 5 physics params: pole length, pole mass, cart mass, force magnitude, initial-state range |
-| `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` | `acl_bench.samplers.make_sampler("random" \| "halton" \| "mab")`, calling the *same* `verifai.samplers.feature_sampler.FeatureSampler.*For` factories |
-| `MetaDriveEnv` keeps a disk-backed PLR buffer of scenes, replay probability `replay_resample_prob` | `acl_bench.curriculum.plr.PLRCurriculum` keeps the same buffer in memory (a CartPole task is 5 floats, not a serialized world) |
-| `_lp_delta`: mean(max(GAE_delta, 0)) -- Positive Value Loss | `acl_bench.potential.functions.pvl_gae`, ported near line-for-line, plus 5 alternatives (below) |
-| PPO (CleanRL-style, continuous control) | Same PPO structure, adapted to CartPole's `Discrete(2)` action space |
+| Scenic program samples a driving *scene* (traffic, weather, geometry) | Scenic program samples a *physics task*: CartPole (5 params), Acrobot (6), Pendulum (5) |
+| `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` | The exact same call (`acl_bench/scenic_sampling.py`), just against a model-less `.scenic` file (`acl_bench/scenic_scenarios/*.scenic`) instead of a MetaDrive model |
+| `MetaDriveEnv` keeps a disk-backed PLR buffer of scenes, replay probability `replay_resample_prob` | `acl_bench.curriculum.plr.PLRCurriculum` keeps the same buffer in memory (a task here is 5-6 floats, not a serialized world) |
+| `_lp_delta`: mean(max(GAE_delta, 0)) -- Positive Value Loss | `acl_bench.potential.functions.pvl_gae`, ported near line-for-line, plus 5 alternatives and a "none" ablation (below) |
+| PPO (CleanRL-style, continuous control) | Same PPO structure, generalized to discrete (CartPole, Acrobot) and continuous (Pendulum) actions |
 
-Two independent knobs, "mixed and matched" as a 3x6 grid:
+Two independent knobs, "mixed and matched" as a grid, plus the question of
+whether they should even share a feedback signal:
 
 - **Sampler** -- how a *brand-new* task is proposed from the parameter space.
 - **Potential function** -- how an *already-seen* task is scored for
-  replay-worthiness.
+  replay-worthiness, *and* (see below) what feeds back into the sampler.
 
-## VerifAI samplers under test
+## Is the sampler's feedback the same function as ACL's replay score?
+
+It is, by design here, and that's a deliberate choice worth spelling out.
+VerifAI's active samplers (cross-entropy, the bandit, Bayesian optimization)
+all expect one scalar `rho` per proposed task -- STL-robustness-flavored:
+lower/negative means "counterexample, worth exploring more of this region."
+Rather than invent a second, independent notion of "how good was that task"
+purely to drive the sampler, `acl_bench.curriculum.plr.PLRCurriculum` reuses
+whichever potential function is under test for both jobs: the same raw score
+that ranks a task for replay is z-scored against a running mean/std
+(`RunningNormalizer`, Welford's algorithm) and negated into `rho`, so a task
+the ACL side considers "still worth learning from" is exactly the region the
+sampler is nudged toward proposing more of. One function, two consumers.
+This also sidesteps needing a per-environment reward-scale constant --
+CartPole's ~100s-scale returns and Pendulum's ~1000s-scale penalties
+normalize the same way.
+
+The **"none"** condition in the grid turns this off along with everything
+else ACL does (see the ablation section below): with no potential function
+to reuse, the sampler falls back to raw (still z-scored) episode return, and
+there is no replay buffer at all.
+
+## Samplers under test, and why not all 8
 
 [VerifAI](https://github.com/BerkeleyLearnVerify/VerifAI) (`pip install
-verifai`) was built to drive falsification search over Scenic scenarios: a
-`FeatureSpace` describes a scenario's parameters, a `FeatureSampler`
-proposes points in it, the scenario runs, and a scalar robustness value
-`rho` (STL semantics: `rho < 0` means a specification was violated) is fed
-back via `sampler.update(sample, info, rho)`. We reuse that exact API and
-feed it `rho = 2 * (episode_return / max_return) - 1`, so a policy that is
-still failing on a task reads as `rho < 0` -- a "counterexample" in VerifAI's
-terms, and precisely the region an ACL curriculum wants to keep sampling.
-That mapping is the actual bridge between "verifAI sampling" and "ACL" this
-repo is testing.
+verifai`) ships 8 sampler types reachable from `FeatureSampler.*For`. We
+route every one of them **through Scenic** (`param verifaiSamplerType = ...`
+on a `.scenic` file, resolved by `verifai.server.choose_sampler` --
+`acl_bench/scenic_scenarios/*.scenic`), exactly matching SIPACL's own
+`scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` call, just
+without a MetaDrive/CARLA model attached (Scenic doesn't need one just to
+sample scalars -- see `verifai.core.external_params`'s own docstring). Tested
+each of the 8 directly before deciding which are actually usable in an
+open-ended training loop:
 
-- **`random`** -- `FeatureSampler.randomSamplerFor`. Uniform i.i.d. draws; the baseline.
-- **`halton`** -- `FeatureSampler.haltonSamplerFor`. A quasi-random low-discrepancy
-  sequence (`verifai.samplers.halton`) that covers the space more evenly than
-  i.i.d. random sampling for the same number of draws -- classic
-  variance-reduction, ignores feedback entirely.
-- **`mab`** -- `FeatureSampler.multiArmedBanditSamplerFor`. Discretizes each
-  continuous dimension into buckets and runs a UCB1-style bandit
-  (`verifai.samplers.multi_armed_bandit.ContinuousMultiArmedBanditSampler`)
-  that steers future draws toward buckets with a history of low `rho`
-  (i.e. where the policy is still failing) -- the only one of the three that
-  actually uses feedback to shape *where new tasks come from*, as opposed to
-  only shaping *which old tasks get replayed*.
+| Sampler | In the grid? | Why |
+|---|---|---|
+| `random` | Yes | Baseline: i.i.d. uniform, ignores all feedback. |
+| `halton` | Yes | Quasi-random low-discrepancy sequence; covers the space more evenly than i.i.d. for the same draw count, still ignores feedback. |
+| `ce` (cross-entropy) | Yes | Refits a distribution toward low-`rho` regions each round. |
+| `mab` (multi-armed bandit) | Yes | Discretizes each dimension into buckets, runs UCB1 toward buckets with a history of low `rho`. |
+| `bo` (Bayesian optimization) | Yes | Fits a GP over `(task, rho)` history each round (needs `GPyOpt`+`GPy`, and pinning `setuptools<81` since GPyOpt still imports the removed `pkg_resources`). Works, but its per-sample cost grows with buffer size -- see Limitations. |
+| `eg` (epsilon-greedy) | No | Raises `NotImplementedError: tried to use abstract BoxSampler` in the installed VerifAI release, called directly or through Scenic. Broken upstream, not a bug here. |
+| `grid` | No | Exhaustive by design -- terminates once its resolution is covered, and even before that, 300 samples over our 5D box took 17s. The wrong tool for an open-ended training loop, not broken. |
+| simulated annealing | No | Works fine called directly (`FeatureSampler.simulatedAnnealingSamplerFor`), but `verifai.server.choose_sampler` has no branch for it, so Scenic's `verifaiSamplerType` can never select it. Excluded so every sampler in the grid goes through the identical Scenic-mediated path. |
+
+So "all applicable" = **5 samplers**: random, halton, ce, mab, bo.
 
 ## Learning-potential (feedback) functions under test
 
@@ -65,7 +90,7 @@ The buffer always does rank-based prioritized replay --
 `P(i) ~ 1/rank_i^0.9` (Prioritized Level Replay, Jiang, Grefenstette &
 Rocktaschel, ICML 2021) -- and EMA-smooths whatever raw score a function
 below returns into that slot's running priority, exactly as SIPACL's
-`_compute_learning_progress` does. Only the raw per-episode score changes:
+`_compute_learning_progress` does.
 
 | Function | Idea | Source |
 |---|---|---|
@@ -75,20 +100,37 @@ below returns into that slot's running priority, exactly as SIPACL's
 | `td_error_l2` | mean squared one-step TD error -- the classic "surprise" signal | Schaul et al., *Prioritized Experience Replay*, ICLR 2016 |
 | `alp` | \|episode return now - EMA of returns on this exact task\| -- score *change*, not magnitude | Portelas, Colas et al., *ALP-GMM*, CoRL 2020 |
 | `intermediate_difficulty` | `1 - 2*|success_rate - 0.5|`, peaking when a task is solved about half the time -- neither trivial nor hopeless | Florensa et al., *Reverse Curriculum Generation*, 2017; Wang et al., *POET*, 2019; Du et al., *VACL*, 2022 |
+| `none` | **Ablation**: no potential function, no replay buffer -- every episode is a fresh domain-randomization draw from the sampler; the sampler's feedback (if it uses any) falls back to raw return. | -- |
 
-## The environment
+## Isolating "not using one or both"
 
-`acl_bench/envs/param_cartpole.py` subclasses Gymnasium's `CartPoleEnv` and
-exposes five physics parameters as the task space (bounds in parentheses):
-pole half-length `(0.25, 1.5)` m, pole mass `(0.05, 0.5)` kg, cart mass
-`(0.5, 2.0)` kg, push force `(4, 16)` N, and initial-state perturbation range
-`(0.05, 0.3)`. Longer/heavier poles, weaker pushes, and wider initial
-perturbations all make balancing harder, giving samplers and curricula a
-real easy<->hard manifold to explore -- the same role weather/traffic
-density plays in a Scenic scenario, at CartPole's compute cost. Episodes
-truncate at 500 steps, matching the standard `CartPole-v1` convention (the
-raw `CartPoleEnv` has no built-in cap, so this is applied by the training
-loop).
+The grid crosses 5 samplers x 7 potential-function conditions, which already
+contains every ablation cell without a separate flag:
+
+- **Neither** = a non-adaptive sampler (`random`/`halton`) + `potential_fn="none"` -- plain domain randomization, no curriculum sophistication at all.
+- **Adaptive sampler only** = `ce`/`mab`/`bo` + `potential_fn="none"` -- VerifAI steers new tasks toward regions with low raw-return feedback, but nothing ever gets replayed.
+- **ACL only** = `random`/`halton` + a real potential function -- new tasks are plain domain randomization, but the PLR buffer replays by learning potential.
+- **Both** = `ce`/`mab`/`bo` + a real potential function -- the full mix-and-match combination, feedback unified as described above.
+
+`acl_bench/plot_results.py` renders this 2x2 explicitly (averaging over the
+6 real potential functions for "ACL"/"both", and over `ce`/`mab`/`bo` for
+"adaptive sampler") per environment.
+
+## Environments
+
+All three are Gymnasium `classic_control` envs (no Box2D -- fast), with
+physical parameters exposed as task variables:
+
+| Env | Task params (bounds) | Action space | Role |
+|---|---|---|---|
+| CartPole | pole half-length (0.25-1.5m), pole mass (0.05-0.5kg), cart mass (0.5-2.0kg), push force (4-16N), init-state range (0.05-0.3) | Discrete(2) | Simple baseline |
+| Acrobot | link lengths x2 (0.5-1.5m), link masses x2 (0.5-1.5kg), link moment of inertia (0.5-1.5), torque noise (0-0.3) | Discrete(3) | **Complex feature space** (6D) -- chaotic double-pendulum swing-up |
+| Pendulum | gravity (5-15), mass (0.5-2.0kg), length (0.5-2.0m), max torque (1-4 N.m), max angular speed (4-12 rad/s) | Box(1) continuous | Continuous-action control; max_torque being sampled means the policy's action bounds change per task |
+
+Episodes truncate at each env's standard `-v1` length (CartPole/Acrobot 500
+steps, Pendulum 200) -- the raw Gymnasium classic-control classes have no
+built-in cap outside their registered `-v1` `TimeLimit` wrapper, so this is
+applied explicitly in the training loop.
 
 ## Running it
 
@@ -100,114 +142,72 @@ pip install -r requirements.txt
 python -c "
 from acl_bench.experiment import run_one, make_fixed_eval_set
 from acl_bench.ppo import PPOConfig
-row = run_one('mab', 'max_mc', seed=1, cfg=PPOConfig(total_timesteps=150_000), eval_set=make_fixed_eval_set())
+row = run_one('acrobot', 'mab', 'max_mc', seed=1,
+               cfg=PPOConfig(total_timesteps=60_000),
+               eval_set=make_fixed_eval_set('acrobot'))
 print(row)
 "
 
-# the full 3 (samplers) x 6 (potential functions) x 5 (seeds) grid
-python -m acl_bench.experiment --seeds 1 2 3 4 5 --total-timesteps 150000
+# the full 3 (envs) x 5 (samplers) x 7 (potential-fn conditions) x 3 (seeds) grid
+python -m acl_bench.experiment --seeds 1 2 3 --total-timesteps 60000
 
 # charts used below
 python -m acl_bench.plot_results
 ```
 
 Each run trains a small MLP PPO agent (two 64-unit tanh layers, actor +
-critic) for 150,000 environment steps under one (sampler, potential-function)
-curriculum, then evaluates the final policy on a fixed, sampler-independent
-set of 15 held-out task configurations (3 episodes each) -- so every cell of
-the grid is scored on the same yardstick, not on tasks its own curriculum
-happened to pick.
+critic; Categorical head for CartPole/Acrobot, tanh-squashed Gaussian for
+Pendulum) for 60,000 environment steps under one (env, sampler,
+potential-function) curriculum, then evaluates the final policy on a fixed,
+sampler-independent set of 15 held-out task configurations (3 episodes each)
+-- so every cell of the grid is scored on the same yardstick, not on tasks
+its own curriculum happened to pick.
 
 ## Results
 
-Full grid: 3 samplers x 6 potential functions x 5 seeds = 90 runs, 150k
-environment steps each, ~12.8s/run on a laptop CPU (~19 minutes total,
-115,380 episodes) -- the entire point of moving off MetaDrive/Scenic for
-this sweep. Raw data: [`results/grid_results.csv`](results/grid_results.csv).
+<!-- RESULTS_TABLE -->
 
-Mean held-out eval return per (sampler, potential function) cell, averaged
-over 5 seeds:
-
-| sampler | pvl_gae (current) | l1_value_loss | max_mc | td_error_l2 | alp | intermediate_difficulty |
-|---|---|---|---|---|---|---|
-| random | 277 | 229 | 237 | 226 | 277 | 252 |
-| halton | 275 | 248 | 229 | 269 | 326 | 229 |
-| mab    | 247 | 299 | 273 | **337** | 277 | 292 |
+<!-- RESULTS_NARRATIVE -->
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="results/heatmap_dark.png">
-  <img src="results/heatmap_light.png" alt="Heatmap of mean held-out eval return by sampler and potential function">
+  <img src="results/heatmap_light.png" alt="Heatmaps of mean held-out eval return by sampler and potential-function condition, one per environment">
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="results/sampler_bars_dark.png">
-  <img src="results/sampler_bars_light.png" alt="Grouped bar chart of eval return by potential function, one bar per sampler, with error bars showing standard deviation across 5 seeds">
+  <source media="(prefers-color-scheme: dark)" srcset="results/ablation_dark.png">
+  <img src="results/ablation_light.png" alt="2x2 ablation bar charts per environment: neither, adaptive sampler only, ACL only, both">
 </picture>
-
-**Samplers, averaged over all six potential functions:** `mab` 287.7 +/- 90.2,
-`halton` 262.6 +/- 92.5, `random` 249.6 +/- 82.5. The feedback-driven bandit
-sampler comes out ahead on average, which is the direction you'd hope for
-(steering new tasks toward regions the policy is still failing matches how
-VerifAI's samplers are meant to be used for falsification), but with 5 seeds
-the gap is not statistically clean: a paired t-test on `mab` vs `random`
-across the 6 potential functions gives p=0.14. Treat "mab wins" as a
-plausible trend this framework can now go re-test at a larger seed count or
-timestep budget, not a settled result.
-
-**Potential functions, averaged over all three samplers:** `alp` (293.3) and
-`td_error_l2` (277.5) score highest, `max_mc` (246.0) lowest, with the
-current default `pvl_gae` (266.5) in the middle of the pack. Nothing here
-should be read as "replace PVL with ALP" outright, though -- see the next
-point.
-
-**The biggest single finding is an interaction effect, not a main effect.**
-`td_error_l2` is simultaneously the *best* score paired with `mab` (337,
-the best cell in the whole grid) and the *worst* score paired with `random`
-(226, tied for worst). A learning-potential function's usefulness depends on
-which sampler is proposing the tasks it scores -- exactly the premise of
-doing mix-and-match testing instead of separately picking "the best sampler"
-and "the best potential function" and assuming they compose. The runner-up
-cell, `halton` + `alp` (326), is a different sampler *and* a different
-potential function from the top cell, reinforcing that no single component
-dominates in isolation.
-
-**A negative result worth reporting honestly:** the crude task-diversity
-metric we log (mean per-dimension std of sampled task params, normalized to
-the task space) came out essentially identical across samplers -- `random`
-0.2888, `halton` 0.2878, `mab` 0.2906, all near the theoretical std of a
-uniform distribution (1/sqrt(12) = 0.2887). At `replay_prob=0.5`, half of
-all episodes replay already-buffered tasks, which dilutes any concentration
-effect Halton's low-discrepancy coverage or MAB's UCB-driven focusing would
-otherwise produce in this aggregate statistic. This metric isn't sensitive
-enough to show *how* the samplers differ in what they propose, only that
-their downstream training effect differs -- a real limitation of the current
-logging, not a claim that the samplers behave identically.
 
 ## Limitations
 
 This is a fast proof-of-concept sweep, not a statistically rigorous
-benchmark: 5 seeds per cell, 150k environment steps per run (CartPole
-solves in the thousands-of-steps regime for a fixed task, but our task
-distribution and truncation policy make some sampled configurations much
-harder than the classic single-config CartPole-v1), and a single random
+benchmark: 3 seeds per cell, 60k environment steps per run, and a single
 architecture/hyperparameter setting carried over from SIPACL's own PPO
-rather than tuned per combination. Treat the numbers as evidence of
-*direction and magnitude of effect*, not final answers -- the framework
-(`acl_bench/samplers.py`, `acl_bench/potential/functions.py`,
-`acl_bench/curriculum/plr.py`) is built so that re-running with a larger
-budget, more seeds, or SIPACL's actual MetaDrive/Scenic stack is a config
-change, not a rewrite.
+rather than tuned per combination or per environment. Bayesian optimization
+in particular gets noticeably slower as its per-run task history grows
+(observed 30ms/sample at 30 samples to over 100ms/sample by 120, and up to
+~85s for a full CartPole run vs. ~5s for the other samplers) -- its GP
+refit is the bottleneck, not the RL training itself. Treat the numbers as
+evidence of *direction and magnitude of effect*, not final answers -- the
+framework (`acl_bench/scenic_sampling.py`, `acl_bench/potential/functions.py`,
+`acl_bench/curriculum/plr.py`, `acl_bench/envs/registry.py`) is built so
+that re-running with a larger budget, more seeds, more environments, or
+SIPACL's actual MetaDrive/Scenic stack is a config change, not a rewrite.
 
 ## Layout
 
 ```
 acl_bench/
-  envs/param_cartpole.py     parameterized CartPole task space
-  samplers.py                VerifAI FeatureSpace + sampler factories
-  potential/functions.py     the 6 learning-potential/feedback functions
-  curriculum/plr.py          PLR replay buffer wiring sampler + potential fn together
-  ppo.py                     PPO training loop (SIPACL-style, discrete actions)
-  experiment.py              3x6xseeds grid runner -> results/grid_results.csv
-  plot_results.py            renders the charts above
-results/                     grid_results.csv + generated charts (checked in)
+  envs/
+    param_cartpole.py, param_acrobot.py, param_pendulum.py   task-parameterized gym envs
+    registry.py                                              ties envs to their .scenic files + specs
+  scenic_scenarios/*.scenic       one Scenic file per env, VerifaiRange-declared task params
+  scenic_sampling.py              Scenic-mediated sampler loader + the generate()/feedback loop
+  potential/functions.py          the 6 learning-potential/feedback functions + the "none" ablation
+  curriculum/plr.py               PLR replay buffer, unifying sampler feedback and replay score
+  ppo.py                          PPO training loop (SIPACL-style, discrete + continuous actions)
+  experiment.py                   env x sampler x potential-fn x seeds grid runner -> results/grid_results.csv
+  plot_results.py                 renders the charts above
+results/                          grid_results.csv + generated charts (checked in)
 ```

@@ -1,7 +1,7 @@
-"""Minimal discrete PPO, structured after SIPACL's Work/policy/ppo.py
-(itself a CleanRL-style implementation) but for CartPole's Discrete(2)
-action space instead of MetaDrive's continuous control, and driven by a
-`PLRCurriculum` instead of a disk-backed scene buffer.
+"""Minimal PPO, structured after SIPACL's Work/policy/ppo.py (itself a
+CleanRL-style implementation), generalized to run on any environment in
+acl_bench.envs.registry (discrete or continuous actions) driven by a
+PLRCurriculum instead of a disk-backed scene buffer.
 """
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
-from acl_bench.curriculum.plr import PLRCurriculum, NEW
-from acl_bench.envs.param_cartpole import CartPoleParams, make_env
+from acl_bench.curriculum.plr import PLRCurriculum
+from acl_bench.envs.registry import EnvSpec
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -23,34 +23,65 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 
+def _mlp(in_dim: int, out_dim: int, out_std: float) -> nn.Sequential:
+    return nn.Sequential(
+        layer_init(nn.Linear(in_dim, 64)), nn.Tanh(),
+        layer_init(nn.Linear(64, 64)), nn.Tanh(),
+        layer_init(nn.Linear(64, out_dim), std=out_std),
+    )
+
+
 class Agent(nn.Module):
-    def __init__(self, obs_dim: int, n_actions: int):
+    """`action_type="discrete"` -> Categorical over `action_dim` logits.
+    `action_type="continuous"` -> Normal, tanh-squashed to [-1, 1] (with the
+    standard change-of-variables log-prob correction), rescaled to the env's
+    actual action bounds by the caller (Pendulum's max_torque is itself a
+    sampled task parameter, so those bounds vary run to run)."""
+
+    def __init__(self, obs_dim: int, action_dim: int, action_type: str):
         super().__init__()
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)), nn.Tanh(),
-            layer_init(nn.Linear(64, 64)), nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
-        )
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)), nn.Tanh(),
-            layer_init(nn.Linear(64, 64)), nn.Tanh(),
-            layer_init(nn.Linear(64, n_actions), std=0.01),
-        )
+        self.action_type = action_type
+        self.critic = _mlp(obs_dim, 1, out_std=1.0)
+        if action_type == "discrete":
+            self.actor = _mlp(obs_dim, action_dim, out_std=0.01)
+        else:
+            self.actor_mean = _mlp(obs_dim, action_dim, out_std=0.01)
+            self.actor_logstd = nn.Parameter(torch.full((1, action_dim), -1.0))
 
     def get_value(self, x):
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
-        logits = self.actor(x)
-        dist = Categorical(logits=logits)
-        if action is None:
-            action = dist.sample()
-        return action, dist.log_prob(action), dist.entropy(), self.critic(x)
+    def get_action_and_value(self, x, stored=None):
+        """Returns (env_action, stored, logprob, entropy, value). `stored` is
+        what must be replayed verbatim to recompute logprob during a PPO
+        update: the discrete action itself, or the continuous pre-tanh
+        sample (so `torch.tanh` stays consistent between rollout and update).
+        """
+        if self.action_type == "discrete":
+            dist = Categorical(logits=self.actor(x))
+            action = dist.sample() if stored is None else stored
+            return action, action, dist.log_prob(action), dist.entropy(), self.critic(x)
+
+        mean = self.actor_mean(x)
+        std = torch.exp(self.actor_logstd.expand_as(mean))
+        dist = Normal(mean, std)
+        pretanh = dist.rsample() if stored is None else stored
+        action = torch.tanh(pretanh)
+        logprob = (dist.log_prob(pretanh) - torch.log(1 - action.pow(2) + 1e-6)).sum(-1)
+        entropy = dist.entropy().sum(-1)
+        return action, pretanh, logprob, entropy, self.critic(x)
+
+
+def scale_to_action_space(unit_action: np.ndarray, env) -> np.ndarray:
+    """[-1, 1]^d -> the env's actual action bounds (which vary per task for
+    Pendulum, since max_torque is itself sampled)."""
+    low, high = env.action_space.low, env.action_space.high
+    return low + (unit_action + 1.0) * 0.5 * (high - low)
 
 
 @dataclass
 class PPOConfig:
-    total_timesteps: int = 40_000
+    total_timesteps: int = 100_000
     num_steps: int = 1024
     learning_rate: float = 3e-4
     gamma: float = 0.99
@@ -62,7 +93,6 @@ class PPOConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     norm_adv: bool = True
-    max_episode_steps: int = 500
     replay_prob: float = 0.5
     buffer_max: int = 200
     seed: int = 1
@@ -73,57 +103,63 @@ class RunLog:
     episode_returns: list = field(default_factory=list)
     episode_modes: list = field(default_factory=list)     # "new" / "replay"
     episode_task_ids: list = field(default_factory=list)
-    episode_params: list = field(default_factory=list)    # CartPoleParams
+    episode_params: list = field(default_factory=list)    # dict per episode
     lp_scores: list = field(default_factory=list)
 
 
-def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[RunLog, Agent]:
+def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
+                  device="cpu") -> tuple[RunLog, Agent]:
     rng = np.random.default_rng(cfg.seed)
     torch.manual_seed(cfg.seed)
 
+    param_names = tuple(env_spec.param_bounds.keys())
     curriculum = PLRCurriculum(
-        sampler=sampler, potential_fn=potential_fn, gamma=cfg.gamma,
-        gae_lambda=cfg.gae_lambda, replay_prob=cfg.replay_prob,
-        buffer_max=cfg.buffer_max, max_return=float(cfg.max_episode_steps),
-        rng=rng,
+        task_sampler=task_sampler, param_names=param_names, potential_fn=potential_fn,
+        gamma=cfg.gamma, gae_lambda=cfg.gae_lambda, replay_prob=cfg.replay_prob,
+        buffer_max=cfg.buffer_max, rng=rng,
     )
 
-    obs_dim, n_actions = 4, 2
-    agent = Agent(obs_dim, n_actions).to(device)
+    obs_dim, action_dim = env_spec.obs_dim, env_spec.action_dim
+    agent = Agent(obs_dim, action_dim, env_spec.action_type).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
+    is_discrete = env_spec.action_type == "discrete"
 
     log = RunLog()
 
     params, task_idx, mode = curriculum.pick_task()
-    env = make_env(params)
+    env = env_spec.make_env(params)
     obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
     ep_rewards: list[float] = []
     ep_values: list[float] = []
     ep_steps = 0
 
     num_iterations = cfg.total_timesteps // cfg.num_steps
-    global_step = 0
     for _iteration in range(num_iterations):
         b_obs = torch.zeros((cfg.num_steps, obs_dim))
-        b_actions = torch.zeros(cfg.num_steps, dtype=torch.long)
+        b_actions = (torch.zeros(cfg.num_steps, dtype=torch.long) if is_discrete
+                     else torch.zeros((cfg.num_steps, action_dim)))
         b_logprobs = torch.zeros(cfg.num_steps)
         b_rewards = torch.zeros(cfg.num_steps)
         b_dones = torch.zeros(cfg.num_steps)
         b_values = torch.zeros(cfg.num_steps)
 
         for t in range(cfg.num_steps):
-            global_step += 1
-            obs_t = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
+            obs_t = torch.as_tensor(np.asarray(obs), dtype=torch.float32).unsqueeze(0)
             with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(obs_t)
+                action, stored, logprob, _, value = agent.get_action_and_value(obs_t)
             b_obs[t] = obs_t
-            b_actions[t] = action
+            b_actions[t] = stored
             b_logprobs[t] = logprob
             b_values[t] = value.flatten()
 
-            next_obs, reward, terminated, truncated, _ = env.step(int(action.item()))
+            if is_discrete:
+                env_action = int(action.item())
+            else:
+                env_action = scale_to_action_space(action.squeeze(0).numpy(), env)
+
+            next_obs, reward, terminated, truncated, _ = env.step(env_action)
             ep_steps += 1
-            truncated = truncated or ep_steps >= cfg.max_episode_steps
+            truncated = truncated or ep_steps >= env_spec.max_episode_steps
             done = terminated or truncated
             b_rewards[t] = reward
             b_dones[t] = float(done)
@@ -136,9 +172,9 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
                     next_value = 0.0
                 else:
                     with torch.no_grad():
-                        next_value = float(
-                            agent.get_value(torch.as_tensor(next_obs, dtype=torch.float32).unsqueeze(0))
-                        )
+                        next_value = float(agent.get_value(
+                            torch.as_tensor(np.asarray(next_obs), dtype=torch.float32).unsqueeze(0)
+                        ))
                 raw_lp = curriculum.report_episode(task_idx, mode, ep_rewards, ep_values, next_value)
 
                 log.episode_returns.append(sum(ep_rewards))
@@ -148,14 +184,14 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
                 log.lp_scores.append(raw_lp)
 
                 params, task_idx, mode = curriculum.pick_task()
-                env = make_env(params)
+                env = env_spec.make_env(params)
                 obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
                 ep_rewards, ep_values = [], []
                 ep_steps = 0
 
         with torch.no_grad():
             next_value = agent.get_value(
-                torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
+                torch.as_tensor(np.asarray(obs), dtype=torch.float32).unsqueeze(0)
             ).reshape(1)
             advantages = torch.zeros_like(b_rewards)
             lastgaelam = 0.0
@@ -172,8 +208,8 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
             np.random.shuffle(b_inds)
             for start in range(0, cfg.num_steps, minibatch_size):
                 mb = b_inds[start:start + minibatch_size]
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(
-                    b_obs[mb], b_actions[mb]
+                _, _, newlogprob, entropy, newvalue = agent.get_action_and_value(
+                    b_obs[mb], stored=b_actions[mb]
                 )
                 logratio = newlogprob - b_logprobs[mb]
                 ratio = logratio.exp()
@@ -199,22 +235,24 @@ def run_training(sampler, potential_fn, cfg: PPOConfig, device="cpu") -> tuple[R
 
 
 @torch.no_grad()
-def evaluate_agent(agent: Agent, eval_params: list[CartPoleParams],
-                    episodes_per_task: int = 3, max_steps: int = 500,
-                    seed: int = 0) -> float:
+def evaluate_agent(agent: Agent, env_spec: EnvSpec, eval_params: list[dict],
+                    episodes_per_task: int = 3, seed: int = 0) -> float:
     """Mean return over a fixed, sampler-independent set of task params --
     the generalization metric used to compare mix-and-match combinations."""
     rng = np.random.default_rng(seed)
+    is_discrete = env_spec.action_type == "discrete"
     returns = []
     for params in eval_params:
-        env = make_env(params)
+        env = env_spec.make_env(params)
         for _ in range(episodes_per_task):
             obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
             total = 0.0
-            for _ in range(max_steps):
-                obs_t = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
-                action, _, _, _ = agent.get_action_and_value(obs_t)
-                obs, reward, terminated, truncated, _ = env.step(int(action.item()))
+            for _ in range(env_spec.max_episode_steps):
+                obs_t = torch.as_tensor(np.asarray(obs), dtype=torch.float32).unsqueeze(0)
+                action, _, _, _, _ = agent.get_action_and_value(obs_t)
+                env_action = int(action.item()) if is_discrete else \
+                    scale_to_action_space(action.squeeze(0).numpy(), env)
+                obs, reward, terminated, truncated, _ = env.step(env_action)
                 total += reward
                 if terminated or truncated:
                     break

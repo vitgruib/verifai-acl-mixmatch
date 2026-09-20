@@ -144,3 +144,12 @@ POTENTIAL_FUNCTIONS: dict[str, Callable] = {
     "alp": absolute_learning_progress,
     "intermediate_difficulty": make_intermediate_difficulty(success_return_threshold=195.0),
 }
+
+# "none" is the ACL ablation: no potential function, no replay buffer at all
+# (see acl_bench.curriculum.plr.PLRCurriculum) -- isolates "sampler alone"
+# from "sampler + ACL" in the mix-and-match grid.
+POTENTIAL_FUNCTION_NAMES: tuple[str, ...] = ("none",) + tuple(POTENTIAL_FUNCTIONS.keys())
+
+
+def resolve_potential_fn(name: str) -> Callable | None:
+    return None if name == "none" else POTENTIAL_FUNCTIONS[name]
