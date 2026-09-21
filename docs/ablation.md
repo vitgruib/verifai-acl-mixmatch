@@ -1,10 +1,9 @@
 # Ablation design (CartPole): does each component exist as an effect?
 
 Status: the eight methods are defined and runnable (`acl_bench/suite/ablation.py`,
-`acl_bench/suite/run_arms.py`). **Nothing has been run yet.** Two things must come
-first: the calibration run that fixes how long training lasts, and the locked hard and
-easy exam sections (E6, E7), which need reference agents (docs/cartpole_suite.md,
-"Stages").
+`acl_bench/suite/run_arms.py`). Calibration is done (training length 614,400 steps,
+learning rate 3e-4) and the whole exam, including the hard and easy sections, is
+locked (docs/cartpole_suite.md, "Stages"). The 800-run comparison is the next step.
 
 ## The question, in plain English
 
@@ -66,19 +65,22 @@ outside basis, so any result about annealing is conditional on them.
 
 ## How many runs, and what that can see
 
-**100 runs per method: 8 x 100 = 800 runs.** Results are noisy (a run either "takes off"
-or it does not), so the smallest difference detectable in the learning-curve score
-(`AUC_E0`, 0 to 1) is about **0.052** at 100 runs (about 0.095 at 30). At the
-provisional 400k-step length and an extrapolated 12 s per run that is about 2.7 hours;
-if calibration lengthens training, the time grows in proportion (roughly 7 h at 1M
-steps).
+**100 runs per method: 8 x 100 = 800 runs.** At the calibrated length of 614,400 steps
+the plain method's learning-curve score (`AUC_E0`, 0 to 1) has a run-to-run SD of about
+0.075 (measured on 20 runs; other methods assumed similar), so the smallest difference
+detectable is about **0.035** at 100 runs (about 0.065 at 30). Measured throughput: 10
+runs of 614,400 steps took 3.2 minutes on 6 workers (about 95 s each), so 800 runs is
+about **3.5 hours**, run at the lowest CPU priority with health safeguards (pauses if the
+Mac is throttling, low on memory, on battery or short on disk; `touch results/STOP` stops
+it cleanly).
 
 **How to read "existence".** A component is shown to exist when the uncertainty range on
 its difference excludes zero. If it does not, the honest statement is "no effect larger
-than about 0.05 was detectable", *not* "no effect".
+than about 0.035 was detectable", *not* "no effect".
 
-**Snapshots are saved** (`run_arms --snapshots`), so the exam can be re-graded later
-with sections that did not exist at training time, without retraining.
+**Snapshots are saved** (`run_arms --snapshots`, about 1 GB for all 800 runs, not
+committed), so the exam can be re-graded later, including the separate reporting pool,
+without retraining.
 
 ## Parked: the hyperparameter variants
 

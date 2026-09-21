@@ -1,9 +1,9 @@
 # CartPole test suite (design)
 
-Status: **partly built.** Built and tested: the exam sections E0-E5 (locked), the
-grader, the scorecard code, the comparison code and the runner. Not built: the exam
-sections E6 and E7 (they need reference agents from the calibration run), the
-calibration run itself, and a take-off-time score.
+Status: **built, and the main run is ready to start or running.** Built and tested: the
+whole exam (E0-E7, locked), the grader, the scorecard code, the comparison code, the
+runner with safeguards and snapshot saving, and the calibration run. Not built: a
+take-off-time score and the "why" diagnostics.
 
 ## The suite at a glance (plain English)
 
@@ -47,11 +47,11 @@ The suite turns snapshots into a verdict in five chunks:
 
 | chunk | one-sentence job | built? |
 |---|---|---|
-| **1. The exam** | A fixed set of game setups, grouped into sections that each probe one weakness. | sections E0-E5 built and locked; E6, E7 not yet |
+| **1. The exam** | A fixed set of game setups, grouped into sections that each probe one weakness. | all sections E0-E7 built and locked |
 | **2. The grader** | Plays a snapshot through every question, quickly and the same way every time. | built and tested |
 | **3. The scorecard** | Reduces the grades to a few numbers per run. | mostly built; take-off time and diagnostics not yet |
 | **4. Comparison rules** | Decides whether a difference between methods is real or luck. | built |
-| **5. The plan** | Lists which methods are compared and in what order to run them. | methods and runner built; the calibration run is not |
+| **5. The plan** | Lists which methods are compared and in what order to run them. | methods, runner and calibration built |
 
 ### Chunk 1: the exam
 
@@ -78,8 +78,8 @@ Questions are grouped into **sections**, and each asks its own question:
 | **Long pole** (E3a) / **heavy pole** (E3b) | 96 / 92 | slowest-moving poles | mostly a sanity check; weak effects in early tests |
 | **Big shove at the start** (E4) | 99 | the pole starts far off-center but recoverably | recovery from a large disturbance |
 | **Extremes** (E5) | 272 | all 32 "corners" of the settings box (every corner keeps at least 3 questions) | the far edges that random practice rarely visits |
-| **Hard by measurement** (E6, not built) | ~200 | questions reference agents usually fail | the hard cases, found by evidence instead of by guess |
-| **Easy** (E7, not built) | ~100 | questions every reference agent passes | a safety check: did a method get better at hard questions by getting worse at easy ones? |
+| **Hard by measurement** (E6) | 248 | questions that 5 to 9 of the 10 reference agents fail | the hard cases, found by evidence instead of by guess |
+| **Easy** (E7) | 100 | questions every reference agent passes | a safety check: did a method get better at hard questions by getting worse at easy ones? |
 
 Every section also carries a written **prediction** (which method should do well on it),
 so the suite can catch a method being wrong about itself.
@@ -220,17 +220,26 @@ raw-return effect was mostly the impossible starts.
 | E6 Hard | ACL replay of failures raises it |
 | E7 Easy | no loss expected |
 
-**E6 and E7 without a referee.** Both are built from a pool of 5,000 random questions
-(about 5% of which are impossible) and a **reference population** of 10 baseline agents
-(`random` sampler, ACL off), trained separately from anything being evaluated:
+**E6 and E7 without a referee.** Both come from a pool of 80,000 random questions and a
+**reference population** of 10 baseline agents (`random` picker, review pile off,
+trained separately from anything compared). Each reference run is represented by its
+best of its last 5 check-ins on the General exam, because runs sometimes dip briefly
+after reaching their plateau (one reference run ended at 0.25 on its final check-in
+while the others sat at 0.85-1.0).
 - **E6** = questions that at least half the reference agents fail **and at least one
-  passes**. The "at least one passes" condition is the evidence that a question is
-  winnable, since there is no expert to ask; it excludes impossible questions and also
-  the very hardest winnable ones that nobody passes.
-- **E7** = questions every reference agent passes.
-- **POOL** is reported in bins of reference failure fraction (0-10%, 10-50%, 50-90%,
-  90%+). The 90%+ bin mixes impossible questions with the hardest possible ones, and is
-  read that way.
+  passes**. The "at least one passes" condition is the evidence a question is winnable,
+  since there is no expert to ask; it excludes impossible questions and also the very
+  hardest winnable ones that nobody passes. It is rare: 248 of 80,000 questions (0.31%),
+  because converged agents are near-perfect on winnable questions. 5,000 questions
+  gave only 18, which is why the pool is large.
+- **E7** = questions every reference agent passes (72,450 of 80,000 qualified; the first
+  100 are kept).
+- **POOL** is a stored 10,000-question sample of the pool, with each question's reference
+  failure fraction, kept in `frozen_sets/cartpole_v2_pool/`. It is graded from saved
+  snapshots after a run, in bins of reference failure fraction (0-10%, 10-50%, 50-90%,
+  90%+), not at every check-in (a large pool would more than double each run's time).
+  6.5% of the pool is passed by nobody; that mixes impossible questions with the hardest
+  possible ones, so the 90%+ bin is read that way.
 
 E6 could still favor methods that differ from the baseline; that is a stated limitation.
 
@@ -295,19 +304,34 @@ and 205k steps). Most of the run-to-run variation is *when* a run takes off. The
 whole-curve score `AUC_E0` has a seed-to-seed SD of about 0.10-0.13, versus about 0.30
 for a score at one checkpoint.
 
-**Runs needed per method** (independent groups, two-sided alpha = 0.0125 for 4
-comparisons, 80% power, `n = (2.50 + 0.84)^2 (sd_a^2 + sd_b^2) / D^2`), using SDs from
-the pilot:
+**The pilot's numbers came from a 205k-step snapshot, mid-climb.** With the training
+length fixed by calibration (614,400 steps, see Stages), the noise is much smaller:
+
+| training length | `AUC_E0` SD (20 plain runs) | final-score SD | smallest `AUC_E0` difference detectable at 100 runs |
+|---|---|---|---|
+| 204,800 (pilot) | 0.130 | 0.279 | 0.062 |
+| 409,600 | 0.088 | 0.113 | 0.042 |
+| **614,400 (chosen)** | **0.075** | **0.042** | **0.035** |
+| 1,228,800 | 0.035 | 0.105 | 0.017 |
+
+(Longer training also dilutes `AUC_E0`, because it averages in more plateau, so
+differences in units of `AUC_E0` are not comparable across lengths.)
+
+**Runs needed per method** at 614,400 steps (independent groups, two-sided alpha =
+0.0125 for 4 comparisons, 80% power, `n = (2.50 + 0.84)^2 (sd_a^2 + sd_b^2) / D^2`),
+assuming every method has the plain method's SD, which has been measured only for the
+plain method:
 
 | metric | detect D = 0.10 | D = 0.05 | D = 0.03 |
 |---|---|---|---|
-| `AUC_E0` (SD ~0.11 per method) | 27 | 108 | 300 |
-| score at 205k steps (SD ~0.30 per method) | 201 | 803 | 2,231 |
+| `AUC_E0` (SD 0.075 per method) | 13 | 51 | 140 |
+| final score (SD 0.042 per method) | 4 | 16 | 44 |
 
-With 30 runs per method the smallest detectable difference in `AUC_E0` is about 0.095;
-with 100, about 0.052. The pilot's own comparisons (best: `A` vs `N`, +0.038 AUC) are
-inconclusive, as these numbers predict: **no conclusion about the methods can be drawn
-from the pilot.**
+The final score is close to its ceiling (mean 0.96), so a 0.05 difference in it is hard
+to have at all; `AUC_E0` is the better-behaved primary. With 100 runs per method the
+smallest detectable `AUC_E0` difference is about 0.035. The pilot's own comparisons
+(205k steps, best: `A` vs `N`, +0.038 AUC) were inconclusive, as its noise predicted:
+**no conclusion about the methods can be drawn from the pilot.**
 
 **What follows:**
 1. **Prefer whole-curve scores.** `AUC_E0` is ~3x less noisy than any single-checkpoint
@@ -317,7 +341,7 @@ from the pilot.**
 2. **Buy power with runs, on the main methods only.** Measured throughput: 120 runs of
    204,800 steps took 757 s on 9 workers (~6.3 s wall-clock per run), so about 12 s per
    400k-step run (extrapolated). Eight main methods x 100 runs is ~2.7 h.
-3. **Shrinking the learning rate did not calm training at this budget; it slowed it.**
+3. **Shrinking the learning rate did not calm training; it slowed it.**
    The plain method, 20 runs per rate, 400k steps (`results/lr_*.csv`):
 
    | learning rate | runs that took off (final score > 0.5) | median take-off step | `AUC_E0` | SD of final score |
@@ -329,8 +353,10 @@ from the pilot.**
    The drop in `AUC_E0` is clear (1e-4 vs 3e-4: -0.22, 95% interval -0.27 to -0.16). The
    small spread at 3e-5 only means nobody learned, so all runs sit near zero, and the
    runs that did take off at 1e-4 were as scattered as at 3e-4. The rate stays at 3e-4.
-   Whether a smaller rate is steadier *when given enough time* is untested: it would
-   need roughly three times the budget per run.
+   A second test at three times the length (1.2M steps, 20 runs each,
+   `results/lr_long_*.csv`) settled it: 1e-4 was still worse (80% of runs took off
+   against 100%; `AUC_E0` 0.37 against 0.76) and not steadier (final-score SD 0.36
+   against 0.105).
 
 **A-priori comparisons** on the two primary scores: C1 ACL only vs. neither; C2 adaptive
 sampler only vs. neither; C3 both vs. neither; C4 best scoring function vs. `neg_return`
@@ -339,13 +365,17 @@ three adaptive samplers are run at full depth rather than picking one by screeni
 
 ## Stages
 
-- **Stage 0, calibrate.** Train the plain method for >= 30 runs to 1M steps with
-  checkpoints: set the budget `B` where nearly all runs have taken off; measure the SD of
-  `AUC_E0`, of the final score and of take-off time; fix the training setup (including
-  learning rate) for all methods. Train 10 more runs as the reference population, then
-  build and lock E6, E7 and POOL.
+- **Stage 0, calibrate: done.** 20 plain runs were trained to 1.2M steps (`results/lr_long_3e-4.csv`;
+  20 rather than the 30 originally planned). Every run had taken off by 307k steps, and
+  the mean General-exam success plateaus at about 0.9-0.97 from around 490k steps. The
+  training length is **614,400 steps** (all runs at their plateau; noise as tabulated
+  above), and the learning rate stays at 3e-4. One thing to know: 15 of the 20 runs
+  dipped below 0.5 at some check-in after 512k steps (one as low as 0.01), so agents
+  sometimes collapse temporarily; final scores therefore average the last three
+  check-ins. Ten reference agents (`REF`, 614,400 steps, ~95 s each with 6 workers)
+  then built and locked E6, E7 and the POOL sample.
 - **Stage 1, the eight main methods** (`N`, `A`, `S_ce`, `S_mab`, `S_sa`, `B_ce`, `B_mab`,
-  `B_sa`), **100 runs each** (800 runs), every setting fixed at a standard value; agent
+  `B_sa`), **100 runs each** (800 runs) of 614,400 steps, every setting fixed at a standard value; agent
   snapshots are saved so grading can be redone with sections built later. There is **no small-run
   screening stage**: with the noise measured, 3-5 runs could detect only differences of
   about 0.2-0.3 AUC, so a screen would rank methods by noise.
@@ -355,11 +385,11 @@ three adaptive samplers are run at full depth rather than picking one by screeni
 ## Build order
 
 1. Batched grader: done, tested against the real environment, ~87x faster.
-2. Locked exam sections E0-E5 (winnable questions only): done.
+2. Locked exam sections E0-E7 (winnable questions only): done.
 3. Runner (independent seeds, checkpointed grading, optional snapshot saving) with a
    re-grader, and the comparison code: done. Still to add: logging each training
    episode's start and task, and the take-off-time score.
-4. Stage 0 calibration, then E6 / E7 / POOL, then Stage 1.
+4. Stage 0 calibration and E6 / E7 / POOL: done. Stage 1: next.
 
 ## Known limits
 

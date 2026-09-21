@@ -5,3 +5,4 @@ __pycache__/
 results/grid_run.log
 results/convergence/*.log
 results/snapshots/
+results/main_run.log

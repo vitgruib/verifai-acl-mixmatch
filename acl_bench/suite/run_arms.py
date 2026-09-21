@@ -15,7 +15,6 @@ import argparse
 import ast
 import dataclasses
 import hashlib
-import multiprocessing as mp
 import os
 import time
 
@@ -72,6 +71,20 @@ def run_job(job: tuple) -> list[dict]:
              "wall_time_sec": wall} for m in log.checkpoint_metrics]
 
 
+def append_rows(path: str, rows: list[dict]) -> None:
+    """Append one run's rows to a CSV (header written once). Append-only: rewriting the
+    whole file after every run would write gigabytes over a long run for no reason."""
+    df = pd.DataFrame(rows)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        with open(path) as f:
+            header = f.readline().strip().split(",")
+        if header != list(df.columns):
+            raise ValueError(f"{path} has different columns than this run's rows; use a new --out")
+        df.to_csv(path, mode="a", header=False, index=False)
+    else:
+        df.to_csv(path, index=False)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--arms", nargs="+", required=True, help=f"names from ablation.ARMS, or 'family:<name>'")
@@ -79,13 +92,19 @@ def main():
     parser.add_argument("--steps", type=int, default=DEFAULT_BUDGET)
     parser.add_argument("--checkpoint-every", type=int, default=CHECKPOINT_EVERY)
     parser.add_argument("--sets", default="frozen_sets/cartpole_v2")
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    parser.add_argument("--workers", type=int, default=max(1, min(6, (os.cpu_count() or 2) - 4)),
+                        help="parallel runs; default leaves at least 4 cores free")
     parser.add_argument("--out", required=True)
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
                         help="PPOConfig overrides applied to every arm, e.g. learning_rate=1e-4")
     parser.add_argument("--snapshots", default=None, metavar="DIR",
                         help="also save each run's agent at every check-in under DIR/<arm>/<replicate>.npz")
     parser.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
+    parser.add_argument("--nice", type=int, default=10, help="lower workers' CPU priority (0-19)")
+    parser.add_argument("--allow-battery", action="store_true", help="keep dispatching on battery power")
+    parser.add_argument("--min-free-memory-pct", type=int, default=15)
+    parser.add_argument("--stop-file", default="results/STOP",
+                        help="create this file to stop starting new runs (running ones finish)")
     args = parser.parse_args()
 
     names = []
@@ -105,24 +124,43 @@ def main():
         overrides[key] = ast.literal_eval(value)
 
     done = set()
-    frames = []
     if args.resume and os.path.exists(args.out):
-        prior = pd.read_csv(args.out)
-        frames.append(prior)
+        prior = pd.read_csv(args.out, usecols=["arm", "seed"]).drop_duplicates()
         done = set(zip(prior["arm"], prior["seed"]))
     jobs = [(n, s, args.steps, args.checkpoint_every, args.sets, overrides, args.snapshots)
             for s in parse_seeds(args.seeds) for n in names if (n, s) not in done]
-    print(f"{len(jobs)} runs ({len(names)} arms x {len(set(j[1] for j in jobs))} seeds) on {args.workers} workers", flush=True)
+    if os.path.exists(args.stop_file):
+        raise SystemExit(f"{args.stop_file} exists; remove it before starting")
 
-    t0, completed = time.time(), 0
-    with mp.get_context("spawn").Pool(args.workers) as pool:
-        for rows in pool.imap_unordered(run_job, jobs):
-            frames.append(pd.DataFrame(rows))
-            completed += 1
-            pd.concat(frames, ignore_index=True).to_csv(args.out, index=False)
-            if completed % 10 == 0 or completed == len(jobs):
-                print(f"  {completed}/{len(jobs)} done, {time.time() - t0:.0f}s elapsed", flush=True)
-    print(f"wrote {args.out}")
+    from acl_bench.suite.safety import Limits, Watchdog, free_disk_gb, run_jobs
+    n_checkpoints = args.steps // args.checkpoint_every + 1
+    need_gb = len(jobs) * n_checkpoints * 40e3 / 1e9 * (1 if args.snapshots else 0) + 5.0
+    where = args.snapshots or os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(where, exist_ok=True)
+    if free_disk_gb(where) < need_gb:
+        raise SystemExit(f"need about {need_gb:.1f} GB free at {where}, have {free_disk_gb(where):.1f}")
+    watchdog = Watchdog(Limits(min_free_memory_pct=args.min_free_memory_pct, require_ac=not args.allow_battery),
+                        disk_path=where)
+    ok, reason = watchdog.status()
+    print(f"{len(jobs)} runs ({len(names)} arms) on {args.workers} workers at nice {args.nice}; "
+          f"health now: {'ok' if ok else reason}; stop with: touch {args.stop_file}", flush=True)
+
+    t0, state = time.time(), {"completed": 0}
+
+    def on_result(rows):
+        append_rows(args.out, rows)
+        state["completed"] += 1
+        c = state["completed"]
+        if c % 10 == 0 or c == len(jobs):
+            elapsed = time.time() - t0
+            print(f"  {c}/{len(jobs)} done, {elapsed / 60:.1f} min elapsed, "
+                  f"~{elapsed / c * (len(jobs) - c) / 60:.0f} min left", flush=True)
+
+    failed = run_jobs(jobs, run_job, args.workers, on_result, watchdog, niceness=args.nice,
+                      stop_file=args.stop_file, log=lambda m: print(m, flush=True))
+    print(f"finished: {state['completed']} runs written to {args.out}, {len(failed)} failed", flush=True)
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

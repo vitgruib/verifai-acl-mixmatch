@@ -14,7 +14,7 @@ def test_every_arm_override_is_valid():
 
 
 def test_registry_shape_and_variants_actually_differ_from_their_reference():
-    assert {a.family for a in ARMS.values()} == {"primary", "acl", "sampler", "coupling"}
+    assert {a.family for a in ARMS.values()} == {"reference", "primary", "acl", "sampler", "coupling"}
     assert len(family("acl")) == 8 + 2 + 2
     for arm in ARMS.values():
         if arm.reference:

@@ -13,8 +13,9 @@ from dataclasses import dataclass, field
 
 from acl_bench.scenic_sampling import ADAPTIVE_SAMPLERS
 
-# Provisional: Stage 0 of the suite sets the real budget from baseline convergence.
-DEFAULT_BUDGET = 400_000
+# From the calibration run (20 plain runs to 1.2M steps): every run had taken off by 307k
+# steps and the mean success plateaus around 490k-610k, so 600 rollouts of 1024 steps.
+DEFAULT_BUDGET = 614_400
 CHECKPOINT_EVERY = 20 * 1024          # a multiple of the 1024-step rollout, so checkpoints are exact
 POTENTIAL_FN = "pvl_gae"              # SIPACL's own score; the scoring-function axis is a separate study
 
@@ -41,6 +42,9 @@ def _primary(adaptive: str) -> list[Arm]:
 
 def build_arms() -> dict[str, Arm]:
     arms: list[Arm] = [
+        # Reference agents that define the hard/easy exam sections. Same configuration as N
+        # but a distinct name, so their seeds are independent of every compared method.
+        Arm("REF", "random", False, "neg_return", family="reference"),
         # N and A do not depend on the adaptive sampler.
         Arm("N", "random", False, "neg_return", family="primary"),   # score has no consumer here
         Arm("A", "random", True, POTENTIAL_FN, family="primary"),
