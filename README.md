@@ -46,33 +46,35 @@ rollouts, 4 minibatches, 4 epochs), then scores the final policy on a fixed
 held-out set of 15 tasks x 3 episodes drawn uniformly from the parameter box,
 independent of whichever sampler trained it.
 
-## How this relates to SIPACL (what matches and what doesn't)
+## How this relates to SIPACL
 
-SIPACL trains a PPO driving policy in Scenic + MetaDrive with a Prioritized
-Level Replay buffer of scenes. This repo reuses its structure on cheaper
-environments; it is a re-implementation, not a fork. Checked against SIPACL's
-`Work/custom/custom_gym.py`:
+This is a re-implementation, not a fork. The ACL logic was checked against
+SIPACL's `Work/custom/custom_gym.py` (`MetaDriveEnv`), the Scenic gym base class it
+extends (`Scenic/src/scenic/gym/envs/scenic_gym.py`, `ScenicGymEnv`), and the PPO
+loop in `Work/policy/ppo.py`. `tests/test_sipacl_fidelity.py` transcribes SIPACL's
+`_replay_probs_from_lp`, `_compute_learning_progress` and `_lp_delta` as the
+reference and checks this repo's against them (perturbing a constant makes the
+tests fail, so they are not vacuous).
 
-**Matches SIPACL:** rank-based replay `P(i) ~ 1/rank^alpha` with SIPACL's
-`alpha=1.0`, stable tie-breaking by buffer index, EMA smoothing of the per-visit
-score with SIPACL's `beta=0.2` (first visit skips the EMA), a `1e10` placeholder
-so new slots rank first, buffer size 5000, replay probability 0.5, and PVL =
-mean(max(GAE advantage, 0)) over the episode. ACL off corresponds to SIPACL's
-`replay_resample_prob = -1`.
+| behavior | SIPACL | here | status |
+|---|---|---|---|
+| replay ranking | `P(i) ~ 1/rank^alpha`, alpha = 1.0, stable sort so ties go to the lower index | same | matches (tested) |
+| score smoothing | EMA beta = 0.2; first visit uses the raw score | same | matches (tested) |
+| new-slot placeholder | `1e10`, so unscored slots rank first | same | matches (tested) |
+| buffer | 5000, FIFO; scenes pickled to disk | 5000, FIFO; task parameters in memory | storage differs |
+| replay probability | 0.5; `-1` disables replay | 0.5; ACL off | matches (tested) |
+| replay episodes | do not call the sampler | same | matches (tested) |
+| PVL formula | mean(max(GAE, 0)); last step terminal | same when the next value is 0 | matches (tested) |
+| **PVL episode span** | **T-1 steps.** `logScores()` fires inside `step()` before PPO's `log_step_data` for the final step, so the last step is left out and step T-2 is treated as terminal. In MetaDrive the final step carries the crash penalty, the biggest surprise | all T steps | **deliberate difference; looks like an off-by-one in SIPACL** |
+| truncation | treated as terminal | bootstraps from the critic | differs |
+| sampler feedback | `feedback_fn(simulation.result)` (identity; `ppo.py` never overrides it), set only on true termination and delivered at the next `generate()` even if the last episode was a replay | one scoring function; delivered only for tasks the sampler itself proposed | design choice |
+| evaluation | no replay | fixed held-out task set | differs by design |
+| aborted episodes | a slot whose episode is aborted by `ResetException` keeps LP `1e10` and is replayed first | not applicable: episodes always run to completion | n/a |
+| `DOUBLE` mode | constant declared, never used | not implemented | n/a |
+| PPO | 4096-step rollouts, 32 minibatches, 10 epochs | 1024 / 4 / 4; same network and core hyperparameters | differs |
 
-**Deliberately differs:**
-- The buffer holds task parameters in memory; SIPACL pickles Scenic scenes to disk.
-- SIPACL treats the last step of every episode as terminal (next value 0). Here a
-  time-limit *truncation* bootstraps from the critic, which matters once policies
-  survive to the step cap. All scoring functions share this convention.
-- **Sampler feedback.** SIPACL does route feedback into Scenic
-  (`scenario.generate(feedback=...)`), but the value is `feedback_fn(simulation.result)`,
-  an identity function `ppo.py` never overrides, and the default sampler ignores it.
-  PVL only drives replay. Here one scoring function feeds both replay ranking and
-  the sampler (as `rho = -z(score)`), and feedback is delivered only for tasks the
-  sampler itself proposed, not replays. That coupling is this repo's design choice.
-- PPO uses the same network and core hyperparameters but smaller rollout/update
-  settings than SIPACL's (4096 steps, 32 minibatches, 10 epochs).
+The off-by-one is worth checking in SIPACL itself: it changes what PVL measures
+whenever the last step is the informative one.
 
 ## Samplers
 
@@ -129,11 +131,19 @@ the policy fails (mean return < 195) on 15% / 2% of tasks:
 
 | parameter | bounds | importance (seed 1 / 2) | effect on return | verdict |
 |---|---|---|---|---|
-| `init_range` | 0.05-0.3 | 1.24 / 0.13 | worse when larger | matters |
+| `init_range` | 0.05-0.3 | 1.24 / 0.13 | worse when larger | matters for raw return, but see below |
 | `force_mag` | 4-16 | 0.04 / 1.09 | better when larger | matters |
 | `masscart` | 0.5-2.0 | 0.03 / 0.67 | worse when larger | matters |
 | `length` | 0.25-1.5 | -0.00 / 0.09 | inconsistent | weak |
 | `masspole` | 0.05-0.5 | 0.01 / 0.00 | none | inert |
+
+A later oracle probe (see [docs/cartpole_suite.md](docs/cartpole_suite.md)) found
+that ~5% of uniformly sampled starts are guaranteed one-step failures, concentrated
+at large `init_range`, and that on oracle-solvable pairs `init_range` barely
+changes the policy's failure rate (10.0% to 12.9% across quartiles) while
+`force_mag` (37.1% to 0.9%) and `masscart` (1.7% to 22.3%) dominate. So
+`init_range`'s importance above mostly reflects unrecoverable starts, not policy
+weakness. This is one policy and one seed.
 
 *Acrobot* -- R^2 = 0.44 / 0.51 (noise ceilings 0.74 / 0.64); the policy solves
 every sampled task at 250k steps, but return still ranges from about -150 to -60:
@@ -196,10 +206,48 @@ python -m acl_bench.convergence --env cartpole --seed 1 --total-timesteps 100000
 # do an environment's task parameters matter?
 python -m acl_bench.param_sensitivity --env cartpole --total-timesteps 400000
 
+python -m pytest tests                # ACL fidelity vs. SIPACL + oracle checks
 python -m acl_bench.timing_report     # compute breakdown + signal-vs-noise tables
 python -m acl_bench.plot_results      # heatmap + 2x2 ablation charts
 python -m acl_bench.plot_convergence  # learning curves
 ```
+
+## Test suite
+
+A design for a single-environment suite (CartPole) lives in
+[docs/cartpole_suite.md](docs/cartpole_suite.md): an LQR oracle
+(`acl_bench/oracle.py`) that separates fixable failures from infeasible starts,
+frozen evaluation sets for specific edge cases (weak actuation, heavy cart, large
+recoverable disturbances, corners) and for measured hard tasks, falsification-based
+evaluation with the VerifAI samplers, convergence-speed metrics, and a staged
+protocol (calibrate, screen, confirm on disjoint seeds). **Only the oracle is
+built**; the evaluation sets, metrics and runners are not.
+
+## TODO / future work
+
+- **Build the CartPole suite** above, starting with a *batched* evaluator (stepping
+  many task pairs in lockstep with one batched policy forward pass); naive
+  evaluation would cost as much as training.
+- **MiniGrid** (Farama). Measured 15,000-23,000 raw steps/s on DoorKey, LavaGap,
+  MultiRoom, KeyCorridor and Dynamic-Obstacles, and it installs. Plan: subclass an
+  environment whose `_gen_grid` places the key, door, goal, lava and obstacles at
+  Scenic-sampled `VerifaiRange` positions (object placement is what Scenic is for),
+  plus grid size and obstacle count. Edge cases to falsify: a key behind its own
+  locked door or an unreachable goal, a goal next to lava, narrow gaps. A BFS solver
+  would give exact solvability, the analogue of the CartPole LQR oracle. Not yet
+  done: parameter sensitivity, a convergence check (sparse reward and partial
+  observability may make an MLP policy slow to train; `FullyObsWrapper` may be
+  needed). Unsolvable layouts will look like permanent counterexamples to
+  falsification samplers, which is where `intermediate_difficulty` may matter.
+- **MuJoCo** (Hopper, Walker2d, HalfCheetah). Measured 17,000-39,000 raw steps/s;
+  `pip install mujoco` works. Plan: randomize physics (friction, mass, gravity,
+  damping) through the model attributes, with falls as the falsifiable failure.
+  Needs continuous actions, so the retained but currently unexercised continuous
+  PPO head must be tested first. Caveats: the parameter space is smooth like
+  CartPole's, and these typically need millions of steps, so run a convergence check
+  before committing a budget.
+- **SIPACL parity switch**: an option to reproduce SIPACL's exact PVL span (T-1
+  steps, last step terminal) for bit-for-bit comparison, if that is wanted.
 
 ## What was wrong before
 
@@ -229,6 +277,7 @@ the plateaus should be re-checked before fixing a budget.
 ```
 acl_bench/
   envs/param_cartpole.py, param_acrobot.py   task-parameterized gym envs
+  oracle.py                                  CartPole solvability oracle (LQR) for the test suite
   envs/registry.py                           env specs (bounds, step cap, success return, .scenic file)
   scenic_scenarios/*.scenic                  VerifaiRange-declared task parameters, one per env
   scenic_sampling.py                         Scenic-mediated samplers + the generate()/feedback loop
@@ -239,5 +288,7 @@ acl_bench/
   convergence.py                             long runs with periodic held-out evaluation
   param_sensitivity.py                       do the task parameters matter?
   timing_report.py, plot_results.py, plot_convergence.py
+tests/                                       SIPACL-fidelity and oracle tests
+docs/cartpole_suite.md                       test-suite design
 results/                                     (empty; outputs of the scripts above)
 ```
