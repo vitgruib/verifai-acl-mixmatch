@@ -11,6 +11,8 @@ stream, action-noise stream and sampler stream (see run_training). One CSV row p
 from __future__ import annotations
 
 import argparse
+import ast
+import dataclasses
 import multiprocessing as mp
 import os
 import time
@@ -29,7 +31,7 @@ def parse_seeds(spec: str) -> list[int]:
 
 
 def run_job(job: tuple) -> list[dict]:
-    arm_name, seed, steps, checkpoint_every, sets_dir = job
+    arm_name, seed, steps, checkpoint_every, sets_dir, overrides = job
     import torch
     torch.set_num_threads(1)
     from acl_bench.envs.registry import ENV_SPECS
@@ -39,14 +41,14 @@ def run_job(job: tuple) -> list[dict]:
     from acl_bench.suite.sets import evaluate_sets, load_sets
 
     arm, spec, sets = ARMS[arm_name], ENV_SPECS["cartpole"], load_sets(sets_dir)
-    cfg = PPOConfig(total_timesteps=steps, seed=seed, acl=arm.acl, **arm.ppo)
+    cfg = PPOConfig(total_timesteps=steps, seed=seed, acl=arm.acl, **{**arm.ppo, **overrides})
     sampler = ScenicTaskSampler.load(spec.scenic_file, arm.sampler, arm.sampler_params)
     t0 = time.time()
     log, _ = run_training(spec, sampler, resolve_potential_fn(arm.potential_fn, spec.success_return), cfg,
                           checkpoint_every=checkpoint_every, on_checkpoint=lambda a: evaluate_sets(a, sets))
     wall = time.time() - t0
     n_new = sum(m == "new" for m in log.episode_modes)
-    return [{"arm": arm_name, "seed": seed, **m, "n_episodes": len(log.episode_modes), "n_new": n_new,
+    return [{"arm": arm_name, "seed": seed, "learning_rate": cfg.learning_rate, **m, "n_episodes": len(log.episode_modes), "n_new": n_new,
              "wall_time_sec": wall} for m in log.checkpoint_metrics]
 
 
@@ -59,6 +61,8 @@ def main():
     parser.add_argument("--sets", default="frozen_sets/cartpole_v1")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--out", required=True)
+    parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
+                        help="PPOConfig overrides applied to every arm, e.g. learning_rate=1e-4")
     parser.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
     args = parser.parse_args()
 
@@ -69,13 +73,22 @@ def main():
     if unknown:
         raise SystemExit(f"unknown arms {unknown}; known: {sorted(ARMS)}")
 
+    from acl_bench.ppo import PPOConfig
+    valid = {f.name for f in dataclasses.fields(PPOConfig)}
+    overrides = {}
+    for item in args.set:
+        key, _, value = item.partition("=")
+        if key not in valid:
+            raise SystemExit(f"--set {key}: not a PPOConfig field; valid: {sorted(valid)}")
+        overrides[key] = ast.literal_eval(value)
+
     done = set()
     frames = []
     if args.resume and os.path.exists(args.out):
         prior = pd.read_csv(args.out)
         frames.append(prior)
         done = set(zip(prior["arm"], prior["seed"]))
-    jobs = [(n, s, args.steps, args.checkpoint_every, args.sets)
+    jobs = [(n, s, args.steps, args.checkpoint_every, args.sets, overrides)
             for s in parse_seeds(args.seeds) for n in names if (n, s) not in done]
     print(f"{len(jobs)} runs ({len(names)} arms x {len(set(j[1] for j in jobs))} seeds) on {args.workers} workers", flush=True)
 

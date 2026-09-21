@@ -8,6 +8,158 @@ Not yet built: the Stage 0 calibration and, because they need its reference agen
 the sets E6, E7 and POOL. The numbers under "Motivating probe" come from one policy
 and one seed; they justify building the suite, they are not results.
 
+## The suite at a glance (plain English)
+
+**Training is a black box.** The testing suite does not care how an agent is trained.
+All it ever receives is this:
+
+> *"Here is the agent that method **M** produced on seed **S**, photographed at regular
+> check-ins: untrained, then after 20,480 steps, 40,960 steps, and so on."*
+
+(A **method** is one combination of the components being compared. A **seed** is the
+starting luck of one training run. A **snapshot** is the agent frozen at a check-in.)
+
+The suite turns snapshots into a verdict in six chunks:
+
+```
+   TRAINING (black box)
+   method + seed  ->  [ snapshot, snapshot, snapshot, ... ]
+                                   |
+                                   v
+      +-------------+       +-------------+
+      | 1. THE EXAM |       | 2. THE      |   which questions are fair?
+      |  questions  |       |    REFEREE  |   (some can't be won at all)
+      +------+------+       +------+------+
+             |                     |
+             +----------+----------+
+                        v
+                +---------------+
+                | 3. THE GRADER |   runs a snapshot through every fair question
+                +-------+-------+
+                        |  pass / fail per question
+                        v
+                +---------------+
+                | 4. THE        |   turns grades into a few numbers per
+                |    SCORECARD  |   training run (how well, how fast, how steady)
+                +-------+-------+
+                        |  a handful of numbers per run
+                        v
+                +---------------+
+                | 5. COMPARISON |   many runs per method; is a difference
+                |    RULES      |   real, or just luck?
+                +-------+-------+
+                        v
+                     VERDICT
+
+      6. THE PLAN  decides which methods and how many runs feed the top
+```
+
+| chunk | one-sentence job | built? |
+|---|---|---|
+| **1. The exam** | A fixed set of questions, grouped into sections that each probe a different weakness. | sections E0-E5 built and locked; E6, E7 not yet |
+| **2. The referee** | Says which questions can actually be won, so impossible ones never count against a method. | built and tested |
+| **3. The grader** | Runs a snapshot through every fair question, quickly and the same way every time. | built and tested |
+| **4. The scorecard** | Reduces the grades to a few numbers per training run. | mostly built; take-off time and diagnostics not yet |
+| **5. Comparison rules** | Decides whether a difference between methods is real or luck. | built; the pilot showed why it needs many runs |
+| **6. The plan** | Lists which methods are compared and in what order to run them. | methods and runner built; the calibration run is not |
+
+Each chunk is explained below in the same order.
+
+### Chunk 1: the exam
+
+Each **question** is one game setup: a particular set of physics (how strong the push
+is, how heavy the cart, how long the pole) and one specific starting position for the
+pole. The questions are generated once, saved, and locked with a fingerprint, so every
+snapshot from every method faces the *same* questions and nobody practices on them.
+
+Questions are grouped into **sections**, and each section asks one question of its own:
+
+| section | what its questions have in common | what it tells us |
+|---|---|---|
+| **General** (E0, 300 questions) | random settings across the whole range | how good is the agent overall? |
+| **Weak push** (E1, 150) | the push is in the weakest quarter of its range | the biggest weak spot found so far |
+| **Weak push + heavy cart** (E1b, 100) | weakest pushes *and* heaviest carts | the worst corner found (in an early test a typical trained agent failed about 70% of the winnable ones) |
+| **Heavy cart** (E2, 100) | heaviest quarter of carts | the second weak spot |
+| **Long or heavy pole** (E3, 100 + 100) | slowest-moving poles | mostly a sanity check; showed weak effects |
+| **Big shove at the start** (E4, 100) | the pole starts far off-center but recoverably | recovery from a large disturbance |
+| **Extremes** (E5, 320) | all 32 "corners" of the settings box | the far edges that random practice rarely visits |
+| **Hard by measurement** (E6, ~200) | questions that reference agents usually fail | the hard cases, found by evidence instead of by guess |
+| **Easy** (E7, ~100) | questions every reference agent passes | a safety check: did a method get better at hard ones by getting worse at easy ones? |
+
+Every section also carries a written **prediction** (which method should do well on it),
+so the suite can catch a method being wrong about itself.
+
+### Chunk 2: the referee
+
+Some questions **cannot be won by anyone**: for example, the pole may already start
+falling and be past saving. Blaming a method for those would be unfair, so a referee
+labels every question first, using a hand-built expert controller:
+
+```
+   question --> referee --> WINNABLE  (the expert wins from here)   counts
+                        --> IMPOSSIBLE (loses on the very first move) ignored
+                        --> UNCLEAR    (expert loses, but maybe others win) ignored
+```
+
+A snapshot that fails a *winnable* question has made a **fixable** mistake, the kind a
+better training method should remove. In a first look, about 94% of random questions
+were winnable and about 5% were impossible from the start.
+
+### Chunk 3: the grader
+
+The grader takes one snapshot and plays every winnable question: the agent wins if it
+keeps the pole up for 500 steps. Two properties matter. It uses **no dice** (the agent
+always takes its single best action), so grading the same snapshot twice gives the same
+answer. And it is **fast**: all 1,270 questions in about a tenth of a second, roughly 87
+times faster than playing them one at a time, and checked to give identical answers to
+the slow, trusted way. That speed is why every section can be graded at every check-in.
+
+### Chunk 4: the scorecard
+
+The grades become a small number of scores per training run:
+
+| score | plain meaning |
+|---|---|
+| **Learning-curve score** (`AUC_E0`; primary) | how well and how *quickly* it learned overall: the average General-exam score across all check-ins |
+| **Hard-section score** (`success_E6`; primary) | the score on the hard questions at the end |
+| **Section scores** | the end score in each section, to see *where* a method helps |
+| **Take-off time** (not built yet) | how many steps until it first passes half of the General exam |
+| **Steadiness** | how much the score bounces near the end |
+
+A separate set of **"why" checks** (also not built yet) looks inside training, for
+example how many practice questions were impossible ones wasted.
+
+### Chunk 5: the comparison rules
+
+To say method A beats method B, the suite compares many training runs of each, and:
+
+- gives A and B the **same seeds** (same starting luck), and compares them seed by seed;
+- decides the **comparisons in advance** (does the review pile help? does the smart
+  picker help? do both?), so it can't go hunting for a lucky one afterwards;
+- reports a **range of uncertainty** for every difference, not just a yes or no.
+
+The pilot showed the hard part: results are extremely noisy, because a run either
+"takes off" or it doesn't, and the shared luck wears off within 20,000 steps. So pairing
+by seed barely helps, and reliably seeing a 5-point difference takes about 100 runs per
+method.
+
+### Chunk 6: the plan
+
+The plan is which methods to train and in what order:
+
+```
+   Stage 0  CALIBRATE   How long must training run? How noisy is it?
+              |          (also: does a smaller learning rate calm it down?)
+              v
+   Stage 1  MAIN        The 8 main methods, about 100 runs each
+              |
+              v
+   Stage 2  KNOBS       31 variants that turn one setting at a time
+                        (a rough check, not a precise measurement)
+```
+
+The full list of methods and their settings is in docs/ablation.md.
+
 ## What the suite measures
 
 The grid trains agents under different combinations of (sampler, ACL, scoring
