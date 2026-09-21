@@ -49,7 +49,7 @@ class RunningNormalizer:
     """Welford online mean/std, turning an unbounded, scale-varying-by-env
     potential-function score into a roughly [-1, 1] falsification-style rho:
     the same z-scoring works whether the underlying scores come from
-    CartPole's O(100s) returns or Pendulum's O(1000s)-magnitude penalties,
+    CartPole's positive O(100s) returns or Acrobot's negative step-cost returns,
     with no per-env constant to hand-tune."""
 
     def __init__(self):

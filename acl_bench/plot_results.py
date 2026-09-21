@@ -1,7 +1,7 @@
 """Render results/grid_results.csv into the two charts used in the README:
 
   1. A sequential-blue heatmap per environment (own color scale -- reward
-     scales aren't comparable across CartPole/Acrobot/Pendulum), sampler x
+     scales aren't comparable across environments), sampler x
      potential-function-condition (the 6 named functions plus "none", the
      ACL-off ablation), averaged over seeds.
   2. A 2x2 ablation summary per environment: {non-adaptive sampler, adaptive
@@ -124,9 +124,8 @@ def plot_ablation_bars(df: pd.DataFrame, theme_name: str, out_path: str):
             cell(sub, False, True), cell(sub, True, True),
         )
         x = np.arange(4)
-        # Dots + error bars, not bars: Acrobot/Pendulum returns are large
-        # negatives, and a bar hanging from 0 to -1200 on a truncated axis
-        # implies a zero baseline that isn't meaningful here.
+        # Dots + error bars, not bars: Acrobot's returns are negative, and a bar
+        # hanging from 0 on a truncated axis implies a baseline that isn't meaningful.
         for xi, m, s, color in zip(x, means, stds, ABLATION_COLORS):
             ax.errorbar(xi, m, yerr=s, fmt="o", markersize=9, capsize=5, linewidth=1.6,
                         color=color, ecolor=theme["secondary"], markeredgecolor=theme["surface"],

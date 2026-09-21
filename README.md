@@ -5,7 +5,7 @@ quasi-random Halton, cross-entropy, multi-armed bandit, simulated
 annealing) against **Automatic Curriculum Learning (ACL) learning-potential
 functions** (the current GAE/PVL score, five alternatives from the
 curriculum-learning literature, and a "none" ablation), run on three fast
-classic-control environments (CartPole, Acrobot, Pendulum) so the full grid
+classic-control environments (CartPole, Acrobot; Pendulum was dropped, see below) so the full grid
 can actually be trained end-to-end instead of just designed on paper.
 
 This is a from-scratch re-implementation, not a fork: it takes the
@@ -23,11 +23,11 @@ space.
 
 | SIPACL (Scenic + MetaDrive)                              | This repo                                   |
 |-----------------------------------------------------------|----------------------------------------------------------|
-| Scenic program samples a driving *scene* (traffic, weather, geometry) | Scenic program samples a *physics task*: CartPole (5 params), Acrobot (6), Pendulum (5) |
+| Scenic program samples a driving *scene* (traffic, weather, geometry) | Scenic program samples a *physics task*: CartPole (5 params), Acrobot (6) |
 | `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` | The exact same call (`acl_bench/scenic_sampling.py`), just against a model-less `.scenic` file (`acl_bench/scenic_scenarios/*.scenic`) instead of a MetaDrive model |
 | `MetaDriveEnv` keeps a disk-backed PLR buffer of scenes, replay probability `replay_resample_prob` | `acl_bench.curriculum.plr.PLRCurriculum` keeps the same buffer in memory (a task here is 5-6 floats, not a serialized world) |
 | `_lp_delta`: mean(max(GAE_delta, 0)) -- Positive Value Loss | `acl_bench.potential.functions.pvl_gae`, ported near line-for-line, plus 5 alternatives and a "none" ablation (below) |
-| PPO (CleanRL-style, continuous control) | Same PPO structure, generalized to discrete (CartPole, Acrobot) and continuous (Pendulum) actions |
+| PPO (CleanRL-style, continuous control) | Same PPO structure, discrete actions (the code path for continuous actions is retained but currently unexercised) |
 
 Two independent knobs, "mixed and matched" as a grid, plus the question of
 whether they should even share a feedback signal:
@@ -50,7 +50,7 @@ that ranks a task for replay is z-scored against a running mean/std
 the ACL side considers "still worth learning from" is exactly the region the
 sampler is nudged toward proposing more of. One function, two consumers.
 This also sidesteps needing a per-environment reward-scale constant --
-CartPole's ~100s-scale returns and Pendulum's ~1000s-scale penalties
+CartPole's positive ~100s-scale returns and Acrobot's negative step-cost returns
 normalize the same way.
 
 The **"none"** condition in the grid turns this off along with everything
@@ -125,10 +125,10 @@ physical parameters exposed as task variables:
 |---|---|---|---|
 | CartPole | pole half-length (0.25-1.5m), pole mass (0.05-0.5kg), cart mass (0.5-2.0kg), push force (4-16N), init-state range (0.05-0.3) | Discrete(2) | Simple baseline |
 | Acrobot | link lengths x2 (0.5-1.5m), link masses x2 (0.5-1.5kg), link moment of inertia (0.5-1.5), torque noise (0-0.3) | Discrete(3) | **Complex feature space** (6D) -- chaotic double-pendulum swing-up |
-| Pendulum | gravity (5-15), mass (0.5-2.0kg), length (0.5-2.0m), max torque (1-4 N.m), max angular speed (4-12 rad/s) | Box(1) continuous | Continuous-action control; max_torque being sampled means the policy's action bounds change per task |
+| ~~Pendulum~~ | *dropped* | Box(1) continuous | Did not learn at 60k steps and was still improving at 3M under the shared PPO hyperparameters (see the convergence section); removed from the registry. Its rows remain in the raw first-grid and convergence data. |
 
 Episodes truncate at each env's standard `-v1` length (CartPole/Acrobot 500
-steps, Pendulum 200) -- the raw Gymnasium classic-control classes have no
+steps) -- the raw Gymnasium classic-control classes have no
 built-in cap outside their registered `-v1` `TimeLimit` wrapper, so this is
 applied explicitly in the training loop.
 
@@ -157,7 +157,7 @@ python -m acl_bench.plot_results
 
 Each run trains a small MLP PPO agent (two 64-unit tanh layers, actor +
 critic; Categorical head for CartPole/Acrobot, tanh-squashed Gaussian for
-Pendulum) for 60,000 environment steps under one (env, sampler,
+Pendulum, in the first grid) for 60,000 environment steps under one (env, sampler,
 potential-function) curriculum, then evaluates the final policy on a fixed,
 sampler-independent set of 15 held-out task configurations (3 episodes each)
 -- so every cell of the grid is scored on the same yardstick, not on tasks

@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from acl_bench.envs import param_acrobot, param_cartpole, param_pendulum
+from acl_bench.envs import param_acrobot, param_cartpole
 
 _SCENIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scenic_scenarios")
 
@@ -39,13 +39,6 @@ ENV_SPECS: dict[str, EnvSpec] = {
         obs_dim=param_acrobot.OBS_DIM, action_type=param_acrobot.ACTION_TYPE,
         action_dim=param_acrobot.ACTION_DIM,
         scenic_file=os.path.join(_SCENIC_DIR, "acrobot.scenic"),
-    ),
-    "pendulum": EnvSpec(
-        name="pendulum", make_env=param_pendulum.make_env, normalize=param_pendulum.normalize,
-        param_bounds=param_pendulum.PARAM_BOUNDS, max_episode_steps=param_pendulum.MAX_EPISODE_STEPS,
-        obs_dim=param_pendulum.OBS_DIM, action_type=param_pendulum.ACTION_TYPE,
-        action_dim=param_pendulum.ACTION_DIM,
-        scenic_file=os.path.join(_SCENIC_DIR, "pendulum.scenic"),
     ),
 }
 

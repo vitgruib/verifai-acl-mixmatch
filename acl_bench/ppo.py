@@ -35,8 +35,8 @@ class Agent(nn.Module):
     """`action_type="discrete"` -> Categorical over `action_dim` logits.
     `action_type="continuous"` -> Normal, tanh-squashed to [-1, 1] (with the
     standard change-of-variables log-prob correction), rescaled to the env's
-    actual action bounds by the caller (Pendulum's max_torque is itself a
-    sampled task parameter, so those bounds vary run to run)."""
+    actual action bounds by the caller. Currently unexercised: no continuous-action
+    environment remains in the registry (Pendulum was dropped)."""
 
     def __init__(self, obs_dim: int, action_dim: int, action_type: str):
         super().__init__()
@@ -73,8 +73,7 @@ class Agent(nn.Module):
 
 
 def scale_to_action_space(unit_action: np.ndarray, env) -> np.ndarray:
-    """[-1, 1]^d -> the env's actual action bounds (which vary per task for
-    Pendulum, since max_torque is itself sampled)."""
+    """[-1, 1]^d -> the env's actual action bounds."""
     low, high = env.action_space.low, env.action_space.high
     return low + (unit_action + 1.0) * 0.5 * (high - low)
 
