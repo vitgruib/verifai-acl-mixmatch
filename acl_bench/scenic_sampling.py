@@ -48,12 +48,37 @@ NON_ADAPTIVE_SAMPLERS = ("random", "halton")
 ADAPTIVE_SAMPLERS = ("ce", "mab", "sa")
 SAMPLER_NAMES = NON_ADAPTIVE_SAMPLERS + ADAPTIVE_SAMPLERS
 
-_ADAPTIVE_DEFAULTS = DotMap(alpha=0.9, thres=0.0, cont=DotMap(buckets=8, dist=None),
-                             disc=DotMap(dist=None))
+# Tunable hyperparameters per adaptive sampler (see docs/ablation.md for sources).
+# ce: `buckets` per dimension; `alpha` = retention -- each counterexample (rho < thres)
+#     moves a bucket distribution (1 - alpha) toward the sampled bucket; `thres` =
+#     counterexample cutoff on rho. mab: UCB over buckets; a bucket is charged an
+#     "error" when rho < thres (its `alpha` is stored but unused by VerifAI).
+# sa: `T` initial temperature, `decay_rate` proposal-width decay per step within an
+#     epoch, `iterations` steps per epoch before re-heating.
+DEFAULT_SAMPLER_PARAMS = {
+    "ce": {"buckets": 8, "alpha": 0.9, "thres": 0.0},
+    "mab": {"buckets": 8, "thres": 0.0},
+    "sa": {"T": 1.0, "decay_rate": 0.9, "iterations": 20},
+}
 
 # num_epoch is how many temperature-reset rounds SA runs before raising
 # TerminationException; set high enough that a training run never hits it.
-_SA_PARAMS = DotMap(T=1.0, decay_rate=0.9, iterations=20, num_epoch=10**6)
+_SA_NUM_EPOCH = 10 ** 6
+
+
+def resolve_sampler_params(sampler_name: str, overrides: dict | None) -> dict:
+    """Defaults merged with `overrides`; unknown keys or overrides for a sampler
+    with no tunable parameters raise instead of being silently ignored."""
+    overrides = dict(overrides or {})
+    defaults = DEFAULT_SAMPLER_PARAMS.get(sampler_name)
+    if defaults is None:
+        if overrides:
+            raise ValueError(f"sampler {sampler_name!r} has no tunable parameters; got {sorted(overrides)}")
+        return {}
+    unknown = set(overrides) - set(defaults)
+    if unknown:
+        raise ValueError(f"unknown {sampler_name} parameters {sorted(unknown)}; valid: {sorted(defaults)}")
+    return {**defaults, **overrides}
 
 
 class SimulatedAnnealingSampler(VerifaiSampler):
@@ -63,18 +88,23 @@ class SimulatedAnnealingSampler(VerifaiSampler):
     FeatureSpace (that's where the Scenic-declared VerifaiRange parameters get
     registered); we then swap in SA over that space."""
 
+    sa_params = dict(DEFAULT_SAMPLER_PARAMS["sa"])
+
     def __init__(self, params, globalParams):
         super().__init__(params, globalParams)
         self.sampler = FeatureSampler.simulatedAnnealingSamplerFor(
-            self.sampler.space, _SA_PARAMS.copy())
+            self.sampler.space, DotMap(**self.sa_params, num_epoch=_SA_NUM_EPOCH))
 
 
-def _scenario_params(sampler_name: str) -> dict:
+def _scenario_params(sampler_name: str, sampler_params: dict) -> dict:
     if sampler_name == "sa":
-        return {"verifaiSamplerType": "random", "externalSampler": SimulatedAnnealingSampler}
+        configured = type("ConfiguredSA", (SimulatedAnnealingSampler,), {"sa_params": sampler_params})
+        return {"verifaiSamplerType": "random", "externalSampler": configured}
     params = {"verifaiSamplerType": sampler_name}
     if sampler_name in ("ce", "mab"):
-        params["verifaiSamplerParams"] = _ADAPTIVE_DEFAULTS.copy()
+        params["verifaiSamplerParams"] = DotMap(
+            alpha=sampler_params.get("alpha", 0.9), thres=sampler_params["thres"],
+            cont=DotMap(buckets=sampler_params["buckets"], dist=None), disc=DotMap(dist=None))
     return params
 
 
@@ -90,11 +120,13 @@ class ScenicTaskSampler:
     pending_feedback: float | None = None
 
     @classmethod
-    def load(cls, scenic_file: str, sampler_name: str) -> "ScenicTaskSampler":
+    def load(cls, scenic_file: str, sampler_name: str,
+             sampler_params: dict | None = None) -> "ScenicTaskSampler":
         if sampler_name not in SAMPLER_NAMES:
             raise ValueError(f"unknown sampler {sampler_name!r}; choose from {SAMPLER_NAMES}")
+        resolved = resolve_sampler_params(sampler_name, sampler_params)
         scenario = scenic.scenarioFromFile(
-            scenic_file, params=_scenario_params(sampler_name), mode2D=True)
+            scenic_file, params=_scenario_params(sampler_name, resolved), mode2D=True)
         return cls(scenario=scenario)
 
     def draw(self, param_names: tuple[str, ...]) -> dict:

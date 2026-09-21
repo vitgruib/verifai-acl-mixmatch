@@ -46,6 +46,7 @@ class _Slot:
     params: dict
     lp: float = _NEW_TASK_LP
     state: dict = field(default_factory=dict)  # scratch memory for potential_fn
+    fb_state: dict = field(default_factory=dict)  # scratch memory for a decoupled feedback_fn
 
 
 class RunningNormalizer:
@@ -82,7 +83,15 @@ class PLRCurriculum:
     def __init__(self, task_sampler: ScenicTaskSampler, param_names: tuple[str, ...],
                  potential_fn: Callable, gamma: float, gae_lambda: float,
                  use_replay: bool = True, replay_prob: float = 0.5, buffer_max: int = 5000,
+                 rank_alpha: float = _RANK_ALPHA, ema_beta: float = _LP_EMA_BETA,
+                 feedback_fn: Optional[Callable] = None,
                  rng: Optional[np.random.Generator] = None):
+        # feedback_fn=None: one scoring function feeds both replay and the sampler
+        # (this repo's default). Given: replay uses potential_fn, the sampler steers by
+        # feedback_fn -- decoupled, closer to SIPACL, whose Scenic feedback is separate.
+        self.rank_alpha = rank_alpha
+        self.ema_beta = ema_beta
+        self.feedback_fn = feedback_fn
         self.task_sampler = task_sampler
         self.param_names = param_names
         self.potential_fn = potential_fn
@@ -99,7 +108,7 @@ class PLRCurriculum:
         order = np.argsort(-lp, kind="stable")  # rank 1 = highest lp; ties -> lower index (as SIPACL)
         ranks = np.empty(len(lp), dtype=np.float64)
         ranks[order] = np.arange(1, len(lp) + 1, dtype=np.float64)
-        weights = 1.0 / ranks ** _RANK_ALPHA
+        weights = 1.0 / ranks ** self.rank_alpha
         return weights / weights.sum()
 
     def pick_task(self) -> tuple[dict, int, str]:
@@ -124,12 +133,16 @@ class PLRCurriculum:
             rewards, values, next_value, self.gamma, self.gae_lambda, slot.state,
         )
         slot.lp = raw_score if slot.lp >= 0.5 * _NEW_TASK_LP else (
-            _LP_EMA_BETA * raw_score + (1 - _LP_EMA_BETA) * slot.lp
+            self.ema_beta * raw_score + (1 - self.ema_beta) * slot.lp
         )
 
         if mode == NEW:
-            self.rho_norm.update(raw_score)
-            self.task_sampler.give_feedback(self.rho_norm.to_rho(raw_score))
+            fb_score = raw_score
+            if self.feedback_fn is not None:
+                fb_score, slot.fb_state = self.feedback_fn(
+                    rewards, values, next_value, self.gamma, self.gae_lambda, slot.fb_state)
+            self.rho_norm.update(fb_score)
+            self.task_sampler.give_feedback(self.rho_norm.to_rho(fb_score))
         return raw_score
 
     @property
