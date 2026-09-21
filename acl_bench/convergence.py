@@ -3,11 +3,11 @@ many environment steps each env actually needs before the grid's fixed budget
 stops being the bottleneck.
 
     python -m acl_bench.convergence --env acrobot --seed 1 \
-        --configs random:none random:pvl_gae sa:pvl_gae \
+        --configs random:neg_return:off random:pvl_gae:on sa:pvl_gae:on \
         --total-timesteps 1000000 --eval-every 25000 --out results/convergence_acrobot_s1.csv
 
 One row per (config, checkpoint): held-out eval return on the same fixed task
-set the grid uses, plus the mean of the last 20 training episodes.
+set the grid uses (configs are `sampler:function:acl`, acl = on|off), plus the mean of the last 20 training episodes.
 """
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", required=True, choices=list(ENV_SPECS))
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--configs", nargs="+", default=["random:none", "random:pvl_gae", "sa:pvl_gae"],
-                        help="sampler:potential_fn pairs")
+    parser.add_argument("--configs", nargs="+", default=["random:neg_return:off", "random:pvl_gae:on", "sa:pvl_gae:on"],
+                        help="sampler:potential_fn:acl triples (acl = on|off)")
     parser.add_argument("--total-timesteps", type=int, default=1_000_000)
     parser.add_argument("--eval-every", type=int, default=25_000)
     parser.add_argument("--out", required=True)
@@ -41,15 +41,15 @@ def main():
 
     rows = []
     for config in args.configs:
-        sampler_name, potential_name = config.split(":")
-        cfg = PPOConfig(total_timesteps=args.total_timesteps, seed=args.seed)
+        sampler_name, potential_name, acl = config.split(":")
+        cfg = PPOConfig(total_timesteps=args.total_timesteps, seed=args.seed, acl=(acl == "on"))
         task_sampler = ScenicTaskSampler.load(env_spec.scenic_file, sampler_name)
         t0 = time.time()
-        log, _ = run_training(env_spec, task_sampler, resolve_potential_fn(potential_name), cfg,
+        log, _ = run_training(env_spec, task_sampler, resolve_potential_fn(potential_name, env_spec.success_return), cfg,
                               eval_set=eval_set, eval_every_steps=args.eval_every)
         elapsed = time.time() - t0
         for step, eval_return, train_last20 in log.checkpoints:
-            rows.append({"env": args.env, "sampler": sampler_name, "potential_fn": potential_name,
+            rows.append({"env": args.env, "sampler": sampler_name, "acl": acl, "potential_fn": potential_name,
                          "seed": args.seed, "step": step, "eval_return": eval_return,
                          "train_return_last20": train_last20})
         pd.DataFrame(rows).to_csv(args.out, index=False)

@@ -92,8 +92,9 @@ class PPOConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     norm_adv: bool = True
-    replay_prob: float = 0.5
-    buffer_max: int = 200
+    acl: bool = True          # False = never replay (SIPACL's replay_resample_prob=-1)
+    replay_prob: float = 0.5  # SIPACL's replay_resample_prob when ACL is on
+    buffer_max: int = 5000    # SIPACL DEFAULT_BUFFER_MAX
     seed: int = 1
 
 
@@ -120,8 +121,8 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
     param_names = tuple(env_spec.param_bounds.keys())
     curriculum = PLRCurriculum(
         task_sampler=task_sampler, param_names=param_names, potential_fn=potential_fn,
-        gamma=cfg.gamma, gae_lambda=cfg.gae_lambda, replay_prob=cfg.replay_prob,
-        buffer_max=cfg.buffer_max, rng=rng,
+        gamma=cfg.gamma, gae_lambda=cfg.gae_lambda, use_replay=cfg.acl,
+        replay_prob=cfg.replay_prob, buffer_max=cfg.buffer_max, rng=rng,
     )
 
     obs_dim, action_dim = env_spec.obs_dim, env_spec.action_dim

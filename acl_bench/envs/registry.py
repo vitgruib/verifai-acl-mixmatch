@@ -19,6 +19,7 @@ class EnvSpec:
     normalize: Callable[[dict], object]
     param_bounds: dict
     max_episode_steps: int
+    success_return: float  # episode return counted as "solved" (used by intermediate_difficulty)
     obs_dim: int
     action_type: str  # "discrete" | "continuous"
     action_dim: int
@@ -32,6 +33,7 @@ ENV_SPECS: dict[str, EnvSpec] = {
         obs_dim=param_cartpole.OBS_DIM, action_type=param_cartpole.ACTION_TYPE,
         action_dim=param_cartpole.ACTION_DIM,
         scenic_file=os.path.join(_SCENIC_DIR, "cartpole.scenic"),
+        success_return=195.0,   # survive >= 195 of 500 steps
     ),
     "acrobot": EnvSpec(
         name="acrobot", make_env=param_acrobot.make_env, normalize=param_acrobot.normalize,
@@ -39,6 +41,7 @@ ENV_SPECS: dict[str, EnvSpec] = {
         obs_dim=param_acrobot.OBS_DIM, action_type=param_acrobot.ACTION_TYPE,
         action_dim=param_acrobot.ACTION_DIM,
         scenic_file=os.path.join(_SCENIC_DIR, "acrobot.scenic"),
+        success_return=-499.0,  # any return above the -500 step cap means the goal was reached
     ),
 }
 

@@ -43,7 +43,10 @@ from dotmap import DotMap
 from scenic.core.external_params import VerifaiSampler
 from verifai.samplers.feature_sampler import FeatureSampler
 
-SAMPLER_NAMES = ("random", "halton", "ce", "mab", "sa")
+# random/halton ignore the feedback they are given; ce/mab/sa steer by it.
+NON_ADAPTIVE_SAMPLERS = ("random", "halton")
+ADAPTIVE_SAMPLERS = ("ce", "mab", "sa")
+SAMPLER_NAMES = NON_ADAPTIVE_SAMPLERS + ADAPTIVE_SAMPLERS
 
 _ADAPTIVE_DEFAULTS = DotMap(alpha=0.9, thres=0.0, cont=DotMap(buckets=8, dist=None),
                              disc=DotMap(dist=None))
