@@ -57,11 +57,13 @@ def draw_pairs(n: int, rng: np.random.Generator, ranges: dict | None = None) -> 
 
 def build_pool_sets(reference_agents, seed: int = 20260922, pool_size: int = 5000,
                     hard_frac: float = 0.5, hard_target: int = 250,
-                    easy_target: int = 100) -> tuple[dict[str, PairSet], dict]:
+                    easy_target: int = 100, report_size: int | None = None) -> tuple[dict[str, PairSet], dict]:
     """POOL, E6 and E7 from reference agents, with no expert.
 
-    POOL: `pool_size` random questions (some are impossible), each annotated with
-    the share of reference agents that fail it, for difficulty-binned reporting.
+    POOL: random questions (some are impossible), each annotated with the share of
+    reference agents that fail it, for difficulty-binned reporting. E6 and E7 are drawn
+    from all `pool_size` questions; the returned POOL is only the first `report_size`
+    of them (all, if None), since grading a huge pool is expensive.
     E6 (hard): questions at least `hard_frac` of the reference agents fail AND at
     least one passes; the "at least one passes" is the only evidence of winnability
     available, so it also drops the very hardest winnable questions.
@@ -72,7 +74,8 @@ def build_pool_sets(reference_agents, seed: int = 20260922, pool_size: int = 500
     params, s0 = draw_pairs(pool_size, rng)
     success = np.array([rollout_steps(a, params, s0, MAX_STEPS) == MAX_STEPS for a in reference_agents])
     fail_frac = 1.0 - success.mean(axis=0)
-    pool = PairSet("POOL", params, s0, fail_frac)
+    n_report = pool_size if report_size is None else min(report_size, pool_size)
+    pool = PairSet("POOL", params[:n_report], s0[:n_report], fail_frac[:n_report])
 
     def subset(name, mask, cap):
         idx = np.flatnonzero(mask)[:cap]
@@ -80,7 +83,7 @@ def build_pool_sets(reference_agents, seed: int = 20260922, pool_size: int = 500
 
     hard = (fail_frac >= hard_frac) & (fail_frac < 1.0)
     easy = fail_frac == 0.0
-    stats = {"pool_size": pool_size, "n_reference_agents": len(reference_agents),
+    stats = {"pool_size": pool_size, "report_size": n_report, "n_reference_agents": len(reference_agents),
              "hard_available": int(hard.sum()), "easy_available": int(easy.sum()),
              "nobody_passes": int((fail_frac == 1.0).sum())}
     return {"POOL": pool, "E6": subset("E6", hard, hard_target), "E7": subset("E7", easy, easy_target)}, stats

@@ -2,6 +2,63 @@
   "how_made": "Filtered once from cartpole_v1: kept only questions the LQR oracle proved winnable (feasible start AND oracle survives 500 steps). Dropped guaranteed one-step failures and questions the oracle could not solve. The oracle was then removed from the repository.",
   "oracle_source_commit": "fe37d00",
   "oracle_source_sha256": "912972945ec5d3fc4c344636d111430a449d12993339347d5c992eb0dafef772",
+  "reference": {
+    "arm": "REF",
+    "n_agents": 10,
+    "note": "E6 = fail_frac in [0.5, 1); E7 = fail_frac == 0; questions nobody passes are excluded from both",
+    "picks": {
+      "1": {
+        "E0_success": 0.9894,
+        "step": 614400
+      },
+      "2": {
+        "E0_success": 0.9858,
+        "step": 573440
+      },
+      "3": {
+        "E0_success": 0.9894,
+        "step": 614400
+      },
+      "4": {
+        "E0_success": 0.9894,
+        "step": 532480
+      },
+      "5": {
+        "E0_success": 0.9894,
+        "step": 593920
+      },
+      "6": {
+        "E0_success": 0.9965,
+        "step": 614400
+      },
+      "7": {
+        "E0_success": 0.9858,
+        "step": 532480
+      },
+      "8": {
+        "E0_success": 0.9894,
+        "step": 614400
+      },
+      "9": {
+        "E0_success": 0.9929,
+        "step": 552960
+      },
+      "10": {
+        "E0_success": 0.9823,
+        "step": 614400
+      }
+    },
+    "pool_seed": 20260922,
+    "pool_size": 80000,
+    "stats": {
+      "easy_available": 72450,
+      "hard_available": 248,
+      "n_reference_agents": 10,
+      "nobody_passes": 5175,
+      "pool_size": 80000,
+      "report_size": 10000
+    }
+  },
   "sets": {
     "E0": {
       "n": 282,
@@ -58,6 +115,14 @@
       "n_removed_impossible": 42,
       "n_removed_unclear": 6,
       "sha256": "b2f86a9ebc67bf4f4e579ef83854a02061baf033d226d01d809e838392a1ebf2"
+    },
+    "E6": {
+      "n": 248,
+      "sha256": "87e4847a9cba4e9d0a68d07193f921a70b1c2e5c4efcddb80e9c3f7cd8bc6874"
+    },
+    "E7": {
+      "n": 100,
+      "sha256": "0a06cdc75c7f9095afd156a9cdcad39faf394ec0bba5098d6dad50ec76f18244"
     }
   },
   "source_set_seeds": {
