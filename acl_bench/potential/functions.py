@@ -1,8 +1,12 @@
 """Learning-potential / feedback functions for prioritized replay.
 
-`pvl_gae` is a direct port of SIPACL's `_lp_delta` (SIPACL/Work/custom/custom_gym.py):
+`pvl_gae` ports SIPACL's `_lp_delta` (SIPACL/Work/custom/custom_gym.py):
 mean(max(GAE_delta, 0)) over an episode, i.e. Positive Value Loss (PVL) computed
-from Generalized Advantage Estimation (Schulman et al., 2016). The rest are
+from Generalized Advantage Estimation (Schulman et al., 2016). One deliberate
+deviation: SIPACL treats the last step of every episode as terminal
+(next value 0); here a time-limit *truncation* bootstraps from the critic
+instead (the caller supplies `next_value`), which matters once policies
+survive to the step cap. All functions share that convention. The rest are
 alternative "how worth replaying is this task" signals pulled from the
 curriculum-learning / Unsupervised Environment Design literature:
 
@@ -35,9 +39,10 @@ curriculum-learning / Unsupervised Environment Design literature:
 
 Every function has the same contract: given one episode's rollout and a
 mutable per-task `slot_state` dict (scratch memory the buffer keeps next to
-each task), return `(raw_score, slot_state)`. The buffer then EMA-smooths
-`raw_score` across visits exactly as SIPACL's `_compute_learning_progress`
-does, regardless of which function produced it.
+each task), return `(raw_score, slot_state)`; higher always means "more worth
+revisiting." The buffer then EMA-smooths `raw_score` across visits the way
+SIPACL's `_compute_learning_progress` does, regardless of which function
+produced it.
 """
 from __future__ import annotations
 
@@ -134,22 +139,34 @@ def make_intermediate_difficulty(success_return_threshold: float) -> Callable:
     return intermediate_difficulty
 
 
-# CartPole-v1-style episodes cap at 500 steps/reward=1 per step; treat "solved"
-# as comfortably above the classic v0 bar (195) but below the hard cap.
-POTENTIAL_FUNCTIONS: dict[str, Callable] = {
+def neg_return(rewards, values, next_value, gamma, gae_lambda, slot_state):
+    """Baseline, not a learning-progress signal: the episode's raw return,
+    negated so that *worse* performance scores *higher* (the same direction as
+    every other function here: higher = more worth revisiting/exploring). This
+    is classic falsification / hard-example mining -- what VerifAI's samplers
+    were designed to be driven by -- and the control for "does a
+    learning-potential function beat just chasing failures?"."""
+    return -float(np.sum(rewards)), slot_state
+
+
+_STATIC_FUNCTIONS: dict[str, Callable] = {
     "pvl_gae": pvl_gae,
     "l1_value_loss": l1_value_loss,
     "max_mc": max_mc,
     "td_error_l2": td_error_l2,
     "alp": absolute_learning_progress,
-    "intermediate_difficulty": make_intermediate_difficulty(success_return_threshold=195.0),
+    "neg_return": neg_return,
 }
 
-# "none" is the ACL ablation: no potential function, no replay buffer at all
-# (see acl_bench.curriculum.plr.PLRCurriculum) -- isolates "sampler alone"
-# from "sampler + ACL" in the mix-and-match grid.
-POTENTIAL_FUNCTION_NAMES: tuple[str, ...] = ("none",) + tuple(POTENTIAL_FUNCTIONS.keys())
+POTENTIAL_FUNCTION_NAMES: tuple[str, ...] = (
+    "pvl_gae", "l1_value_loss", "max_mc", "td_error_l2", "alp", "intermediate_difficulty",
+    "neg_return",
+)
 
 
-def resolve_potential_fn(name: str) -> Callable | None:
-    return None if name == "none" else POTENTIAL_FUNCTIONS[name]
+def resolve_potential_fn(name: str, success_return: float) -> Callable:
+    """`success_return` is the env-specific episode return counted as "solved"
+    (EnvSpec.success_return); only `intermediate_difficulty` uses it."""
+    if name == "intermediate_difficulty":
+        return make_intermediate_difficulty(success_return)
+    return _STATIC_FUNCTIONS[name]

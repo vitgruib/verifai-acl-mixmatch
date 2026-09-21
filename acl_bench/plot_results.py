@@ -1,11 +1,11 @@
 """Render results/grid_results.csv into the two charts used in the README:
 
   1. A sequential-blue heatmap per environment (own color scale -- reward
-     scales aren't comparable across environments), sampler x
-     potential-function-condition (the 6 named functions plus "none", the
-     ACL-off ablation), averaged over seeds.
-  2. A 2x2 ablation summary per environment: {non-adaptive sampler, adaptive
-     sampler} x {ACL off ("none"), ACL on (avg of the 6 potential functions)}
+     scales aren't comparable across environments): rows are (sampler, ACL
+     off/on), columns are scoring functions ("unused" = the one cell where a
+     non-adaptive sampler runs with ACL off, so no function has any consumer).
+  2. A 2x2 ablation summary per environment: {non-adaptive, adaptive sampler}
+     x {ACL off, ACL on}, each averaged over the scoring functions that apply
      -- directly isolating "not using one or both" of the two components.
 
 Produces light- and dark-mode PNGs so the README can pick the right one via
@@ -22,6 +22,10 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from acl_bench.envs.registry import ENV_NAMES
+from acl_bench.potential.functions import POTENTIAL_FUNCTION_NAMES
+from acl_bench.scenic_sampling import ADAPTIVE_SAMPLERS, NON_ADAPTIVE_SAMPLERS, SAMPLER_NAMES
+
 # --- palette (see dataviz skill references/palette.md) ---
 SEQ_BLUE = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 ABLATION_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # slots 1-4
@@ -33,13 +37,11 @@ THEMES = {
                  muted="#898781", grid="#2c2c2a"),
 }
 
-POTENTIAL_ORDER = ["none", "pvl_gae", "l1_value_loss", "max_mc", "td_error_l2", "alp",
-                    "intermediate_difficulty"]
-# "bo" only appears in the first grid (replaced by "sa"); kept so old results still render.
-SAMPLER_ORDER = ["random", "halton", "ce", "mab", "sa", "bo"]
-NON_ADAPTIVE = {"random", "halton"}
-ADAPTIVE = {"ce", "mab", "sa", "bo"}
-ENV_ORDER = ["cartpole", "acrobot", "pendulum"]
+POTENTIAL_ORDER = ["unused", *POTENTIAL_FUNCTION_NAMES]
+SAMPLER_ORDER = list(SAMPLER_NAMES)
+NON_ADAPTIVE = set(NON_ADAPTIVE_SAMPLERS)
+ADAPTIVE = set(ADAPTIVE_SAMPLERS)
+ENV_ORDER = list(ENV_NAMES)
 
 
 def style(ax, theme):
@@ -58,24 +60,21 @@ def plot_heatmap(df: pd.DataFrame, theme_name: str, out_path: str):
     envs = [e for e in ENV_ORDER if e in df["env"].unique()]
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE)
 
-    fig, axes = plt.subplots(len(envs), 1, figsize=(10, 3.4 * len(envs)), dpi=160)
+    fig, axes = plt.subplots(len(envs), 1, figsize=(11, 4.6 * len(envs)), dpi=160)
     axes = np.atleast_1d(axes)
 
     for ax, env in zip(axes, envs):
         sub = df[df["env"] == env]
-        samplers = [x for x in SAMPLER_ORDER if x in sub["sampler"].unique()]
+        rows = [(smp, acl) for smp in SAMPLER_ORDER for acl in ("off", "on")]
         pivot = (
-            sub.groupby(["sampler", "potential_fn"])["eval_return_mean"]
-            .mean()
-            .reindex(pd.MultiIndex.from_product([samplers, POTENTIAL_ORDER]))
-            .unstack()
-            .reindex(index=samplers, columns=POTENTIAL_ORDER)
+            sub.groupby(["sampler", "acl", "potential_fn"])["eval_return_mean"].mean()
+            .unstack().reindex(index=pd.MultiIndex.from_tuples(rows), columns=POTENTIAL_ORDER)
         )
         im = ax.imshow(pivot.values, cmap=cmap, aspect="auto")
         ax.set_xticks(range(len(POTENTIAL_ORDER)))
         ax.set_xticklabels(POTENTIAL_ORDER, rotation=25, ha="right")
-        ax.set_yticks(range(len(samplers)))
-        ax.set_yticklabels(samplers)
+        ax.set_yticks(range(len(rows)))
+        ax.set_yticklabels([f"{smp} / ACL {acl}" for smp, acl in rows])
         ax.set_title(f"{env} -- mean held-out eval return (own color scale)",
                      fontsize=11, pad=10)
 
@@ -108,9 +107,8 @@ def plot_ablation_bars(df: pd.DataFrame, theme_name: str, out_path: str):
                   "both (sampler + ACL)"]
 
     def cell(sub, adaptive: bool, acl: bool):
-        samplers = ADAPTIVE if adaptive else NON_ADAPTIVE
-        mask = sub["sampler"].isin(samplers)
-        mask &= (sub["potential_fn"] != "none") if acl else (sub["potential_fn"] == "none")
+        mask = sub["sampler"].isin(ADAPTIVE if adaptive else NON_ADAPTIVE)
+        mask &= sub["acl"] == ("on" if acl else "off")
         vals = sub.loc[mask, "eval_return_mean"]
         return vals.mean(), vals.std()
 

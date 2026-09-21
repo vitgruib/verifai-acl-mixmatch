@@ -1,25 +1,28 @@
-"""Prioritized-replay curriculum: the ACL half of the mix-and-match grid,
-now with the sampler feedback and the replay-priority score unified into one
-function (see the README's "Is the feedback function shared?" section).
+"""Prioritized-replay curriculum (ACL) and its coupling to the VerifAI sampler.
 
-Two independent things can each be switched off, which is how the grid's
-ablations are expressed:
+Ports the PLR logic in SIPACL/Work/custom/custom_gym.py (`MetaDriveEnv`):
+rank-based replay `P(i) ~ 1/rank_i**alpha` with SIPACL's own constants
+(alpha=1.0, EMA beta=0.2, buffer 5000), a 1e10 placeholder so brand-new slots
+rank first, and first-visit scores that skip the EMA. Deliberate differences:
+the buffer is in memory rather than pickled Scenic scenes on disk, and see
+`acl_bench.potential.functions` on truncation bootstrapping.
 
-  - `potential_fn=None` ("none" in the grid) turns ACL off entirely: no
-    replay buffer (replay_prob forced to 0, so every episode is a fresh
-    domain-randomization draw) and no learning-potential score -- the
-    sampler still needs *some* scalar per VerifAI's API, so it falls back to
-    raw (normalized) episode return. This isolates "sampler alone."
-  - Using `sampler="random"` or `"halton"` (acl_bench.scenic_sampling) is
-    "not using verifAI's adaptive sampling": both ignore whatever rho they
-    are given. Combined with `potential_fn=None` that's the pure baseline
-    (plain domain randomization, no curriculum sophistication at all);
-    combined with a real potential_fn it's "ACL alone."
+Two independent switches, which the grid crosses (see experiment.py):
 
-Everything else -- rank-based replay (`P(i) ~ 1/rank_i**0.9`, Prioritized
-Level Replay, Jiang et al., 2021) and EMA-smoothing the raw per-visit score
-into a slot's running priority -- is unchanged from SIPACL's
-`MetaDriveEnv._compute_learning_progress`.
+  - ACL (`use_replay`): whether tasks are ever replayed. Off = every episode
+    is a fresh draw from the sampler (SIPACL's `replay_resample_prob=-1`).
+  - The sampler (acl_bench.scenic_sampling): `random`/`halton` ignore feedback;
+    `ce`/`mab`/`sa` steer by it.
+
+The scoring function (`potential_fn`) is the third factor and is always
+computed. It has up to two consumers: it ranks tasks for replay when ACL is
+on, and -- z-scored and negated into `rho` -- it is the feedback the sampler
+receives after each NEW draw (VerifAI's convention: low rho = "counterexample",
+worth more samples; every scoring function's high score = worth revisiting, so
+rho = -z(score)). SIPACL itself keeps these separate: its Scenic feedback is
+`feedback_fn(simulation.result)`, an identity function that ppo.py never
+overrides, while PVL only drives replay. Sharing one score is this repo's
+choice.
 """
 from __future__ import annotations
 
@@ -34,8 +37,8 @@ NEW = "new"
 REPLAY = "replay"
 
 _NEW_TASK_LP = 1e10   # placeholder so brand-new slots always look "worth trying"
-_RANK_ALPHA = 0.9     # PLR's rank-sampling temperature
-_LP_EMA_BETA = 0.5    # EMA smoothing of the raw per-visit score into the slot
+_RANK_ALPHA = 1.0     # SIPACL DEFAULT_LP_RANK_ALPHA
+_LP_EMA_BETA = 0.2    # SIPACL DEFAULT_LP_EMA_BETA
 
 
 @dataclass
@@ -77,15 +80,15 @@ class RunningNormalizer:
 
 class PLRCurriculum:
     def __init__(self, task_sampler: ScenicTaskSampler, param_names: tuple[str, ...],
-                 potential_fn: Optional[Callable], gamma: float, gae_lambda: float,
-                 replay_prob: float = 0.5, buffer_max: int = 200,
+                 potential_fn: Callable, gamma: float, gae_lambda: float,
+                 use_replay: bool = True, replay_prob: float = 0.5, buffer_max: int = 5000,
                  rng: Optional[np.random.Generator] = None):
         self.task_sampler = task_sampler
         self.param_names = param_names
-        self.potential_fn = potential_fn  # None => "no ACL" ablation
+        self.potential_fn = potential_fn
         self.gamma = gamma
         self.gae_lambda = gae_lambda
-        self.replay_prob = replay_prob if potential_fn is not None else 0.0
+        self.replay_prob = replay_prob if use_replay else 0.0
         self.buffer_max = buffer_max
         self.rng = rng or np.random.default_rng()
         self.slots: list[_Slot] = []
@@ -93,8 +96,10 @@ class PLRCurriculum:
 
     def _replay_probs(self) -> np.ndarray:
         lp = np.array([s.lp for s in self.slots], dtype=np.float64)
-        ranks = lp.argsort()[::-1].argsort() + 1  # rank 1 = highest lp
-        weights = 1.0 / (ranks.astype(np.float64) ** _RANK_ALPHA)
+        order = np.argsort(-lp, kind="stable")  # rank 1 = highest lp; ties -> lower index (as SIPACL)
+        ranks = np.empty(len(lp), dtype=np.float64)
+        ranks[order] = np.arange(1, len(lp) + 1, dtype=np.float64)
+        weights = 1.0 / ranks ** _RANK_ALPHA
         return weights / weights.sum()
 
     def pick_task(self) -> tuple[dict, int, str]:
@@ -113,18 +118,14 @@ class PLRCurriculum:
                         values: list[float], next_value: float) -> float:
         """Score the just-finished episode, update the replay buffer, and (for
         NEW draws) queue feedback for the sampler's *next* draw. Returns the
-        raw score actually used (potential_fn's, or raw return under the
-        "none" ablation) for logging."""
+        raw score for logging."""
         slot = self.slots[idx]
-        if self.potential_fn is not None:
-            raw_score, slot.state = self.potential_fn(
-                rewards, values, next_value, self.gamma, self.gae_lambda, slot.state,
-            )
-            slot.lp = raw_score if slot.lp >= 0.5 * _NEW_TASK_LP else (
-                _LP_EMA_BETA * raw_score + (1 - _LP_EMA_BETA) * slot.lp
-            )
-        else:
-            raw_score = float(np.sum(rewards))
+        raw_score, slot.state = self.potential_fn(
+            rewards, values, next_value, self.gamma, self.gae_lambda, slot.state,
+        )
+        slot.lp = raw_score if slot.lp >= 0.5 * _NEW_TASK_LP else (
+            _LP_EMA_BETA * raw_score + (1 - _LP_EMA_BETA) * slot.lp
+        )
 
         if mode == NEW:
             self.rho_norm.update(raw_score)
