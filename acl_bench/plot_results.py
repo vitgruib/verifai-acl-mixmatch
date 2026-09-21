@@ -35,9 +35,10 @@ THEMES = {
 
 POTENTIAL_ORDER = ["none", "pvl_gae", "l1_value_loss", "max_mc", "td_error_l2", "alp",
                     "intermediate_difficulty"]
-SAMPLER_ORDER = ["random", "halton", "ce", "mab", "bo"]
+# "bo" only appears in the first grid (replaced by "sa"); kept so old results still render.
+SAMPLER_ORDER = ["random", "halton", "ce", "mab", "sa", "bo"]
 NON_ADAPTIVE = {"random", "halton"}
-ADAPTIVE = {"ce", "mab", "bo"}
+ADAPTIVE = {"ce", "mab", "sa", "bo"}
 ENV_ORDER = ["cartpole", "acrobot", "pendulum"]
 
 
@@ -62,18 +63,19 @@ def plot_heatmap(df: pd.DataFrame, theme_name: str, out_path: str):
 
     for ax, env in zip(axes, envs):
         sub = df[df["env"] == env]
+        samplers = [x for x in SAMPLER_ORDER if x in sub["sampler"].unique()]
         pivot = (
             sub.groupby(["sampler", "potential_fn"])["eval_return_mean"]
             .mean()
-            .reindex(pd.MultiIndex.from_product([SAMPLER_ORDER, POTENTIAL_ORDER]))
+            .reindex(pd.MultiIndex.from_product([samplers, POTENTIAL_ORDER]))
             .unstack()
-            .reindex(index=SAMPLER_ORDER, columns=POTENTIAL_ORDER)
+            .reindex(index=samplers, columns=POTENTIAL_ORDER)
         )
         im = ax.imshow(pivot.values, cmap=cmap, aspect="auto")
         ax.set_xticks(range(len(POTENTIAL_ORDER)))
         ax.set_xticklabels(POTENTIAL_ORDER, rotation=25, ha="right")
-        ax.set_yticks(range(len(SAMPLER_ORDER)))
-        ax.set_yticklabels(SAMPLER_ORDER)
+        ax.set_yticks(range(len(samplers)))
+        ax.set_yticklabels(samplers)
         ax.set_title(f"{env} -- mean held-out eval return (own color scale)",
                      fontsize=11, pad=10)
 

@@ -105,10 +105,16 @@ class RunLog:
     episode_task_ids: list = field(default_factory=list)
     episode_params: list = field(default_factory=list)    # dict per episode
     lp_scores: list = field(default_factory=list)
+    # (env steps so far, held-out eval return, mean of last 20 training episodes)
+    checkpoints: list = field(default_factory=list)
 
 
 def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
-                  device="cpu") -> tuple[RunLog, Agent]:
+                  device="cpu", eval_set: list[dict] | None = None,
+                  eval_every_steps: int | None = None) -> tuple[RunLog, Agent]:
+    """If `eval_set` and `eval_every_steps` are given, the policy is evaluated
+    on the held-out tasks every `eval_every_steps` env steps (rounded up to a
+    whole PPO iteration), producing a learning curve in `log.checkpoints`."""
     rng = np.random.default_rng(cfg.seed)
     torch.manual_seed(cfg.seed)
 
@@ -230,6 +236,16 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
                 loss.backward()
                 nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
                 optimizer.step()
+
+        steps_done = (_iteration + 1) * cfg.num_steps
+        if eval_set is not None and eval_every_steps and (
+                steps_done % eval_every_steps < cfg.num_steps or _iteration == num_iterations - 1):
+            recent = log.episode_returns[-20:]
+            log.checkpoints.append((
+                steps_done,
+                evaluate_agent(agent, env_spec, eval_set, seed=cfg.seed),
+                float(np.mean(recent)) if recent else float("nan"),
+            ))
 
     return log, agent
 

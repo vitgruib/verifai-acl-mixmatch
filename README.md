@@ -1,8 +1,8 @@
 # verifai-acl-mixmatch
 
 Mix-and-match testing of **Scenic-mediated VerifAI samplers** (random,
-quasi-random Halton, cross-entropy, multi-armed bandit, Bayesian
-optimization) against **Automatic Curriculum Learning (ACL) learning-potential
+quasi-random Halton, cross-entropy, multi-armed bandit, simulated
+annealing) against **Automatic Curriculum Learning (ACL) learning-potential
 functions** (the current GAE/PVL score, five alternatives from the
 curriculum-learning literature, and a "none" ablation), run on three fast
 classic-control environments (CartPole, Acrobot, Pendulum) so the full grid
@@ -39,7 +39,7 @@ whether they should even share a feedback signal:
 ## Is the sampler's feedback the same function as ACL's replay score?
 
 It is, by design here, and that's a deliberate choice worth spelling out.
-VerifAI's active samplers (cross-entropy, the bandit, Bayesian optimization)
+VerifAI's active samplers (cross-entropy, the bandit, simulated annealing)
 all expect one scalar `rho` per proposed task -- STL-robustness-flavored:
 lower/negative means "counterexample, worth exploring more of this region."
 Rather than invent a second, independent notion of "how good was that task"
@@ -77,12 +77,12 @@ open-ended training loop:
 | `halton` | Yes | Quasi-random low-discrepancy sequence; covers the space more evenly than i.i.d. for the same draw count, still ignores feedback. |
 | `ce` (cross-entropy) | Yes | Refits a distribution toward low-`rho` regions each round. |
 | `mab` (multi-armed bandit) | Yes | Discretizes each dimension into buckets, runs UCB1 toward buckets with a history of low `rho`. |
-| `bo` (Bayesian optimization) | Yes | Fits a GP over `(task, rho)` history each round (needs `GPyOpt`+`GPy`, and pinning `setuptools<81` since GPyOpt still imports the removed `pkg_resources`). Works, but its per-sample cost grows with buffer size -- see Limitations. |
+| `sa` (simulated annealing) | Yes | A single-chain local search that proposes near its last accepted task and cools over time. Works when called directly, but `verifai.server.choose_sampler` has no branch for it, so `verifaiSamplerType='sa'` can't select it; it is injected through Scenic's documented `externalSampler` global parameter instead (`SimulatedAnnealingSampler` in `scenic_sampling.py`), so it still goes through the same `generate(feedback=...)` loop. |
+| `bo` (Bayesian optimization) | No (dropped) | Worked, but its GP refit grew with the run's task history and consumed **83% of the first grid's 131 minutes** (mean 227s per CartPole run vs. ~5s for every other sampler), plus two fragile dependencies (`GPyOpt`+`GPy`, and a `setuptools<81` pin). Replaced by `sa`. The results below are from that first grid and still include it. |
 | `eg` (epsilon-greedy) | No | Raises `NotImplementedError: tried to use abstract BoxSampler` in the installed VerifAI release, called directly or through Scenic. Broken upstream, not a bug here. |
 | `grid` | No | Exhaustive by design -- terminates once its resolution is covered, and even before that, 300 samples over our 5D box took 17s. The wrong tool for an open-ended training loop, not broken. |
-| simulated annealing | No | Works fine called directly (`FeatureSampler.simulatedAnnealingSamplerFor`), but `verifai.server.choose_sampler` has no branch for it, so Scenic's `verifaiSamplerType` can never select it. Excluded so every sampler in the grid goes through the identical Scenic-mediated path. |
 
-So "all applicable" = **5 samplers**: random, halton, ce, mab, bo.
+So "all applicable" = **5 samplers**: random, halton, ce, mab, sa.
 
 ## Learning-potential (feedback) functions under test
 
@@ -108,12 +108,12 @@ The grid crosses 5 samplers x 7 potential-function conditions, which already
 contains every ablation cell without a separate flag:
 
 - **Neither** = a non-adaptive sampler (`random`/`halton`) + `potential_fn="none"` -- plain domain randomization, no curriculum sophistication at all.
-- **Adaptive sampler only** = `ce`/`mab`/`bo` + `potential_fn="none"` -- VerifAI steers new tasks toward regions with low raw-return feedback, but nothing ever gets replayed.
+- **Adaptive sampler only** = `ce`/`mab`/`sa` + `potential_fn="none"` -- VerifAI steers new tasks toward regions with low raw-return feedback, but nothing ever gets replayed.
 - **ACL only** = `random`/`halton` + a real potential function -- new tasks are plain domain randomization, but the PLR buffer replays by learning potential.
-- **Both** = `ce`/`mab`/`bo` + a real potential function -- the full mix-and-match combination, feedback unified as described above.
+- **Both** = `ce`/`mab`/`sa` + a real potential function -- the full mix-and-match combination, feedback unified as described above.
 
 `acl_bench/plot_results.py` renders this 2x2 explicitly (averaging over the
-6 real potential functions for "ACL"/"both", and over `ce`/`mab`/`bo` for
+6 real potential functions for "ACL"/"both", and over `ce`/`mab`/`sa` for
 "adaptive sampler") per environment.
 
 ## Environments
@@ -164,6 +164,11 @@ sampler-independent set of 15 held-out task configurations (3 episodes each)
 its own curriculum happened to pick.
 
 ## Results
+
+> **Status:** everything in this section comes from the *first* grid, which
+> used Bayesian optimization (`bo`) instead of the `sa` sampler that now
+> replaces it, and a fixed 60k-step budget. Convergence runs to choose a
+> defensible budget, and a re-run of the grid with `sa`, are the next steps.
 
 Full grid: 3 envs x 5 samplers x 7 potential-function conditions x 3 seeds =
 315 runs, 60k environment steps each, ~131 minutes of total compute on a
@@ -232,17 +237,19 @@ difference at all between random, Halton and the bandit.)
 This is a fast proof-of-concept sweep, not a statistically rigorous
 benchmark: 3 seeds per cell, 60k environment steps per run, and a single
 architecture/hyperparameter setting carried over from SIPACL's own PPO
-rather than tuned per combination or per environment. Bayesian optimization
-in particular gets much slower as its per-run task history grows (30ms/sample
-at 30 samples to over 100ms/sample by 120 in isolation; a mean 227s per full
-CartPole run in the grid vs. ~5s for the other samplers) -- its GP refit is
-the bottleneck, not the RL training itself. Pendulum did not learn at 60k
-steps, so its results carry no information; the "neither" baseline has only
-6 runs per env versus 36-54 for the other ablation cells; and the p-values
-above are unadjusted for multiple comparisons. A stronger version of this
-study would need a much larger step budget (especially for Pendulum), more
-seeds, and a cheaper stand-in for `bo`. Treat the numbers as
-a working prototype's first read, not final answers -- the
+rather than tuned per combination or per environment. Bayesian optimization,
+used in this grid, was dropped afterward: its GP refit grew with the run's
+task history (30ms/sample at 30 samples to over 100ms/sample by 120 in
+isolation; a mean 227s per full CartPole run in the grid vs. ~5s for the other
+samplers) and was the bottleneck, not the RL training itself. Pendulum did not
+learn at 60k steps, so its results carry no information; the "neither"
+baseline has only 6 runs per env versus 36-54 for the other ablation cells
+(minimum detectable effect at that sample size is ~1.2 SD -- see
+`python -m acl_bench.timing_report`); and the p-values above are unadjusted
+for multiple comparisons. A stronger version of this study needs a step
+budget matched to each environment's convergence (see
+`acl_bench/convergence.py`) and more seeds on the cheap conditions. Treat the
+numbers as a working prototype's first read, not final answers -- the
 framework (`acl_bench/scenic_sampling.py`, `acl_bench/potential/functions.py`,
 `acl_bench/curriculum/plr.py`, `acl_bench/envs/registry.py`) is built so
 that re-running with a larger budget, more seeds, more environments, or
@@ -261,6 +268,8 @@ acl_bench/
   curriculum/plr.py               PLR replay buffer, unifying sampler feedback and replay score
   ppo.py                          PPO training loop (SIPACL-style, discrete + continuous actions)
   experiment.py                   env x sampler x potential-fn x seeds grid runner -> results/grid_results.csv
+  convergence.py                  long single-env runs with periodic held-out eval -> learning curves
+  timing_report.py                compute breakdown + signal-vs-noise tables for a grid CSV
   plot_results.py                 renders the charts above
 results/                          grid_results.csv + generated charts (checked in)
 ```
