@@ -112,7 +112,7 @@ class RunLog:
     lp_scores: list = field(default_factory=list)
     # (env steps so far, held-out eval return, mean of last 20 training episodes)
     checkpoints: list = field(default_factory=list)
-    # one dict per on_checkpoint call: {"step": ..., **metrics}; includes step 0 (untrained)
+    # one dict per on_checkpoint(step, agent) call: {"step": ..., **metrics}; includes step 0 (untrained)
     checkpoint_metrics: list = field(default_factory=list)
 
 
@@ -154,7 +154,7 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
 
     log = RunLog()
     if on_checkpoint is not None:
-        log.checkpoint_metrics.append({"step": 0, **on_checkpoint(agent)})
+        log.checkpoint_metrics.append({"step": 0, **on_checkpoint(0, agent)})
 
     params, task_idx, mode = curriculum.pick_task()
     env = env_spec.make_env(params)
@@ -264,7 +264,7 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
         steps_done = (_iteration + 1) * cfg.num_steps
         if on_checkpoint is not None and checkpoint_every and (
                 steps_done % checkpoint_every < cfg.num_steps or _iteration == num_iterations - 1):
-            log.checkpoint_metrics.append({"step": steps_done, **on_checkpoint(agent)})
+            log.checkpoint_metrics.append({"step": steps_done, **on_checkpoint(steps_done, agent)})
         if eval_set is not None and eval_every_steps and (
                 steps_done % eval_every_steps < cfg.num_steps or _iteration == num_iterations - 1):
             recent = log.episode_returns[-20:]

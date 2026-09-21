@@ -56,9 +56,9 @@ SAMPLER_NAMES = NON_ADAPTIVE_SAMPLERS + ADAPTIVE_SAMPLERS
 # sa: `T` initial temperature, `decay_rate` proposal-width decay per step within an
 #     epoch, `iterations` steps per epoch before re-heating.
 DEFAULT_SAMPLER_PARAMS = {
-    "ce": {"buckets": 8, "alpha": 0.9, "thres": 0.0},
-    "mab": {"buckets": 8, "thres": 0.0},
-    "sa": {"T": 1.0, "decay_rate": 0.9, "iterations": 20},
+    "ce": {"buckets": 5, "alpha": 0.9, "thres": 0.0},      # VerifAI's own defaults
+    "mab": {"buckets": 5, "thres": 0.0},                    # (alpha is unused by mab)
+    "sa": {"T": 1.0, "decay_rate": 0.9, "iterations": 20},   # VerifAI has no defaults for SA: these are ours
 }
 
 # num_epoch is how many temperature-reset rounds SA runs before raising

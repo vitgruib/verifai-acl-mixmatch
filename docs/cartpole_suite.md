@@ -127,11 +127,10 @@ The hard part is noise, and the reference section below explains how much of it 
    Stage 0  CALIBRATE   How long must training run? How noisy is it?
               |
               v
-   Stage 1  MAIN        The 8 main methods, about 100 runs each
-              |
-              v
-   Stage 2  KNOBS       Variants that turn one setting at a time
-                        (a rough check, not a precise measurement)
+   Stage 1  MAIN        The 8 main methods, 100 runs each; every setting
+                        held at a standard value (an existence test)
+
+   Stage 2  (parked)    Turning individual settings up and down
 ```
 
 The methods and their settings are in docs/ablation.md.
@@ -346,18 +345,20 @@ three adaptive samplers are run at full depth rather than picking one by screeni
   learning rate) for all methods. Train 10 more runs as the reference population, then
   build and lock E6, E7 and POOL.
 - **Stage 1, the eight main methods** (`N`, `A`, `S_ce`, `S_mab`, `S_sa`, `B_ce`, `B_mab`,
-  `B_sa`) at the number of runs Stage 0's measured SD calls for. There is **no small-run
+  `B_sa`), **100 runs each** (800 runs), every setting fixed at a standard value; agent
+  snapshots are saved so grading can be redone with sections built later. There is **no small-run
   screening stage**: with the noise measured, 3-5 runs could detect only differences of
   about 0.2-0.3 AUC, so a screen would rank methods by noise.
-- **Stage 2, the settings check.** The variants in docs/ablation.md, as effect sizes with
-  intervals, not as tests.
+- **Stage 2, parked.** Turning individual settings up and down (docs/ablation.md). Held
+  for now: every setting stays at its standard value.
 
 ## Build order
 
 1. Batched grader: done, tested against the real environment, ~87x faster.
 2. Locked exam sections E0-E5 (winnable questions only): done.
-3. Runner (independent seeds, checkpointed grading) and comparison code: done. Still to
-   add: logging each training episode's start and task, and the take-off-time score.
+3. Runner (independent seeds, checkpointed grading, optional snapshot saving) with a
+   re-grader, and the comparison code: done. Still to add: logging each training
+   episode's start and task, and the take-off-time score.
 4. Stage 0 calibration, then E6 / E7 / POOL, then Stage 1.
 
 ## Known limits
