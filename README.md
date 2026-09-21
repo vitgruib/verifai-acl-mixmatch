@@ -223,9 +223,10 @@ A design for a single-environment suite (CartPole) lives in
 [docs/cartpole_suite.md](docs/cartpole_suite.md): an LQR oracle
 (`acl_bench/oracle.py`) that separates fixable failures from infeasible starts,
 frozen evaluation sets for specific edge cases (weak actuation, heavy cart, large
-recoverable disturbances, corners) and for measured hard tasks, falsification-based
-evaluation with the VerifAI samplers, convergence-speed metrics, and a staged
-protocol (calibrate, screen, confirm on disjoint seeds). **Only the oracle is
+recoverable disturbances, corners) and for measured hard tasks, convergence-speed
+metrics, a seed-count analysis (CartPole's seed-to-seed variance is large, so small
+effects need dozens of seeds per arm), and a staged protocol (calibrate, screen,
+confirm on disjoint seeds). **Only the oracle is
 built**; the evaluation sets, metrics and runners are not.
 
 ## TODO / future work

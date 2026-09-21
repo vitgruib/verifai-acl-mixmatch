@@ -1,34 +1,42 @@
 # CartPole test suite (design)
 
 Status: **specification, not yet implemented.** Only `acl_bench/oracle.py`
-exists (with tests); the evaluation sets, metrics code and runners below do not.
-The numbers in "Motivating probe" are from one policy and one seed and are
-evidence that the design is worth building, not results.
+exists (with tests). The numbers under "Motivating probe" come from one policy and
+one seed; they justify building the suite, they are not results.
+
+## What the suite measures
+
+The grid trains agents under different combinations of (sampler, ACL, scoring
+function). The suite answers one question about each combination: **does the
+trained agent get better, and does it get better faster, especially on the hard
+CartPole tasks?** Samplers only ever choose training tasks; every agent is judged
+on the same frozen, sampler-independent evaluation sets.
 
 ## Why CartPole
 
 - **Fast**: ~5.4 s per 60k training steps, so a 400k-step run is ~36 s
-  (single process, excluding evaluation).
-- **It has failures to falsify**: 400k-step policies failed (mean return < 195) on
-  15% and 2% of sampled tasks in two sensitivity runs (seeds 1 and 2), so how many
-  failures there are depends heavily on the seed.
-- **It has an oracle**: CartPole's physics linearizes cleanly, so an LQR
-  controller can label which tasks are actually solvable. Acrobot has no such
-  simple oracle and (in earlier sensitivity runs) no outright failures.
+  (single process, excluding evaluation). Seeds are cheap, which matters (see
+  "Statistics").
+- **It has real failures to fix**: 400k-step policies failed (mean return < 195) on
+  15% and 2% of sampled tasks in two sensitivity runs (seeds 1 and 2), so the
+  amount of failure depends heavily on the seed.
+- **It has an oracle**: CartPole's physics linearizes cleanly, so an LQR controller
+  can label which tasks are actually solvable. Acrobot has no such simple oracle
+  and (in earlier runs) no outright failures.
 
 ## Three kinds of failure, and why they must be separated
 
-A policy failing on a task can mean three different things, and a curriculum
-should only be credited or blamed for the first:
+A policy failing on a task can mean three different things. A curriculum should
+only be credited or blamed for the first:
 
 | class | definition | fixable? |
 |---|---|---|
-| **fixable** | the oracle balances the pole from this exact start, the policy does not | yes. This is what ACL and falsification-and-fix should target |
-| **infeasible** | the episode is guaranteed to end on step 1 whatever the policy does (`abs(theta0 + tau*theta_dot0) > 12 deg` or the cart analogue; note a pole starting *past* 12 degrees can be rescued by velocity pointing back) | no. Wasted training episodes, and a falsification sampler will chase them |
+| **fixable** | the oracle balances the pole from this exact start; the policy does not | yes: what ACL and adaptive sampling should reduce |
+| **infeasible** | the episode is guaranteed to end on step 1 whatever the policy does (`abs(theta0 + tau*theta_dot0) > 12 deg` or the cart analogue; a pole starting *past* 12 degrees can be rescued by velocity pointing back) | no: wasted training episodes |
 | **unresolved** | feasible start, oracle also fails | unknown: the oracle is sufficient, not necessary, for solvability |
 
-`acl_bench/oracle.py` implements the labels: discrete LQR on the linearized
-dynamics, run bang-bang in the real environment from the exact initial state.
+`acl_bench/oracle.py` implements the labels: discrete LQR on the linearized dynamics,
+run bang-bang in the real environment from the exact initial state.
 `survival_steps == 500` proves solvable; failure only means "not known solvable".
 
 ### Motivating probe (one 400k-step policy, seed 1, 1000 Halton-sampled (task, start) pairs)
@@ -40,10 +48,10 @@ dynamics, run bang-bang in the real environment from the exact initial state.
 | oracle solves | 94.2% |
 
 The policy's 167 failures split into 50 infeasible, 8 unresolved and **109
-fixable**, an 11.6% fixable failure rate. The oracle was never beaten by the
-policy (0 of 8 oracle failures), so it is not obviously too conservative.
+fixable** (an 11.6% fixable failure rate). The policy never succeeded where the
+oracle failed (0 of 8), so the oracle is not obviously too conservative.
 
-Fixable failure rate by parameter quartile (Q1 = lowest values):
+Fixable failure rate by quartile of each parameter (Q1 = lowest values):
 
 | parameter | Q1 | Q2 | Q3 | Q4 |
 |---|---|---|---|---|
@@ -53,135 +61,166 @@ Fixable failure rate by parameter quartile (Q1 = lowest values):
 | `masspole` | 7.6% | 8.8% | 15.4% | 14.8% |
 | `init_range` | 10.0% | 10.8% | 12.9% | 12.9% |
 
-Weak push (force Q1) with a heavy cart (mass Q4): **70%** fixable failure
-(39/56). This is the clearest falsifiable edge case found so far, and it is
-fixable, not infeasible. It also revises an earlier sensitivity finding:
-`init_range` looked like the top parameter for raw return, but on
-oracle-solvable pairs it barely moves failures; its raw-return effect was
-mostly the ~5% of starts that are unrecoverable.
+Weak push (force Q1) with a heavy cart (mass Q4): **70%** fixable failure (39/56).
+This is the clearest fixable edge case found so far. It also revises an earlier
+sensitivity finding: `init_range` looked like the top parameter for raw return, but on
+oracle-solvable pairs it barely moves failures; its raw-return effect was mostly the
+~5% of starts that are unrecoverable.
 
 ## Task parameters
 
-The task is `tau = (length, masspole, masscart, force_mag, init_range)`; an
-*episode* is `(tau, s0, seed)` where `s0` is the exact initial state. Bounds are
-those in `acl_bench/envs/param_cartpole.py`:
+A task is `tau = (length, masspole, masscart, force_mag, init_range)`; an *episode* is
+`(tau, s0)` where `s0` is the exact initial state. Bounds are those in
+`acl_bench/envs/param_cartpole.py`:
 
-| parameter | bounds | role |
-|---|---|---|
-| `force_mag` | 4-16 N | actuator authority; the dominant fixable-failure driver in the probe |
-| `masscart` | 0.5-2.0 kg | inertia the push must move; interacts with `force_mag` |
-| `length` | 0.25-1.5 m (half-length) | pole time constant |
-| `masspole` | 0.05-0.5 kg | weak effect in the probe |
-| `init_range` | 0.05-0.3 | start perturbation size; drives *infeasible* starts more than policy weakness |
+| parameter | bounds | bottom quarter | top quarter | role |
+|---|---|---|---|---|
+| `force_mag` | 4-16 N | [4, 7] | [13, 16] | actuator authority; dominant fixable-failure driver |
+| `masscart` | 0.5-2.0 kg | [0.5, 0.875] | [1.625, 2.0] | inertia the push must move; interacts with `force_mag` |
+| `length` | 0.25-1.5 m (half-length) | [0.25, 0.5625] | [1.1875, 1.5] | pole time constant |
+| `masspole` | 0.05-0.5 kg | [0.05, 0.1625] | [0.3875, 0.5] | weak effect |
+| `init_range` | 0.05-0.3 | [0.05, 0.1125] | [0.2375, 0.3] | start perturbation; drives *infeasible* starts more than policy weakness |
 
-Derived difficulty coordinate for slicing and reporting:
-`authority = force_mag / ((masspole + masscart) * g)` (probe range 0.19-2.22).
+Derived difficulty coordinate for reporting:
+`authority = force_mag / ((masspole + masscart) * g)` (range ~0.19-2.22).
 
-Training-time factors are the grid's: sampler x ACL x scoring function (58
-cells). PPO hyperparameters stay fixed (see README). The **step budget `B` is not
-fixed yet**: Stage 0 sets it from a convergence calibration, because the earlier
-~400k estimate came from code that has since been fixed.
+Training-time factors are the grid's (sampler x ACL x scoring function, 58 cells).
+PPO hyperparameters stay fixed. The **step budget `B` is set in Stage 0**, not assumed.
+
+## Evaluation protocol
+
+- **One rollout per `(tau, s0)` pair, deterministic policy (argmax action).** This
+  removes rollout noise, so a pair's outcome is reproducible for a given agent and the
+  only noise left is which pairs were sampled (binomial) and training-seed variance.
+- **Success** = survives 500 steps. **Learnable pair** = feasible start and
+  oracle-solvable. Headline metrics use learnable pairs only; raw all-pairs numbers
+  are reported alongside.
+- **Frozen, paired sets.** Every set is a fixed list of pairs generated once from a
+  seed and stored with its oracle labels, so all agents face identical pairs.
 
 ## Evaluation sets
 
-Every set is a frozen list of `(tau, s0)` pairs generated once from a fixed seed
-and stored with its oracle labels. All agents are scored on identical pairs
-(paired comparison, which removes task-sampling noise; seed-to-seed noise in
-earlier runs was large). "Learnable" = feasible start and oracle-solvable; the
-headline metrics are computed on learnable pairs only, with raw (all-pairs)
-numbers reported alongside.
+Sets differ in *which part of the task space* they probe. Unless stated, parameters
+not named are drawn uniformly over the full box, and `s0` is drawn uniformly within
+`init_range`. Sizes are pairs before the learnable filter; the standard error of a
+success rate from `n` pairs is 0.017 (n=300, p=0.9), 0.024 (150), 0.030 (100) and
+about 0.05 (100, p=0.5).
 
-| set | contents | question it answers |
-|---|---|---|
-| **E0 Uniform** | ~300 pairs uniform over the box | average-case generalization |
-| **E1 Weak actuation** | `force_mag` in [4, 7] (bottom quartile), rest uniform, ~150 pairs; **E1b** adds `masscart` in [1.5, 2.0], ~100 pairs | the largest fixable failure region found |
-| **E2 Heavy cart** | `masscart` top quartile, ~100 pairs | second-largest region |
-| **E3 Long / heavy pole** | `length` top quartile; `masspole` top quartile, ~100 pairs each | slower dynamics, weaker in the probe |
-| **E4 Large recoverable disturbance** | `init_range` in [0.2, 0.3] with *feasible* starts only, ~100 pairs | recovery from big-but-recoverable perturbations, without infeasible starts contaminating it |
-| **E5 Corners** | all 32 vertices of the parameter box x 10 starts each | extremes that uniform training rarely visits |
-| **E6 Hard-but-solvable** | from a 5000-pair pool, pairs the oracle solves but at least half of a reference population fails, ~200 pairs | difficult tasks isolated by measured difficulty, not by region |
-| **E7 Easy control** | pairs every reference agent solves, ~100 pairs | regression check: a curriculum must not degrade easy tasks |
+| set | contents | question | pre-declared prediction |
+|---|---|---|---|
+| **E0 Uniform** | 300 pairs uniform over the box; **E0-lite** is a fixed 100-pair subset used at every learning-curve checkpoint | average-case generalization | none |
+| **E1 Weak actuation** | `force_mag` in [4, 7], 150 pairs | the largest fixable failure region | adaptive samplers and failure-seeking scores over-visit it, raising E1 |
+| **E1b Weak push + heavy cart** | `force_mag` in [4, 7] and `masscart` in [1.625, 2.0], 100 pairs | the worst corner found (70% failure in the probe) | same, most strongly |
+| **E2 Heavy cart** | `masscart` in [1.625, 2.0], 100 pairs | second-largest region | as E1 |
+| **E3 Slow / heavy pole** | `length` in [1.1875, 1.5], and separately `masspole` in [0.3875, 0.5], 100 pairs each | weak effects in the probe | little difference; a sanity slice |
+| **E4 Large recoverable disturbance** | `init_range` in [0.2375, 0.3] with *feasible* starts only, 100 pairs | recovery from big-but-recoverable perturbations, without infeasible starts contaminating it | little difference |
+| **E5 Corners** | all 32 vertices of the parameter box x 10 starts | extremes uniform training rarely visits | space-filling `halton` covers corners better than `random` |
+| **E6 Hard-but-solvable** | pairs from a 5000-pair pool that the oracle solves and at least half of a reference population fails; target 150-250 pairs, **E6-lite** = fixed 60-pair subset | difficult tasks isolated by measured difficulty, not by region | ACL replay of failures raises E6 |
+| **E7 Easy control** | pairs every reference agent solves, 100 pairs | regression check: a method must not buy hard-task gains by degrading easy tasks | no loss expected |
 
-The **reference population** for E6/E7 is baseline-arm agents (`random`, ACL
-off) trained in Stage 0 on seeds *not* used for any evaluated agent, so
-difficulty is not defined by the agents being compared. E6 could still favor
-methods that differ from the baseline; that limitation is stated, not solved.
+The predictions are hypotheses to test, not findings; the suite is useful partly
+because a method can be *wrong* about them.
 
-### Falsification-based evaluation
+**Reference population** (for E6/E7): 10 baseline-arm agents (`random`, ACL off)
+trained in Stage 0 on seeds not used by any evaluated agent, so difficulty is not
+defined by the agents being compared. If the pool yields fewer than 150 hard pairs,
+enlarge the pool. E6 could still favor methods that differ from the baseline; that
+is a stated limitation.
 
-A frozen final policy is attacked by the same VerifAI samplers, in test mode:
-
-| | |
-|---|---|
-| **F1 Falsification search** | `ce`, `mab`, `sa` each propose candidate tasks (start drawn per candidate with a fixed seed) for 200 evaluations x 3 searcher seeds, minimizing return; a hit counts only if the pair is learnable |
-| F1 metrics | fixable-failure discovery rate (hits / evaluations); evaluations to first hit; number of distinct failure modes (clusters in normalized parameter space) |
-| **F2 Fix loop** (phase 2) | inject F1's found failures into training, retrain, re-run F1 with fresh searcher seeds and score on E6 (held out from the injected points) to measure repair, not memorization |
-
-A more robust policy has a *lower* discovery rate. This measures what the
-mean held-out return does not: how easy the policy is to break.
+**Difficulty-stratified reporting.** Alongside the named sets, report success in bins
+of the pool's reference failure fraction (0-10%, 10-50%, 50-90%, 90%+), so
+performance is visible as a function of measured difficulty.
 
 ## Metrics
 
 **Primary (two, fixed in advance):**
-1. `AUC_E0`: area under the learnable-pair success-rate curve on E0 from step 0
-   to `B` (sample efficiency in one number).
-2. `success_E6`: learnable-pair success rate on the hard set at step `B`.
+1. `AUC_E0`: mean E0-lite success over all checkpoints from step 0 to `B` (sample
+   efficiency in one number).
+2. `success_E6`: learnable-pair success on the full hard set, averaged over the final
+   three checkpoints to reduce evaluation noise.
 
-**Performance** (at step `B`, per set): success rate = fraction of learnable
-pairs survived to 500 steps; mean return (secondary); **worst-slice success** =
-minimum over E1-E5; **CVaR10** = mean success of the worst 10% of E0 tasks.
+**Performance** (final three checkpoints, per set): success rate on E1, E1b, E2, E3,
+E4, E5, E7; `S_edge` = macro-average success over E1-E5 (a min over slices would be
+biased downward by noise); mean return on E0 as a secondary check.
 
-**Convergence speed** (checkpoints every ~20k steps on a small fixed E0
-subset): steps to 50 / 80 / 90% success (right-censored if never reached, so
-compare with survival methods, not by dropping runs); **plateau step** = the
-earliest checkpoint from which the curve stays within 0.02 of its final level
-(a formal criterion; the earlier plateau estimates were eyeballed); steps to
-50% success on E6; final instability = SD of success over the last 5
-checkpoints; across-seed SD of final success.
+**Convergence speed** (checkpoints every 20k steps on E0-lite):
+- steps to reach 50 / 80 / 95% of the *baseline arm's* plateau success (thresholds
+  are relative so they are reachable), right-censored if never reached, compared
+  with survival methods rather than by dropping runs;
+- **plateau step** = the earliest checkpoint from which the curve stays within 0.02
+  of its final level (a formal criterion, replacing eyeballing);
+- instability = SD of E0-lite success over the last 5 checkpoints;
+- E6-lite curve (every 40k steps) and its AUC, as a secondary read on how fast hard
+  tasks are learned.
 
-**Mechanism diagnostics** (why a method worked, not whether):
-training-time task mix (share of training episodes that were infeasible,
-easy, or hard-but-solvable); wasted-episode fraction (episodes ending within 2
-steps); rank correlation between each scoring function's score and true
-difficulty over the replay buffer (does the score actually rank hard tasks
-higher?); replay share by difficulty bin; sampler concentration and coverage of
-E1.
+**Mechanism diagnostics** (why a method behaved as it did, not whether):
+training-time task mix (share of training episodes that were infeasible, easy, or
+hard-but-solvable, labeled by the oracle and reference population; this requires
+logging each training episode's `s0`); wasted-episode fraction (episodes ending in
+at most 2 steps); rank correlation between each scoring function's score and true
+difficulty over the replay buffer (does it actually rank hard tasks higher?); replay
+share by difficulty bin; sampler concentration and coverage of the E1 region.
 
 **Cost:** environment steps, wall-clock, sampler overhead.
 
-## Protocol
+## Statistics
 
-- **Unit of replication is the training seed.** Task pairs are shared across
-  agents (paired), so seeds are the only remaining source of variance.
-- **A-priori contrasts** on the two primary metrics: C1 ACL only vs. neither;
-  C2 adaptive sampler only vs. neither; C3 both vs. neither; C4 best scoring
-  function vs. `neg_return` within ACL-on. Holm correction across them.
-- **Stages.** *Stage 0*: calibrate `B` from baseline convergence, train the
-  reference population, validate and freeze E0-E7. *Stage 1 (screening)*: all
-  58 cells, 3 seeds, ranked by primary metrics; not for claims. *Stage 2
-  (confirmation)*: baselines plus the top screened cells, 10 seeds, on seeds
-  disjoint from screening, so the selected cell is not tested on the data that
-  selected it. *Stage 3*: F1 on confirmed agents, then F2.
-- **Report** effect sizes with bootstrap confidence intervals over seeds, not
-  only p-values.
+- **The unit of replication is the training seed.** Pairs are shared across agents
+  (paired), so seeds are the remaining source of variance, and it is large: two
+  earlier CartPole policies differed by mean return 251 vs 465.
+- **Seeds needed** (per arm, two-sided alpha = 0.0125 for 4 contrasts, 80% power,
+  `n = 2 (2.50 + 0.84)^2 (s/D)^2`) for seed-to-seed SD `s` in success rate and a true
+  difference `D`:
 
-## Cost, and one engineering requirement
+  | | D = 0.03 | D = 0.05 | D = 0.10 |
+  |---|---|---|---|
+  | s = 0.05 | 62 | 23 | 6 |
+  | s = 0.10 | 248 | 90 | 23 |
+  | s = 0.15 | 558 | 201 | 51 |
 
-At ~11k steps/s, a 400k-step run is ~36 s, so screening (58 x 3 = 174 runs) is
-~1.7 h single-process and confirmation (say 8 arms x 10 seeds) ~48 min. These
-are training-only estimates, not measured end to end.
+  `s` is unknown until Stage 0 measures it. If it is near 0.10, detecting a
+  5-point difference needs ~90 seeds per arm, and 10 seeds could only detect
+  ~15 points. CartPole is cheap enough to buy power with seeds (50 seeds x 4 arms
+  x 36 s is ~2 h of training, single process), but not to run the whole grid at that
+  depth; the full grid can only be screened.
+- **A-priori contrasts** on the two primary metrics: C1 ACL only vs. neither; C2
+  adaptive sampler only vs. neither; C3 both vs. neither; C4 best scoring function vs.
+  `neg_return` within ACL-on. Holm correction across them. C1 uses `pvl_gae` (SIPACL's
+  default); the adaptive sampler and scoring function for C2-C4 are chosen by
+  screening and confirmed on fresh seeds.
+- **Report** effect sizes with bootstrap confidence intervals over seeds, not only
+  p-values.
 
-**Evaluation would cost as much as training** if done naively: the sets above
-total ~1,570 pairs x up to 500 steps, i.e. up to ~800k policy steps per final agent, and
-learning-curve checkpoints multiply that. The evaluator therefore needs to be
-**batched** (step many pairs in lockstep with one batched policy forward pass);
-that is a hard requirement of building this suite, not an optimization.
+## Stages
+
+- **Stage 0, calibrate and freeze.** Train the baseline arm for >= 20 seeds to 1M
+  steps with checkpoints: set `B` by the plateau criterion, measure `s` for both
+  primary metrics (fixing the confirmation seed count), and define the relative
+  convergence thresholds. Train 10 more seeds as the reference population. Generate
+  E0-E7 and freeze them with the oracle labels and a checksum; verify each set has
+  enough learnable pairs.
+- **Stage 1, screening.** All 58 cells x 3-5 seeds at budget `B`, ranked by the
+  primary metrics. Used to choose candidates, not to make claims.
+- **Stage 2, confirmation.** The four primary arms plus the screened winners, with
+  the seed count from Stage 0, on seeds disjoint from screening so a selected cell is
+  not tested on the data that selected it.
+
+## Build order
+
+1. `acl_bench/oracle.py` (done, tested).
+2. **A batched evaluator**: step many pairs in lockstep with one batched policy
+   forward pass. Required, not optional: the sets total ~1,570 pairs x up to 500
+   steps, and E0-lite alone across 20 checkpoints is ~1M policy steps, more than
+   twice the ~400k of training.
+3. Set generator and freezer (pairs, oracle labels, checksum).
+4. Checkpointed training runner that logs each training episode's `s0` and task.
+5. Metric computation, then the Stage 0 calibration.
 
 ## Known limits
 
-- Everything here is about CartPole; the conclusions may not transfer.
+- Everything here is about CartPole; conclusions may not transfer.
 - The oracle is sufficient, not necessary, for solvability.
 - The probe used one policy; the failure-region ranking may shift with the policy
-  (the earlier sensitivity runs showed CartPole's binding parameters differed
-  between two seeds).
+  (two earlier CartPole policies had different binding parameters).
 - E6/E7 difficulty is defined by baseline-arm agents.
+- Deterministic evaluation can hide differences a stochastic policy would show.
