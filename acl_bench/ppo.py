@@ -112,11 +112,15 @@ class RunLog:
     lp_scores: list = field(default_factory=list)
     # (env steps so far, held-out eval return, mean of last 20 training episodes)
     checkpoints: list = field(default_factory=list)
+    # one dict per on_checkpoint call: {"step": ..., **metrics}; includes step 0 (untrained)
+    checkpoint_metrics: list = field(default_factory=list)
 
 
 def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
                   device="cpu", eval_set: list[dict] | None = None,
-                  eval_every_steps: int | None = None) -> tuple[RunLog, Agent]:
+                  eval_every_steps: int | None = None,
+                  checkpoint_every: int | None = None,
+                  on_checkpoint=None) -> tuple[RunLog, Agent]:
     """If `eval_set` and `eval_every_steps` are given, the policy is evaluated
     on the held-out tasks every `eval_every_steps` env steps (rounded up to a
     whole PPO iteration), producing a learning curve in `log.checkpoints`."""
@@ -149,6 +153,8 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
     is_discrete = env_spec.action_type == "discrete"
 
     log = RunLog()
+    if on_checkpoint is not None:
+        log.checkpoint_metrics.append({"step": 0, **on_checkpoint(agent)})
 
     params, task_idx, mode = curriculum.pick_task()
     env = env_spec.make_env(params)
@@ -256,6 +262,9 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
                 optimizer.step()
 
         steps_done = (_iteration + 1) * cfg.num_steps
+        if on_checkpoint is not None and checkpoint_every and (
+                steps_done % checkpoint_every < cfg.num_steps or _iteration == num_iterations - 1):
+            log.checkpoint_metrics.append({"step": steps_done, **on_checkpoint(agent)})
         if eval_set is not None and eval_every_steps and (
                 steps_done % eval_every_steps < cfg.num_steps or _iteration == num_iterations - 1):
             recent = log.episode_returns[-20:]

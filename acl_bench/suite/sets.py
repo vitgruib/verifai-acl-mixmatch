@@ -145,6 +145,10 @@ def evaluate_sets(agent, sets: dict[str, PairSet]) -> dict[str, float]:
     reference-difficulty bin on POOL if present."""
     out = {}
     for name, ps in sets.items():
+        if len(ps) == 0:                                   # e.g. no easy pairs found; report, don't warn
+            out.update({f"{name}/n_learnable": 0, f"{name}/success": float("nan"),
+                        f"{name}/success_all": float("nan"), f"{name}/mean_steps": float("nan")})
+            continue
         steps = rollout_steps(agent, ps.params, ps.s0, MAX_STEPS)
         ok, lrn = steps == MAX_STEPS, ps.learnable
         out[f"{name}/n_learnable"] = int(lrn.sum())
