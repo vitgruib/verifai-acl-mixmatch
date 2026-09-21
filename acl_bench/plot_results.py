@@ -122,8 +122,14 @@ def plot_ablation_bars(df: pd.DataFrame, theme_name: str, out_path: str):
             cell(sub, False, True), cell(sub, True, True),
         )
         x = np.arange(4)
-        ax.bar(x, means, yerr=stds, capsize=4, color=ABLATION_COLORS,
-               error_kw=dict(ecolor=theme["secondary"], linewidth=1))
+        # Dots + error bars, not bars: Acrobot/Pendulum returns are large
+        # negatives, and a bar hanging from 0 to -1200 on a truncated axis
+        # implies a zero baseline that isn't meaningful here.
+        for xi, m, s, color in zip(x, means, stds, ABLATION_COLORS):
+            ax.errorbar(xi, m, yerr=s, fmt="o", markersize=9, capsize=5, linewidth=1.6,
+                        color=color, ecolor=theme["secondary"], markeredgecolor=theme["surface"],
+                        markeredgewidth=1.5)
+        ax.margins(x=0.15)
         ax.set_xticks(x)
         ax.set_xticklabels(conditions, rotation=20, ha="right", fontsize=8.5)
         ax.set_title(env, fontsize=11)

@@ -165,9 +165,57 @@ its own curriculum happened to pick.
 
 ## Results
 
-<!-- RESULTS_TABLE -->
+Full grid: 3 envs x 5 samplers x 7 potential-function conditions x 3 seeds =
+315 runs, 60k environment steps each, ~131 minutes of total compute on a
+laptop CPU, of which **83% was Bayesian optimization alone** (mean 227s per
+CartPole run, 62s Acrobot, 20s Pendulum, versus ~5.5s for every other
+sampler). Raw data: [`results/grid_results.csv`](results/grid_results.csv).
 
-<!-- RESULTS_NARRATIVE -->
+**Headline: at this budget, nothing separates from noise.** The 2x2 ablation
+below compares each condition to "neither" (a non-adaptive sampler, ACL off)
+with Welch's t-test on per-run held-out eval return:
+
+| env | neither | adaptive sampler only | ACL only | both |
+|---|---|---|---|---|
+| cartpole (higher better) | 185.0 (n=6) | 195.1, +10.1, p=0.57 (n=9) | 201.6, +16.6, p=0.17 (n=36) | 192.9, +7.9, p=0.49 (n=54) |
+| acrobot (higher better) | -118.7 (n=6) | -109.4, +9.3, p=0.26 (n=9) | -113.7, +5.1, p=0.26 (n=36) | -116.6, +2.2, p=0.62 (n=54) |
+| pendulum (higher better) | -1215.1 (n=6) | -1225.5, -10.4, p=0.73 (n=9) | -1207.4, +7.7, p=0.65 (n=36) | -1208.7, +6.4, p=0.68 (n=54) |
+
+Every difference is small next to the seed-to-seed spread (mean within-cell
+SD: CartPole 43, Acrobot 11, Pendulum 58), and none is close to significant.
+CartPole's "ACL only" is the largest gap (+16.6, p=0.17), and even that is
+well inside the noise. The p-values are unadjusted for the nine comparisons,
+so they, if anything, flatter these results. The honest reading is *no
+detectable effect from either component, alone or combined*, not "they
+don't work": with 3 seeds per cell and only 6 runs in the baseline group,
+this grid could only have detected large effects.
+
+**Don't read the best/worst heatmap cells as findings.** Each cell is the
+mean of 3 runs with a per-cell SD of ~43 on CartPole, so with 105 cells per
+env the extremes (e.g. `halton` + `l1_value_loss` at 250 on CartPole, or
+`bo` + `l1_value_loss` at -167 on Acrobot and -1393 on Pendulum) are what you
+would expect from selection noise alone. The one thing worth a re-run before
+believing anything is `l1_value_loss` paired with `bo`, which is the worst
+cell in all three environments -- that consistency is at least suggestive,
+though it could still be coincidence at n=3.
+
+**Pendulum did not learn.** Every cell sits near -1200, about where an
+untrained policy scores; converged PPO policies reach roughly -200 to -400 and
+typically need far more than 60k steps to get there. Pendulum comparisons at
+this budget are noise and shouldn't count as evidence either way. Acrobot did
+learn (about -110, versus -500 for a policy that never reaches the goal), and
+CartPole partially did (~190 of a possible 500, averaged over held-out tasks
+that include physically hard configurations).
+
+**One real signal: adaptive samplers concentrate their proposals.** Mean
+per-dimension std of sampled task parameters (normalized; 0.289 is the
+uniform-random ceiling): `random` 0.288, `halton` 0.285, `mab` 0.274, `ce`
+0.237, `bo` 0.225. Cross-entropy and Bayesian optimization measurably
+narrow where new tasks come from, as intended -- so the lack of a
+performance effect isn't because the samplers behave identically. (An
+earlier version of this repo, which fed the sampler a separate return-based
+signal instead of the unified potential-function score, showed no diversity
+difference at all between random, Halton and the bandit.)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="results/heatmap_dark.png">
@@ -185,11 +233,16 @@ This is a fast proof-of-concept sweep, not a statistically rigorous
 benchmark: 3 seeds per cell, 60k environment steps per run, and a single
 architecture/hyperparameter setting carried over from SIPACL's own PPO
 rather than tuned per combination or per environment. Bayesian optimization
-in particular gets noticeably slower as its per-run task history grows
-(observed 30ms/sample at 30 samples to over 100ms/sample by 120, and up to
-~85s for a full CartPole run vs. ~5s for the other samplers) -- its GP
-refit is the bottleneck, not the RL training itself. Treat the numbers as
-evidence of *direction and magnitude of effect*, not final answers -- the
+in particular gets much slower as its per-run task history grows (30ms/sample
+at 30 samples to over 100ms/sample by 120 in isolation; a mean 227s per full
+CartPole run in the grid vs. ~5s for the other samplers) -- its GP refit is
+the bottleneck, not the RL training itself. Pendulum did not learn at 60k
+steps, so its results carry no information; the "neither" baseline has only
+6 runs per env versus 36-54 for the other ablation cells; and the p-values
+above are unadjusted for multiple comparisons. A stronger version of this
+study would need a much larger step budget (especially for Pendulum), more
+seeds, and a cheaper stand-in for `bo`. Treat the numbers as
+a working prototype's first read, not final answers -- the
 framework (`acl_bench/scenic_sampling.py`, `acl_bench/potential/functions.py`,
 `acl_bench/curriculum/plr.py`, `acl_bench/envs/registry.py`) is built so
 that re-running with a larger budget, more seeds, more environments, or
