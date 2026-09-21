@@ -1,18 +1,20 @@
-"""Run named arms over shared seeds, evaluating the frozen sets at every checkpoint.
+"""Run named arms over independent replicates, grading the locked exam at every checkpoint.
 
     python -m acl_bench.suite.run_arms --arms N A S_sa B_sa --seeds 1-30 \\
         --steps 400000 --workers 9 --out results/arms.csv
 
-Every arm is trained on the same seeds, so the runs are paired: a given seed gives
-each arm the same network initialization, minibatch order, episode initial-state
-stream, action-noise stream and sampler stream (see run_training). One CSV row per
-(arm, seed, checkpoint); step 0 is the untrained policy.
+Every (arm, replicate) gets its own independent seed (`arm_seed`), so the runs of
+different arms are independent groups and are compared as groups
+(acl_bench/suite/compare.py); runs are not matched seed by seed. A seed fully
+determines a run. One CSV row per (arm, replicate, checkpoint); step 0 is the
+untrained policy. `seed` is the replicate number, `run_seed` the seed actually used.
 """
 from __future__ import annotations
 
 import argparse
 import ast
 import dataclasses
+import hashlib
 import multiprocessing as mp
 import os
 import time
@@ -30,8 +32,16 @@ def parse_seeds(spec: str) -> list[int]:
     return seeds
 
 
+def arm_seed(arm_name: str, replicate: int) -> int:
+    """Independent 32-bit seed for one (arm, replicate). Hashing the arm name means
+    replicate 1 of one arm shares nothing with replicate 1 of another, and adding or
+    reordering arms never changes an existing run's seed."""
+    return int(hashlib.sha256(f"{arm_name}:{replicate}".encode()).hexdigest()[:8], 16)
+
+
 def run_job(job: tuple) -> list[dict]:
-    arm_name, seed, steps, checkpoint_every, sets_dir, overrides = job
+    arm_name, replicate, steps, checkpoint_every, sets_dir, overrides = job
+    seed = arm_seed(arm_name, replicate)
     import torch
     torch.set_num_threads(1)
     from acl_bench.envs.registry import ENV_SPECS
@@ -48,17 +58,17 @@ def run_job(job: tuple) -> list[dict]:
                           checkpoint_every=checkpoint_every, on_checkpoint=lambda a: evaluate_sets(a, sets))
     wall = time.time() - t0
     n_new = sum(m == "new" for m in log.episode_modes)
-    return [{"arm": arm_name, "seed": seed, "learning_rate": cfg.learning_rate, **m, "n_episodes": len(log.episode_modes), "n_new": n_new,
+    return [{"arm": arm_name, "seed": replicate, "run_seed": seed, "learning_rate": cfg.learning_rate, **m, "n_episodes": len(log.episode_modes), "n_new": n_new,
              "wall_time_sec": wall} for m in log.checkpoint_metrics]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--arms", nargs="+", required=True, help=f"names from ablation.ARMS, or 'family:<name>'")
-    parser.add_argument("--seeds", default="1-10", help="e.g. 1-30 or 1,2,5-8")
+    parser.add_argument("--seeds", default="1-10", help="replicate numbers, e.g. 1-30 or 1,2,5-8; each arm derives its own seeds from them")
     parser.add_argument("--steps", type=int, default=DEFAULT_BUDGET)
     parser.add_argument("--checkpoint-every", type=int, default=CHECKPOINT_EVERY)
-    parser.add_argument("--sets", default="frozen_sets/cartpole_v1")
+    parser.add_argument("--sets", default="frozen_sets/cartpole_v2")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--out", required=True)
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",

@@ -142,9 +142,10 @@ the policy fails (mean return < 195) on 15% / 2% of tasks:
 | `length` | 0.25-1.5 | -0.00 / 0.09 | inconsistent | weak |
 | `masspole` | 0.05-0.5 | 0.01 / 0.00 | none | inert |
 
-A later oracle probe (see [docs/cartpole_suite.md](docs/cartpole_suite.md)) found
+A later probe with a hand-built expert controller (since removed; see
+[docs/cartpole_suite.md](docs/cartpole_suite.md)) found
 that ~5% of uniformly sampled starts are guaranteed one-step failures, concentrated
-at large `init_range`, and that on oracle-solvable pairs `init_range` barely
+at large `init_range`, and that on winnable questions `init_range` barely
 changes the policy's failure rate (10.0% to 12.9% across quartiles) while
 `force_mag` (37.1% to 0.9%) and `masscart` (1.7% to 22.3%) dominate. So
 `init_range`'s importance above mostly reflects unrecoverable starts, not policy
@@ -211,7 +212,7 @@ python -m acl_bench.convergence --env cartpole --seed 1 --total-timesteps 100000
 # do an environment's task parameters matter?
 python -m acl_bench.param_sensitivity --env cartpole --total-timesteps 400000
 
-python -m pytest tests                # ACL fidelity vs. SIPACL + oracle checks
+python -m pytest tests                # ACL fidelity vs. SIPACL, seeding, grader and exam checks
 python -m acl_bench.timing_report     # compute breakdown + signal-vs-noise tables
 python -m acl_bench.plot_results      # heatmap + 2x2 ablation charts
 python -m acl_bench.plot_convergence  # learning curves
@@ -219,15 +220,16 @@ python -m acl_bench.plot_convergence  # learning curves
 
 ## Test suite
 
-A design for a single-environment suite (CartPole) lives in
-[docs/cartpole_suite.md](docs/cartpole_suite.md): an LQR oracle
-(`acl_bench/oracle.py`) that separates fixable failures from infeasible starts,
-frozen evaluation sets for specific edge cases (weak actuation, heavy cart, large
-recoverable disturbances, corners) and for measured hard tasks, convergence-speed
-metrics, and a staged protocol. A pilot found run-to-run noise large and pairing runs by
-seed nearly useless (the shared luck is gone within 20,000 steps), so detecting a
-0.05 difference takes about 100 seeds per arm. **Only the oracle is
-built**; the evaluation sets, metrics and runners are not.
+A single-environment suite (CartPole) is described in plain English, chunk by chunk, at
+the top of [docs/cartpole_suite.md](docs/cartpole_suite.md): treating training as a
+black box that yields agent snapshots, the suite is a locked exam (sections for weak
+push, heavy cart, big shove, extremes and hard questions), a fast grader, a scorecard,
+and comparison rules. Impossible questions were removed once and the expert that found
+them was discarded. Runs are compared as independent groups: a pilot showed matching
+them seed by seed removed almost no noise (the shared luck is gone within 20,000 steps),
+and that detecting a 0.05 difference takes about 100 runs per method. The exam
+(E0-E5), grader, runner and comparison code are built and tested; the hard/easy sections
+(E6, E7) and the calibration run are not.
 
 ## TODO / future work
 
@@ -240,7 +242,7 @@ built**; the evaluation sets, metrics and runners are not.
   Scenic-sampled `VerifaiRange` positions (object placement is what Scenic is for),
   plus grid size and obstacle count. Edge cases to falsify: a key behind its own
   locked door or an unreachable goal, a goal next to lava, narrow gaps. A BFS solver
-  would give exact solvability, the analogue of the CartPole LQR oracle. Not yet
+  would give exact solvability, usable once to clean the exam as CartPole's expert was. Not yet
   done: parameter sensitivity, a convergence check (sparse reward and partial
   observability may make an MLP policy slow to train; `FullyObsWrapper` may be
   needed). Unsolvable layouts will look like permanent counterexamples to
@@ -283,7 +285,7 @@ the plateaus should be re-checked before fixing a budget.
 ```
 acl_bench/
   envs/param_cartpole.py, param_acrobot.py   task-parameterized gym envs
-  oracle.py                                  CartPole solvability oracle (LQR) for the test suite
+  suite/                                     CartPole test suite: grader, exam sections, runner, arms, comparison
   envs/registry.py                           env specs (bounds, step cap, success return, .scenic file)
   scenic_scenarios/*.scenic                  VerifaiRange-declared task parameters, one per env
   scenic_sampling.py                         Scenic-mediated samplers + the generate()/feedback loop
@@ -294,7 +296,7 @@ acl_bench/
   convergence.py                             long runs with periodic held-out evaluation
   param_sensitivity.py                       do the task parameters matter?
   timing_report.py, plot_results.py, plot_convergence.py
-tests/                                       SIPACL-fidelity and oracle tests
+tests/                                       SIPACL-fidelity, seeding, grader and exam tests
 docs/cartpole_suite.md                       test-suite design
 results/                                     (empty; outputs of the scripts above)
 ```

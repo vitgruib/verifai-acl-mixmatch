@@ -6,9 +6,9 @@ ranges are my choices, bracketing each default, not tuned.
 
 ## Structure
 
-Two levels, both compared **paired by seed** (docs/cartpole_suite.md, "Paired
-design"): every arm is trained on the same seeds, and every variant is compared with
-a named reference arm seed by seed.
+Two levels, both compared as **independent groups of runs** (docs/cartpole_suite.md,
+"Comparing methods"): every arm is trained on its own seeds, and every variant is
+compared with a named reference arm.
 
 1. **Component ablation** (the 2x2): which components do anything at all.
 2. **Hyperparameter ablation**: whether that conclusion depends on how a component is
@@ -93,8 +93,9 @@ of wall-clock per run, so roughly 12 s per 400k-step run (extrapolated). All 39 
 30 seeds is 1,170 runs, about 4 h.
 
 **What that can and cannot see.** The pilot found run-to-run noise large (the SD of a
-paired difference in whole-curve success, `AUC_E0`, is about 0.15) and pairing by seed
-barely helps (docs/cartpole_suite.md, "Paired design"). With 30 seeds the smallest
+difference in whole-curve success, `AUC_E0`, between two arms is about 0.15) and matching
+runs seed by seed barely helped, so it was dropped (docs/cartpole_suite.md, "Comparing
+methods"). With 30 runs per arm the smallest
 difference detectable is about 0.09 AUC, so these ablations can only reveal *large*
 sensitivity. They are a coarse screen: a hyperparameter that swings the result by
 0.1 or more will show; a subtle one will not, and its absence should not be read as
@@ -103,7 +104,7 @@ sensitivity. They are a coarse screen: a hyperparameter that swings the result b
 ## Reading the results
 
 Hyperparameter ablations are **sensitivity analyses, not confirmatory tests**: report
-each variant's paired difference from its reference with a bootstrap confidence
+each variant's difference from its reference with a bootstrap confidence
 interval, and look for structure (does a primary effect survive across the range, or
 flip?), not for isolated p-values. Within a family, Holm-correct if p-values are
 quoted. A component effect that holds across the ranges is robust; one that appears

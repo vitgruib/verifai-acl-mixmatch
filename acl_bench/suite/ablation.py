@@ -3,8 +3,8 @@ component ablation) and the hyperparameter ablations around them.
 
 Every hyperparameter ablation is one-factor-at-a-time against a named
 `reference` arm (except the replay_prob x rank_alpha grid), and every comparison
-is paired by seed (docs/cartpole_suite.md, "Paired design"). Sources and
-rationale for each value are in docs/ablation.md.
+is made between independent groups of runs (docs/cartpole_suite.md, "Comparing
+methods"). Sources and rationale for each value are in docs/ablation.md.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class Arm:
     ppo: dict = field(default_factory=dict)             # PPOConfig overrides
     sampler_params: dict = field(default_factory=dict)  # scenic_sampling.DEFAULT_SAMPLER_PARAMS overrides
     family: str = "primary"
-    reference: str | None = None                        # arm this variant is compared against, paired by seed
+    reference: str | None = None                        # arm this variant is compared against
     changes: str = ""                                    # human-readable delta from the reference
 
 
@@ -98,7 +98,7 @@ def family(name: str) -> list[Arm]:
     return [a for a in ARMS.values() if a.family == name]
 
 
-def paired_comparisons() -> list[tuple[str, str]]:
+def comparisons() -> list[tuple[str, str]]:
     """(variant, reference) pairs to analyse, including the primary contrasts."""
     pairs = [(a.name, a.reference) for a in ARMS.values() if a.reference]
     for sampler in ADAPTIVE_SAMPLERS:

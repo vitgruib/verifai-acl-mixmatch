@@ -1,4 +1,4 @@
-"""Paired-by-seed comparisons need a seed to fix the shared randomness."""
+"""A seed must fully determine a run, and each arm must get independent seeds."""
 import numpy as np
 
 from acl_bench.envs.registry import ENV_SPECS
@@ -26,13 +26,10 @@ def test_different_seeds_differ():
     assert train(1).episode_returns != train(2).episode_returns
 
 
-def test_same_seed_shares_the_new_task_stream_across_arms():
-    """Common random numbers: the j-th brand-new task is identical whether or not
-    ACL is on, because the sampler stream is only consumed by new draws."""
-    def new_tasks(log):
-        return [tuple(p.values()) for p, m in zip(log.episode_params, log.episode_modes) if m == "new"]
-    off, on = new_tasks(train(3, acl=False)), new_tasks(train(3, acl=True))
-    k = min(len(off), len(on))
-    assert k > 10
-    assert off[:k] == on[:k]
-
+def test_arm_seeds_are_independent_stable_and_distinct():
+    from acl_bench.suite.run_arms import arm_seed
+    assert arm_seed("N", 1) == arm_seed("N", 1)                       # stable across calls
+    assert arm_seed("N", 1) != arm_seed("A", 1)                       # same replicate, different arm
+    seeds = {arm_seed(a, r) for a in ("N", "A", "B_sa", "S_ce") for r in range(1, 201)}
+    assert len(seeds) == 4 * 200                                     # no collisions
+    assert all(0 <= x < 2 ** 32 for x in seeds)
