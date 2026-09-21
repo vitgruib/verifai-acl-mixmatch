@@ -167,8 +167,9 @@ its own curriculum happened to pick.
 
 > **Status:** everything in this section comes from the *first* grid, which
 > used Bayesian optimization (`bo`) instead of the `sa` sampler that now
-> replaces it, and a fixed 60k-step budget. Convergence runs to choose a
-> defensible budget, and a re-run of the grid with `sa`, are the next steps.
+> replaces it, and a fixed 60k-step budget. The convergence runs below show
+> that budget was well short of a plateau for CartPole and Pendulum; a re-run
+> of the grid with `sa` at per-environment budgets is the next step.
 
 Full grid: 3 envs x 5 samplers x 7 potential-function conditions x 3 seeds =
 315 runs, 60k environment steps each, ~131 minutes of total compute on a
@@ -231,6 +232,50 @@ difference at all between random, Halton and the bandit.)
   <source media="(prefers-color-scheme: dark)" srcset="results/ablation_dark.png">
   <img src="results/ablation_light.png" alt="2x2 ablation bar charts per environment: neither, adaptive sampler only, ACL only, both">
 </picture>
+
+## How many steps does each environment need?
+
+Three seeds each of three configs (`random:none`, `random:pvl_gae`,
+`sa:pvl_gae`) trained far past the grid's 60k-step budget, evaluated on the
+same 15 held-out tasks every 25k steps (50k for Pendulum). Data:
+[`results/convergence/`](results/convergence/); reproduce with
+`acl_bench/convergence.py` and `acl_bench/plot_convergence.py`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="results/convergence_dark.png">
+  <img src="results/convergence_light.png" alt="Learning curves of held-out eval return vs environment steps for each environment and three curriculum configs, with the 60k-step grid budget marked">
+</picture>
+
+| env | eval return at ~50k steps | plateau | steps to reach it | est. cost per run* |
+|---|---|---|---|---|
+| cartpole | ~190 | ~420 (of a max 500, averaged over held-out tasks that include hard configs) | ~400k | ~36s at 400k |
+| acrobot | ~-135 | ~-86 | ~200k | ~18s at 200k |
+| pendulum | ~-1180 | **not reached** -- ~-900 at 3M and still rising (last-40% slope +32 return per 1M steps, p=0.11) | >3M with these hyperparameters | ~4.5 min at 3M |
+
+\* Single-process estimate at ~90us/step (the grid's measured 5.4s per 60k-step
+run), excluding evaluation time. Running several processes in parallel on a
+multi-core machine cuts wall-clock, though not linearly.
+
+What this changes about the earlier grid:
+
+- **60k steps is far from converged for CartPole** (return ~190 vs. a ~420
+  plateau) **and Pendulum** (barely off its untrained score). Between-condition
+  differences at that budget mostly reflect early learning speed, not what each
+  curriculum converges to. Acrobot was closest: ~-135 at 50k against a -86
+  plateau, reached around 200k.
+- **Pendulum is the open problem.** It was still improving at 3M steps, and
+  the shared PPO hyperparameters (carried over from SIPACL) may simply be a
+  poor fit for it -- that is a hypothesis, not something tested here. Whether
+  the randomized physics even leaves a high ceiling is also unknown.
+- **No curriculum effect is significant even at convergence, but Acrobot is
+  worth a look.** After ~400k steps the two ACL-on configs sit about +5.5 return
+  above the no-ACL baseline (p ~0.10-0.11, paired over 3 seeds, unadjusted); no
+  other environment/window comes close. Three seeds can't confirm or reject
+  that.
+- The plateau estimates are coarse: 3 seeds, an evaluation that samples from
+  the stochastic policy (CartPole's seed-to-seed SD stays ~40 even at the
+  plateau), and a plateau judged from the curves and a tail-slope test rather
+  than a formal criterion.
 
 ## Limitations
 
