@@ -1,7 +1,7 @@
 """Acrobot-v1 (chaotic double pendulum, discrete torque) with its link
 dynamics exposed as a Scenic/VerifAI-samplable task. This is the "complex
 feature space" environment in the grid: 6 continuous dimensions versus
-CartPole's 5 and Pendulum's 5, and genuinely chaotic dynamics for extreme
+CartPole's 5, and genuinely chaotic dynamics for extreme
 parameter values, while remaining a classic_control env (no Box2D).
 """
 from __future__ import annotations

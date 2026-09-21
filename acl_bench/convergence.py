@@ -2,9 +2,9 @@
 many environment steps each env actually needs before the grid's fixed budget
 stops being the bottleneck.
 
-    python -m acl_bench.convergence --env pendulum --seed 1 \
+    python -m acl_bench.convergence --env acrobot --seed 1 \
         --configs random:none random:pvl_gae sa:pvl_gae \
-        --total-timesteps 3000000 --eval-every 50000 --out results/convergence_pendulum_s1.csv
+        --total-timesteps 1000000 --eval-every 25000 --out results/convergence_acrobot_s1.csv
 
 One row per (config, checkpoint): held-out eval return on the same fixed task
 set the grid uses, plus the mean of the last 20 training episodes.
