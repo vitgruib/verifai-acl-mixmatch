@@ -1,7 +1,7 @@
-"""Minimal PPO, structured after SIPACL's Work/policy/ppo.py (itself a
-CleanRL-style implementation), generalized to run on any environment in
-acl_bench.envs.registry (discrete or continuous actions) driven by a
-PLRCurriculum instead of a disk-backed scene buffer.
+"""Minimal CleanRL-style PPO, running on any environment in
+acl_bench.envs.registry (discrete or continuous actions), driven by a
+PLRCurriculum. Independent of SIPACL: its Work/policy/ppo.py is deliberately not
+carried over (only the ACL-carrying gym code in Work/custom/ is).
 """
 from __future__ import annotations
 

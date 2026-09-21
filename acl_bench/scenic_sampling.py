@@ -1,9 +1,9 @@
 """Scenic-mediated VerifAI sampling: this is the actual "verifAI sampling"
 half of the mix-and-match grid, and it goes through Scenic on purpose (not
-a direct `verifai.samplers.FeatureSampler` call) to mirror how SIPACL itself
-drives VerifAI -- `scenic.scenarioFromFile(..., params={"verifaiSamplerType":
-...})` -- just without a MetaDrive/CARLA model attached (see the .scenic
-files in acl_bench/scenic_scenarios/, and the module docstring of
+a direct `verifai.samplers.FeatureSampler` call), using Scenic's own documented
+external-sampler API -- `scenic.scenarioFromFile(..., params={"verifaiSamplerType":
+...})` and `Scenario.generate(feedback=...)` -- with no simulator model attached
+(see the .scenic files in acl_bench/scenic_scenarios/, and the module docstring of
 `scenic.core.external_params` for how a plain `param x = VerifaiRange(...)`
 gets resolved without any spatial simulator).
 
