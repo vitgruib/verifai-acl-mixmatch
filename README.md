@@ -224,9 +224,9 @@ A design for a single-environment suite (CartPole) lives in
 (`acl_bench/oracle.py`) that separates fixable failures from infeasible starts,
 frozen evaluation sets for specific edge cases (weak actuation, heavy cart, large
 recoverable disturbances, corners) and for measured hard tasks, convergence-speed
-metrics, a seed-count analysis (CartPole's seed-to-seed variance is large, so small
-effects need dozens of seeds per arm), and a staged protocol (calibrate, screen,
-confirm on disjoint seeds). **Only the oracle is
+metrics, and a staged protocol. A pilot found run-to-run noise large and pairing runs by
+seed nearly useless (the shared luck is gone within 20,000 steps), so detecting a
+0.05 difference takes about 100 seeds per arm. **Only the oracle is
 built**; the evaluation sets, metrics and runners are not.
 
 ## TODO / future work

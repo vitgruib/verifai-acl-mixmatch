@@ -87,10 +87,18 @@ the frozen sets. Step budget and checkpoint interval: `DEFAULT_BUDGET = 400,000`
 
 ## Totals and cost
 
-**39 arms** (8 primary, 12 ACL, 16 sampler, 3 coupling). Runs = arms x seeds. A
-400k-step run is ~36 s single-process, but throughput under parallel workers is lower
-per process; the cost estimate is filled in from the pilot run
-(docs/cartpole_suite.md, "Paired design").
+**39 arms** (8 primary, 12 ACL, 16 sampler, 3 coupling). Runs = arms x seeds.
+Measured throughput (pilot: 120 runs of 204,800 steps in 757 s on 9 workers): about 6.3 s
+of wall-clock per run, so roughly 12 s per 400k-step run (extrapolated). All 39 arms x
+30 seeds is 1,170 runs, about 4 h.
+
+**What that can and cannot see.** The pilot found run-to-run noise large (the SD of a
+paired difference in whole-curve success, `AUC_E0`, is about 0.15) and pairing by seed
+barely helps (docs/cartpole_suite.md, "Paired design"). With 30 seeds the smallest
+difference detectable is about 0.09 AUC, so these ablations can only reveal *large*
+sensitivity. They are a coarse screen: a hyperparameter that swings the result by
+0.1 or more will show; a subtle one will not, and its absence should not be read as
+"does not matter".
 
 ## Reading the results
 

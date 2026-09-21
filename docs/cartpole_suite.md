@@ -20,7 +20,7 @@ on the same frozen, sampler-independent evaluation sets.
 
 - **Fast**: ~5.4 s per 60k training steps, so a 400k-step run is ~36 s
   (single process, excluding evaluation). Seeds are cheap, which matters (see
-  "Statistics").
+  "Paired design").
 - **It has real failures to fix**: 400k-step policies failed (mean return < 195) on
   15% and 2% of sampled tasks in two sensitivity runs (seeds 1 and 2), so the
   amount of failure depends heavily on the seed.
@@ -166,58 +166,107 @@ share by difficulty bin; sampler concentration and coverage of the E1 region.
 
 **Cost:** environment steps, wall-clock, sampler overhead.
 
-## Statistics
+## Paired design, and what the pilot showed
 
-- **The unit of replication is the training seed.** Pairs are shared across agents
-  (paired), so seeds are the remaining source of variance, and it is large: two
-  earlier CartPole policies differed by mean return 251 vs 465.
-- **Seeds needed** (per arm, two-sided alpha = 0.0125 for 4 contrasts, 80% power,
-  `n = 2 (2.50 + 0.84)^2 (s/D)^2`) for seed-to-seed SD `s` in success rate and a true
-  difference `D`:
+**The design.** Every arm is trained on the same seeds. A seed fixes, for each arm, the
+network's starting weights, the order of practice minibatches, the stream of episode
+starting states, the action-noise stream and the task-sampler stream, so two arms on
+the same seed start from identical conditions. Comparisons are made seed by seed (the
+difference `arm A - arm B` on each seed), with a paired bootstrap confidence interval.
+The hope was that shared luck makes paired outcomes move together, so the difference
+is far less noisy than an unpaired comparison.
 
-  | | D = 0.03 | D = 0.05 | D = 0.10 |
-  |---|---|---|---|
-  | s = 0.05 | 62 | 23 | 6 |
-  | s = 0.10 | 248 | 90 | 23 |
-  | s = 0.15 | 558 | 201 | 51 |
+**What the pilot measured** (30 seeds x 4 arms `N`, `A`, `S_sa`, `B_sa`, 204,800 steps
+each, `results/pilot_pairing.csv`; the budget is provisional):
 
-  `s` is unknown until Stage 0 measures it. If it is near 0.10, detecting a
-  5-point difference needs ~90 seeds per arm, and 10 seeds could only detect
-  ~15 points. CartPole is cheap enough to buy power with seeds (50 seeds x 4 arms
-  x 36 s is ~2 h of training, single process), but not to run the whole grid at that
-  depth; the full grid can only be screened.
-- **A-priori contrasts** on the two primary metrics: C1 ACL only vs. neither; C2
-  adaptive sampler only vs. neither; C3 both vs. neither; C4 best scoring function vs.
-  `neg_return` within ACL-on. Holm correction across them. C1 uses `pvl_gae` (SIPACL's
-  default); the adaptive sampler and scoring function for C2-C4 are chosen by
-  screening and confirmed on fresh seeds.
-- **Report** effect sizes with bootstrap confidence intervals over seeds, not only
-  p-values.
+| paired comparison | correlation across seeds (AUC_E0) | share of variance pairing removed |
+|---|---|---|
+| A vs N | 0.29 | 28% |
+| S_sa vs N | 0.09 | 9% |
+| B_sa vs N | -0.12 | none (slightly worse) |
+| B_sa vs S_sa | -0.09 | none |
+| B_sa vs A | 0.06 | 6% |
+
+**Pairing helps very little.** The correlation between two arms is 1.0 at step 0
+(identical starting brains) and falls to about 0 by the first checkpoint, 20,480 steps
+in, and does not recover. The shared seed is not broken (tests confirm it fixes the
+initial weights and the stream of brand-new tasks); training is simply chaotic, so runs
+decorrelate almost at once.
+
+**Why the noise is so large.** Outcomes are close to two-valued. For the plain arm `N`
+at 204,800 steps, 50% of seeds were below 0.2 success and 33% above 0.8, with few in
+between, and early progress did not predict late progress (correlation -0.24 between 61k
+and 205k steps). Most of the run-to-run variation is *when* a run takes off, not small
+fluctuations around a common curve. Consequently the whole-curve area `AUC_E0` has a
+seed-to-seed SD of about 0.10-0.13, versus about 0.30 for the score at the final
+checkpoint.
+
+**Seeds needed** (per arm, paired, two-sided alpha = 0.0125 for 4 contrasts, 80% power,
+`n = (2.50 + 0.84)^2 (sd/D)^2`, using the pilot's measured SD of the paired difference):
+
+| metric (SD of the difference) | detect D = 0.10 | D = 0.05 | D = 0.03 |
+|---|---|---|---|
+| `AUC_E0` (~0.15) | 26 seeds | 101 | 279 |
+| final `E0` success at 205k steps (~0.42) | 197 | 787 | 2,186 |
+
+With 30 seeds the smallest detectable difference in `AUC_E0` is about 0.09. The pilot's
+own comparisons (best: `A` vs `N`, +0.038 AUC, 95% interval -0.011 to +0.087) are
+therefore inconclusive, which is what these numbers predict; **no conclusion about the
+methods can be drawn from the pilot.**
+
+**What follows for the design:**
+1. **Keep the shared seeds** (free, and they make runs reproducible and comparable) **but
+   plan power as if unpaired.** Do not count on pairing.
+2. **Prefer whole-curve metrics.** `AUC_E0` is ~3x less noisy than any single-checkpoint
+   score, so it stays primary. Final-checkpoint scores are only trustworthy at a budget
+   where nearly all baseline runs have already taken off; Stage 0 must check this,
+   because at 205k steps half of them had not. Add a **take-off time** metric (steps
+   until E0 success first exceeds 50%, right-censored if never), analysed with survival
+   methods, since it matches the two-valued structure.
+3. **Buy power with seeds, on the primary arms only.** Measured throughput: 120 runs of
+   204,800 steps took 757 s on 9 workers, about 6.3 s of wall-clock per run, so about
+   12 s per 400k-step run (an extrapolation). Eight primary arms x 100 seeds is 800
+   runs, about 2.7 h; all 39 arms x 30 seeds is 1,170 runs, about 4 h, and can only see
+   differences of about 0.09 AUC, so hyperparameter ablations are a coarse sensitivity
+   screen, not fine measurements.
+4. **Try to reduce the noise itself** (untested): a training setup that is less chaotic
+   (lower learning rate, longer rollouts) would shrink every arm's variance at once.
+   Stage 0 should test this because it is cheaper than seeds.
+
+**A-priori contrasts** on the two primary metrics: C1 ACL only vs. neither; C2 adaptive
+sampler only vs. neither; C3 both vs. neither; C4 best scoring function vs. `neg_return`
+within ACL-on. Holm correction across them. C1 uses `pvl_gae` (SIPACL's default). **All
+three adaptive samplers are run at full seed depth** rather than picking one by
+screening (see Stages). Report effect sizes with bootstrap confidence intervals over
+seeds, not only p-values.
 
 ## Stages
 
-- **Stage 0, calibrate and freeze.** Train the baseline arm for >= 20 seeds to 1M
-  steps with checkpoints: set `B` by the plateau criterion, measure `s` for both
-  primary metrics (fixing the confirmation seed count), and define the relative
-  convergence thresholds. Train 10 more seeds as the reference population. Generate
-  E0-E7 and freeze them with the oracle labels and a checksum; verify each set has
-  enough learnable pairs.
-- **Stage 1, screening.** All 58 cells x 3-5 seeds at budget `B`, ranked by the
-  primary metrics. Used to choose candidates, not to make claims.
-- **Stage 2, confirmation.** The four primary arms plus the screened winners, with
-  the seed count from Stage 0, on seeds disjoint from screening so a selected cell is
-  not tested on the data that selected it.
+- **Stage 0, calibrate and freeze.** Train the baseline arm `N` for >= 30 seeds to 1M
+  steps with checkpoints. Set the budget `B` where nearly all runs have taken off (the
+  plateau criterion); measure the SD of `AUC_E0`, of the final score and of take-off
+  time at that budget; test whether a less chaotic training setup (lower learning rate,
+  longer rollouts) reduces them, and fix the setup for all arms if it does. Train 10
+  more seeds as the reference population, then build and freeze E6, E7 and POOL.
+- **Stage 1, the primary arms at full depth.** All eight primary arms (`N`, `A`,
+  `S_ce`, `S_mab`, `S_sa`, `B_ce`, `B_mab`, `B_sa`) at the seed count Stage 0's
+  measured SD calls for. There is **no small-seed screening stage**: with the spread
+  measured, 3-5 seeds could detect only differences of about 0.2-0.3 AUC, so a
+  screening pass would rank arms by noise.
+- **Stage 2, sensitivity.** The hyperparameter ablations (docs/ablation.md) at a lower
+  seed count, reported as effect sizes with intervals, not as tests.
 
 ## Build order
 
-1. `acl_bench/oracle.py` (done, tested).
-2. **A batched evaluator**: step many pairs in lockstep with one batched policy
-   forward pass. Required, not optional: the sets total ~1,570 pairs x up to 500
-   steps, and E0-lite alone across 20 checkpoints is ~1M policy steps, more than
-   twice the ~400k of training.
-3. Set generator and freezer (pairs, oracle labels, checksum).
-4. Checkpointed training runner that logs each training episode's `s0` and task.
-5. Metric computation, then the Stage 0 calibration.
+1. `acl_bench/oracle.py`: done, tested.
+2. Batched evaluator: done, tested against the real environment, ~87x faster (the whole
+   1,270-pair suite in ~0.13 s, so every set is evaluated at every checkpoint).
+3. Frozen sets E0-E5 with oracle labels and checksums: done. E6, E7 and POOL are built
+   by `build_pool_sets` (tested) once Stage 0 supplies reference agents.
+4. Arm runner (shared seeds, checkpointed evaluation) and paired analysis: done.
+   Still to add: logging each training episode's starting state and task, for the
+   mechanism diagnostics, and the take-off-time metric.
+5. Stage 0 calibration, then Stage 1.
 
 ## Known limits
 
@@ -227,3 +276,5 @@ share by difficulty bin; sampler concentration and coverage of the E1 region.
   (two earlier CartPole policies had different binding parameters).
 - E6/E7 difficulty is defined by baseline-arm agents.
 - Deterministic evaluation can hide differences a stochastic policy would show.
+- The pilot used a provisional 205k-step budget, mid-climb for most runs; the noise at
+  the plateau may be smaller. Stage 0 measures it.
