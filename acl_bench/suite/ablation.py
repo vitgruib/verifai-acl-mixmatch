@@ -1,10 +1,11 @@
 """Named experimental arms for the CartPole suite: the four primary arms (the 2x2
 component ablation) and the hyperparameter ablations around them.
 
-Every hyperparameter ablation is one-factor-at-a-time against a named
-`reference` arm (except the replay_prob x rank_alpha grid), and every comparison
-is made between independent groups of runs (docs/cartpole_suite.md, "Comparing
-methods"). Sources and rationale for each value are in docs/ablation.md.
+The plan is the eight "primary" arms only (`MAIN_ARMS`): does ACL help, does each
+VerifAI sampler help, and do both help, with every hyperparameter fixed at a standard
+value. The hyperparameter variants below (families "acl", "sampler", "coupling") are
+PARKED: defined and tested, not part of the plan (docs/ablation.md). Comparisons are
+between independent groups of runs (docs/cartpole_suite.md, "Comparing methods").
 """
 from __future__ import annotations
 
@@ -65,8 +66,8 @@ def build_arms() -> dict[str, Arm]:
 
     # --- sampler hyperparameters, against S_<sampler> (adaptive sampler, ACL off) ---
     sampler_grid = {
-        "ce": {"buckets": (4, 16), "alpha": (0.5, 0.98), "thres": (-0.33, 0.33)},
-        "mab": {"buckets": (4, 16), "thres": (-0.33, 0.33)},
+        "ce": {"buckets": (3, 10), "alpha": (0.5, 0.98), "thres": (-0.33, 0.33)},
+        "mab": {"buckets": (3, 10), "thres": (-0.33, 0.33)},
         "sa": {"T": (0.3, 3.0), "decay_rate": (0.8, 0.95), "iterations": (10, 40)},
     }
     for sampler, grid in sampler_grid.items():
@@ -96,6 +97,10 @@ ARMS = build_arms()
 
 def family(name: str) -> list[Arm]:
     return [a for a in ARMS.values() if a.family == name]
+
+
+MAIN_ARMS: tuple[str, ...] = tuple(a.name for a in family("primary"))
+RUNS_PER_ARM = 100
 
 
 def comparisons() -> list[tuple[str, str]]:

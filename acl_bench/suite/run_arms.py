@@ -40,7 +40,7 @@ def arm_seed(arm_name: str, replicate: int) -> int:
 
 
 def run_job(job: tuple) -> list[dict]:
-    arm_name, replicate, steps, checkpoint_every, sets_dir, overrides = job
+    arm_name, replicate, steps, checkpoint_every, sets_dir, overrides, snapshot_dir = job
     seed = arm_seed(arm_name, replicate)
     import torch
     torch.set_num_threads(1)
@@ -53,10 +53,20 @@ def run_job(job: tuple) -> list[dict]:
     arm, spec, sets = ARMS[arm_name], ENV_SPECS["cartpole"], load_sets(sets_dir)
     cfg = PPOConfig(total_timesteps=steps, seed=seed, acl=arm.acl, **{**arm.ppo, **overrides})
     sampler = ScenicTaskSampler.load(spec.scenic_file, arm.sampler, arm.sampler_params)
+    snapshots: dict[int, dict] = {}
+
+    def grade(step, agent):
+        if snapshot_dir:
+            snapshots[step] = {k: v.detach().cpu().numpy().copy() for k, v in agent.state_dict().items()}
+        return evaluate_sets(agent, sets)
+
     t0 = time.time()
     log, _ = run_training(spec, sampler, resolve_potential_fn(arm.potential_fn, spec.success_return), cfg,
-                          checkpoint_every=checkpoint_every, on_checkpoint=lambda a: evaluate_sets(a, sets))
+                          checkpoint_every=checkpoint_every, on_checkpoint=grade)
     wall = time.time() - t0
+    if snapshot_dir:
+        from acl_bench.suite.snapshots import save_run
+        save_run(os.path.join(snapshot_dir, arm_name, f"{replicate}.npz"), snapshots)
     n_new = sum(m == "new" for m in log.episode_modes)
     return [{"arm": arm_name, "seed": replicate, "run_seed": seed, "learning_rate": cfg.learning_rate, **m, "n_episodes": len(log.episode_modes), "n_new": n_new,
              "wall_time_sec": wall} for m in log.checkpoint_metrics]
@@ -73,6 +83,8 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
                         help="PPOConfig overrides applied to every arm, e.g. learning_rate=1e-4")
+    parser.add_argument("--snapshots", default=None, metavar="DIR",
+                        help="also save each run's agent at every check-in under DIR/<arm>/<replicate>.npz")
     parser.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
     args = parser.parse_args()
 
@@ -98,7 +110,7 @@ def main():
         prior = pd.read_csv(args.out)
         frames.append(prior)
         done = set(zip(prior["arm"], prior["seed"]))
-    jobs = [(n, s, args.steps, args.checkpoint_every, args.sets, overrides)
+    jobs = [(n, s, args.steps, args.checkpoint_every, args.sets, overrides, args.snapshots)
             for s in parse_seeds(args.seeds) for n in names if (n, s) not in done]
     print(f"{len(jobs)} runs ({len(names)} arms x {len(set(j[1] for j in jobs))} seeds) on {args.workers} workers", flush=True)
 
