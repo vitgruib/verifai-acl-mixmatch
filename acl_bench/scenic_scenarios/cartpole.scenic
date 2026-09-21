@@ -2,8 +2,8 @@
 # mechanism. No simulator model is attached -- Scenic only needs to sample
 # these five scalars; `acl_bench.envs.param_cartpole` applies them to a real
 # CartPoleEnv. verifaiSamplerType / verifaiSamplerParams are set at load time
-# from Python (acl_bench/scenic_sampling.py), matching SIPACL's own
-# `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` pattern.
+# from Python (acl_bench/scenic_sampling.py) via Scenic's own
+# `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` API.
 
 param length = VerifaiRange(0.25, 1.5)
 param masspole = VerifaiRange(0.05, 0.5)

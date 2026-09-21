@@ -40,7 +40,7 @@ identical times. That gives 2 + 14 + 21 + 21 = **58 cells per environment**.
 | **non-adaptive sampler** (`random`/`halton`) | neither component | ACL only |
 | **adaptive sampler** (`ce`/`mab`/`sa`) | adaptive sampler only | both |
 
-Each run trains a PPO agent (two 64-unit tanh layers for actor and critic;
+Each run trains a standard CleanRL-style PPO agent (two 64-unit tanh layers for actor and critic;
 lr 3e-4, gamma 0.99, GAE lambda 0.95, clip 0.2, entropy 0.01; 1024-step
 rollouts, 4 minibatches, 4 epochs), then scores the final policy on a fixed
 held-out set of 15 tasks x 3 episodes drawn uniformly from the parameter box,
@@ -48,10 +48,14 @@ independent of whichever sampler trained it.
 
 ## How this relates to SIPACL
 
-This is a re-implementation, not a fork. The ACL logic was checked against
-SIPACL's `Work/custom/custom_gym.py` (`MetaDriveEnv`), the Scenic gym base class it
-extends (`Scenic/src/scenic/gym/envs/scenic_gym.py`, `ScenicGymEnv`), and the PPO
-loop in `Work/policy/ppo.py`. `tests/test_sipacl_fidelity.py` transcribes SIPACL's
+This is a re-implementation, not a fork, and **the only thing carried over from
+SIPACL is the ACL-carrying gym code**: `Work/custom/custom_gym.py` (`MetaDriveEnv`)
+and the Scenic gym base class it extends (`Scenic/src/scenic/gym/envs/scenic_gym.py`,
+`ScenicGymEnv`). Nothing comes from `Work/policy/ppo.py`, the scenarios or the
+controllers; PPO here is a standard CleanRL-style implementation, and the
+Scenic/VerifAI sampling uses Scenic's own documented API. (`ppo.py` was read only
+to see how `MetaDriveEnv` is driven, which is how the PVL off-by-one below was
+found.) `tests/test_sipacl_fidelity.py` transcribes SIPACL's
 `_replay_probs_from_lp`, `_compute_learning_progress` and `_lp_delta` as the
 reference and checks this repo's against them (perturbing a constant makes the
 tests fail, so they are not vacuous).
@@ -71,7 +75,7 @@ tests fail, so they are not vacuous).
 | evaluation | no replay | fixed held-out task set | differs by design |
 | aborted episodes | a slot whose episode is aborted by `ResetException` keeps LP `1e10` and is replayed first | not applicable: episodes always run to completion | n/a |
 | `DOUBLE` mode | constant declared, never used | not implemented | n/a |
-| PPO | 4096-step rollouts, 32 minibatches, 10 epochs | 1024 / 4 / 4; same network and core hyperparameters | differs |
+| PPO | not carried over | independent CleanRL-style PPO (1024-step rollouts, 4 minibatches, 4 epochs) | n/a |
 
 The off-by-one is worth checking in SIPACL itself: it changes what PVL measures
 whenever the last step is the informative one.
@@ -80,9 +84,9 @@ whenever the last step is the informative one.
 
 [VerifAI](https://github.com/BerkeleyLearnVerify/VerifAI) ships eight sampler
 types. All of them go through **Scenic** (`param x = VerifaiRange(...)` in a
-`.scenic` file, sampled by `scenario.generate(feedback=rho)`), the same mechanism
-as SIPACL's `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})`,
-just with no MetaDrive/CARLA model attached. Each was tested directly:
+`.scenic` file, sampled by `scenario.generate(feedback=rho)`), which is Scenic's own
+external-sampler API (`scenic.scenarioFromFile(..., params={"verifaiSamplerType":
+...})`) with no simulator model attached. Each was tested directly:
 
 | sampler | in grid? | why |
 |---|---|---|
