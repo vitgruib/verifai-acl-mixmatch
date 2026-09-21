@@ -5,6 +5,7 @@ carried over (only the ACL-carrying gym code in Work/custom/ is).
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -15,6 +16,7 @@ from torch.distributions import Categorical, Normal
 
 from acl_bench.curriculum.plr import PLRCurriculum
 from acl_bench.envs.registry import EnvSpec
+from acl_bench.potential.functions import resolve_potential_fn
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -95,6 +97,9 @@ class PPOConfig:
     acl: bool = True          # False = never replay (SIPACL's replay_resample_prob=-1)
     replay_prob: float = 0.5  # SIPACL's replay_resample_prob when ACL is on
     buffer_max: int = 5000    # SIPACL DEFAULT_BUFFER_MAX
+    rank_alpha: float = 1.0   # SIPACL DEFAULT_LP_RANK_ALPHA
+    ema_beta: float = 0.2     # SIPACL DEFAULT_LP_EMA_BETA
+    feedback_fn: str | None = None  # None: the scoring function also feeds the sampler; a name decouples them
     seed: int = 1
 
 
@@ -115,14 +120,27 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
     """If `eval_set` and `eval_every_steps` are given, the policy is evaluated
     on the held-out tasks every `eval_every_steps` env steps (rounded up to a
     whole PPO iteration), producing a learning curve in `log.checkpoints`."""
-    rng = np.random.default_rng(cfg.seed)
-    torch.manual_seed(cfg.seed)
+    # One independent stream per component. A shared seed then means shared
+    # randomness *per component* even when two arms consume the streams at
+    # different rates -- which is what makes paired-by-seed comparisons work.
+    curriculum_ss, env_ss, shuffle_ss, sampler_ss = np.random.SeedSequence(cfg.seed).spawn(4)
+    rng = np.random.default_rng(curriculum_ss)          # replay choices
+    env_rng = np.random.default_rng(env_ss)             # per-episode initial-state seeds
+    shuffle_rng = np.random.default_rng(shuffle_ss)     # PPO minibatch order
+    torch.manual_seed(cfg.seed)                          # network init, then action sampling
+    sampler_state = int(sampler_ss.generate_state(1)[0])
+    random.seed(sampler_state)                           # Scenic/VerifAI samplers draw from
+    np.random.seed(sampler_state)                        # these globals; nothing else here does
 
     param_names = tuple(env_spec.param_bounds.keys())
     curriculum = PLRCurriculum(
         task_sampler=task_sampler, param_names=param_names, potential_fn=potential_fn,
         gamma=cfg.gamma, gae_lambda=cfg.gae_lambda, use_replay=cfg.acl,
-        replay_prob=cfg.replay_prob, buffer_max=cfg.buffer_max, rng=rng,
+        replay_prob=cfg.replay_prob, buffer_max=cfg.buffer_max, rank_alpha=cfg.rank_alpha,
+        ema_beta=cfg.ema_beta,
+        feedback_fn=(resolve_potential_fn(cfg.feedback_fn, env_spec.success_return)
+                     if cfg.feedback_fn else None),
+        rng=rng,
     )
 
     obs_dim, action_dim = env_spec.obs_dim, env_spec.action_dim
@@ -134,7 +152,7 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
 
     params, task_idx, mode = curriculum.pick_task()
     env = env_spec.make_env(params)
-    obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
+    obs, _ = env.reset(seed=int(env_rng.integers(1 << 30)))
     ep_rewards: list[float] = []
     ep_values: list[float] = []
     ep_steps = 0
@@ -191,7 +209,7 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
 
                 params, task_idx, mode = curriculum.pick_task()
                 env = env_spec.make_env(params)
-                obs, _ = env.reset(seed=int(rng.integers(1 << 30)))
+                obs, _ = env.reset(seed=int(env_rng.integers(1 << 30)))
                 ep_rewards, ep_values = [], []
                 ep_steps = 0
 
@@ -211,7 +229,7 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
         b_inds = np.arange(cfg.num_steps)
         minibatch_size = cfg.num_steps // cfg.num_minibatches
         for _epoch in range(cfg.update_epochs):
-            np.random.shuffle(b_inds)
+            shuffle_rng.shuffle(b_inds)
             for start in range(0, cfg.num_steps, minibatch_size):
                 mb = b_inds[start:start + minibatch_size]
                 _, _, newlogprob, entropy, newvalue = agent.get_action_and_value(
@@ -256,6 +274,7 @@ def evaluate_agent(agent: Agent, env_spec: EnvSpec, eval_params: list[dict],
     """Mean return over a fixed, sampler-independent set of task params --
     the generalization metric used to compare mix-and-match combinations."""
     rng = np.random.default_rng(seed)
+    torch_state = torch.get_rng_state()   # evaluation must not shift the training action stream
     is_discrete = env_spec.action_type == "discrete"
     returns = []
     for params in eval_params:
@@ -273,4 +292,5 @@ def evaluate_agent(agent: Agent, env_spec: EnvSpec, eval_params: list[dict],
                 if terminated or truncated:
                     break
             returns.append(total)
+    torch.set_rng_state(torch_state)
     return float(np.mean(returns))
