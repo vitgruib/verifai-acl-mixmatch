@@ -1,8 +1,12 @@
 # CartPole test suite (design)
 
-Status: **specification, not yet implemented.** Only `acl_bench/oracle.py`
-exists (with tests). The numbers under "Motivating probe" come from one policy and
-one seed; they justify building the suite, they are not results.
+Status: **partly built.** Implemented and tested: the solvability oracle
+(`acl_bench/oracle.py`), the batched evaluator (`acl_bench/suite/evaluator.py`), the
+frozen sets E0-E5 (`frozen_sets/cartpole_v1/`), the arm runner
+(`acl_bench/suite/run_arms.py`) and the paired analysis (`acl_bench/suite/paired.py`).
+Not yet built: the Stage 0 calibration and, because they need its reference agents,
+the sets E6, E7 and POOL. The numbers under "Motivating probe" come from one policy
+and one seed; they justify building the suite, they are not results.
 
 ## What the suite measures
 
@@ -108,14 +112,14 @@ about 0.05 (100, p=0.5).
 
 | set | contents | question | pre-declared prediction |
 |---|---|---|---|
-| **E0 Uniform** | 300 pairs uniform over the box; **E0-lite** is a fixed 100-pair subset used at every learning-curve checkpoint | average-case generalization | none |
+| **E0 Uniform** | 300 pairs uniform over the box | average-case generalization | none |
 | **E1 Weak actuation** | `force_mag` in [4, 7], 150 pairs | the largest fixable failure region | adaptive samplers and failure-seeking scores over-visit it, raising E1 |
 | **E1b Weak push + heavy cart** | `force_mag` in [4, 7] and `masscart` in [1.625, 2.0], 100 pairs | the worst corner found (70% failure in the probe) | same, most strongly |
 | **E2 Heavy cart** | `masscart` in [1.625, 2.0], 100 pairs | second-largest region | as E1 |
 | **E3 Slow / heavy pole** | `length` in [1.1875, 1.5], and separately `masspole` in [0.3875, 0.5], 100 pairs each | weak effects in the probe | little difference; a sanity slice |
 | **E4 Large recoverable disturbance** | `init_range` in [0.2375, 0.3] with *feasible* starts only, 100 pairs | recovery from big-but-recoverable perturbations, without infeasible starts contaminating it | little difference |
 | **E5 Corners** | all 32 vertices of the parameter box x 10 starts | extremes uniform training rarely visits | space-filling `halton` covers corners better than `random` |
-| **E6 Hard-but-solvable** | pairs from a 5000-pair pool that the oracle solves and at least half of a reference population fails; target 150-250 pairs, **E6-lite** = fixed 60-pair subset | difficult tasks isolated by measured difficulty, not by region | ACL replay of failures raises E6 |
+| **E6 Hard-but-solvable** | pairs from a 5000-pair pool that the oracle solves and at least half of a reference population fails; target 150-250 pairs | difficult tasks isolated by measured difficulty, not by region | ACL replay of failures raises E6 |
 | **E7 Easy control** | pairs every reference agent solves, 100 pairs | regression check: a method must not buy hard-task gains by degrading easy tasks | no loss expected |
 
 The predictions are hypotheses to test, not findings; the suite is useful partly
@@ -134,7 +138,7 @@ performance is visible as a function of measured difficulty.
 ## Metrics
 
 **Primary (two, fixed in advance):**
-1. `AUC_E0`: mean E0-lite success over all checkpoints from step 0 to `B` (sample
+1. `AUC_E0`: mean E0 success over all checkpoints from step 0 to `B` (sample
    efficiency in one number).
 2. `success_E6`: learnable-pair success on the full hard set, averaged over the final
    three checkpoints to reduce evaluation noise.
@@ -143,15 +147,14 @@ performance is visible as a function of measured difficulty.
 E4, E5, E7; `S_edge` = macro-average success over E1-E5 (a min over slices would be
 biased downward by noise); mean return on E0 as a secondary check.
 
-**Convergence speed** (checkpoints every 20k steps on E0-lite):
+**Convergence speed** (every set is evaluated at every checkpoint, every 20,480 steps, step 0 included):
 - steps to reach 50 / 80 / 95% of the *baseline arm's* plateau success (thresholds
   are relative so they are reachable), right-censored if never reached, compared
   with survival methods rather than by dropping runs;
 - **plateau step** = the earliest checkpoint from which the curve stays within 0.02
   of its final level (a formal criterion, replacing eyeballing);
-- instability = SD of E0-lite success over the last 5 checkpoints;
-- E6-lite curve (every 40k steps) and its AUC, as a secondary read on how fast hard
-  tasks are learned.
+- instability = SD of E0 success over the last 5 checkpoints;
+- the E6 curve and its AUC, as a secondary read on how fast hard tasks are learned.
 
 **Mechanism diagnostics** (why a method behaved as it did, not whether):
 training-time task mix (share of training episodes that were infeasible, easy, or
