@@ -1,0 +1,67 @@
+{
+  "how_made": "Filtered once from cartpole_v1: kept only questions the LQR oracle proved winnable (feasible start AND oracle survives 500 steps). Dropped guaranteed one-step failures and questions the oracle could not solve. The oracle was then removed from the repository.",
+  "oracle_source_commit": "fe37d00",
+  "oracle_source_sha256": "912972945ec5d3fc4c344636d111430a449d12993339347d5c992eb0dafef772",
+  "sets": {
+    "E0": {
+      "n": 282,
+      "n_before_filter": 300,
+      "n_removed_impossible": 15,
+      "n_removed_unclear": 3,
+      "sha256": "79f4d0c640610ec949ffb8fc83542d83b44117c0a4739ba10eb7a3ac5ad856ed"
+    },
+    "E1": {
+      "n": 138,
+      "n_before_filter": 150,
+      "n_removed_impossible": 11,
+      "n_removed_unclear": 1,
+      "sha256": "61a272e36eea33da74bbcd554d2e9531ed4aef001a634f7c6f8ea1e9cadccf13"
+    },
+    "E1b": {
+      "n": 93,
+      "n_before_filter": 100,
+      "n_removed_impossible": 6,
+      "n_removed_unclear": 1,
+      "sha256": "6c8d01ef70f300e24868ca96ea97d6bb15d6d9b72a86e017f62a0da7742fbd8b"
+    },
+    "E2": {
+      "n": 95,
+      "n_before_filter": 100,
+      "n_removed_impossible": 4,
+      "n_removed_unclear": 1,
+      "sha256": "9cc9f13fc5cff9dcab361265106db2ab57d2f7ab99c790342ccd2ad65dad6bdc"
+    },
+    "E3a": {
+      "n": 96,
+      "n_before_filter": 100,
+      "n_removed_impossible": 4,
+      "n_removed_unclear": 0,
+      "sha256": "7da5c9e99454d6982d4d9aa5bd15f910ba087d7c8d909ee17e8b47b33898e715"
+    },
+    "E3b": {
+      "n": 92,
+      "n_before_filter": 100,
+      "n_removed_impossible": 8,
+      "n_removed_unclear": 0,
+      "sha256": "72f4567675e56b40a436c0b41c30aa33ca416ae9cdf00ad382c2d380def3445f"
+    },
+    "E4": {
+      "n": 99,
+      "n_before_filter": 100,
+      "n_removed_impossible": 0,
+      "n_removed_unclear": 1,
+      "sha256": "cdcbaba25dcdb6c420d579d4031e7cb36dce7786b523ae076e701b82c03f4a95"
+    },
+    "E5": {
+      "n": 272,
+      "n_before_filter": 320,
+      "n_removed_impossible": 42,
+      "n_removed_unclear": 6,
+      "sha256": "b2f86a9ebc67bf4f4e579ef83854a02061baf033d226d01d809e838392a1ebf2"
+    }
+  },
+  "source_set_seeds": {
+    "static": 20260921
+  },
+  "version": "cartpole_v2"
+}

@@ -1,3 +1,4 @@
+"""The locked exam (frozen_sets/cartpole_v2): intact, on-spec, and free of impossible questions."""
 import json
 import os
 
@@ -5,46 +6,50 @@ import numpy as np
 import pytest
 
 from acl_bench.envs.param_cartpole import PARAM_BOUNDS
-from acl_bench.suite.evaluator import PARAM_ORDER
-from acl_bench.suite.sets import build_static_sets, load_sets, save_sets
+from acl_bench.suite.evaluator import PARAM_ORDER, TAU, THETA_THRESHOLD, X_THRESHOLD
+from acl_bench.suite.sets import load_sets, save_sets
 
+DIR = "frozen_sets/cartpole_v2"
 IDX = {k: i for i, k in enumerate(PARAM_ORDER)}
+EXPECTED = {"E0": 282, "E1": 138, "E1b": 93, "E2": 95, "E3a": 96, "E3b": 92, "E4": 99, "E5": 272}
 
 
 @pytest.fixture(scope="module")
 def sets():
-    return build_static_sets(seed=123)
+    return load_sets(DIR)          # raises if any section no longer matches its checksum
 
 
-def test_generation_is_reproducible():
-    a, b = build_static_sets(seed=5), build_static_sets(seed=5)
-    assert all(a[k].digest() == b[k].digest() for k in a)
-    assert build_static_sets(seed=6)["E0"].digest() != a["E0"].digest()
+def test_sections_and_counts_match_the_manifest(sets):
+    assert {k: len(v) for k, v in sets.items()} == EXPECTED
+    manifest = json.load(open(os.path.join(DIR, "manifest.json")))
+    for name, meta in manifest["sets"].items():
+        assert meta["n"] == len(sets[name]) == meta["n_before_filter"] - meta["n_removed_impossible"] - meta["n_removed_unclear"]
 
 
-def test_ranges_are_respected(sets):
-    e1b = sets["E1b"].params
-    assert e1b[:, IDX["force_mag"]].max() <= 7.0 and e1b[:, IDX["masscart"]].min() >= 1.625
-    assert sets["E2"].params[:, IDX["masscart"]].min() >= 1.625
-    assert sets["E3a"].params[:, IDX["length"]].min() >= 1.1875
-    assert sets["E3b"].params[:, IDX["masspole"]].min() >= 0.3875
-    assert sets["E4"].params[:, IDX["init_range"]].min() >= 0.2375
+def test_no_question_is_impossible_from_the_first_step(sets):
+    """An impossible question ends on step 1 whatever the agent does: after one Euler step
+    the cart or pole is already out of bounds. That depends only on the start, not on the action."""
+    for name, ps in sets.items():
+        x1 = ps.s0[:, 0] + TAU * ps.s0[:, 1]
+        theta1 = ps.s0[:, 2] + TAU * ps.s0[:, 3]
+        assert not ((np.abs(x1) > X_THRESHOLD) | (np.abs(theta1) > THETA_THRESHOLD)).any(), name
+
+
+def test_sections_stay_inside_their_declared_ranges(sets):
+    e = lambda name, k: sets[name].params[:, IDX[k]]
+    assert e("E1", "force_mag").max() <= 7.0
+    assert e("E1b", "force_mag").max() <= 7.0 and e("E1b", "masscart").min() >= 1.625
+    assert e("E2", "masscart").min() >= 1.625
+    assert e("E3a", "length").min() >= 1.1875 and e("E3b", "masspole").min() >= 0.3875
+    assert e("E4", "init_range").min() >= 0.2375
     for name, ps in sets.items():
         for k, (lo, hi) in PARAM_BOUNDS.items():
-            col = ps.params[:, IDX[k]]
-            assert col.min() >= lo and col.max() <= hi
+            assert lo <= ps.params[:, IDX[k]].min() and ps.params[:, IDX[k]].max() <= hi, (name, k)
 
 
-def test_e4_has_only_feasible_starts_and_e5_covers_all_corners(sets):
-    assert not sets["E4"].infeasible.any()
+def test_corners_section_covers_all_32_corners(sets):
     corners = {tuple(p) for p in sets["E5"].params}
-    assert len(corners) == 32 and len(sets["E5"]) == 320
-
-
-def test_labels_are_consistent(sets):
-    for ps in sets.values():
-        assert (ps.oracle_steps[ps.infeasible] == 1).all()
-        assert (ps.learnable == (~ps.infeasible & (ps.oracle_steps >= 500))).all()
+    assert len(corners) == 32
 
 
 def test_checksum_detects_tampering(sets, tmp_path):

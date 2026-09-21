@@ -4,16 +4,19 @@ one batched policy forward pass, instead of one Python env step per pair.
 Physics is transcribed from gymnasium's `CartPoleEnv.step` (Euler integrator,
 same termination test) with per-pair parameters, and is checked against
 `ParamCartPoleEnv` in tests/test_evaluator.py. The policy is deterministic
-(argmax action). A pair's `steps` matches `acl_bench.oracle.survival_steps`:
-the step index at which the episode terminated, or `max_steps` if it never did;
-success is `steps == max_steps`.
+(argmax action). A pair's `steps` is the step index at which the episode
+terminated, or `max_steps` if it never did; success is `steps == max_steps`.
 """
 from __future__ import annotations
 
 import numpy as np
 import torch
 
-from acl_bench.oracle import G, THETA_THRESHOLD, TAU, X_THRESHOLD
+# CartPole's physics constants, as in gymnasium's CartPoleEnv.
+G = 9.8
+TAU = 0.02
+THETA_THRESHOLD = 12 * 2 * np.pi / 360   # failure angle (0.2095 rad)
+X_THRESHOLD = 2.4
 
 PARAM_ORDER = ("length", "masspole", "masscart", "force_mag", "init_range")
 _LENGTH, _MASSPOLE, _MASSCART, _FORCE = 0, 1, 2, 3

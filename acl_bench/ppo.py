@@ -124,9 +124,9 @@ def run_training(env_spec: EnvSpec, task_sampler, potential_fn, cfg: PPOConfig,
     """If `eval_set` and `eval_every_steps` are given, the policy is evaluated
     on the held-out tasks every `eval_every_steps` env steps (rounded up to a
     whole PPO iteration), producing a learning curve in `log.checkpoints`."""
-    # One independent stream per component. A shared seed then means shared
-    # randomness *per component* even when two arms consume the streams at
-    # different rates -- which is what makes paired-by-seed comparisons work.
+    # One independent stream per component, so a seed fully determines a run (same
+    # config and seed reproduce exactly) and no component's draws depend on how many
+    # another consumed.
     curriculum_ss, env_ss, shuffle_ss, sampler_ss = np.random.SeedSequence(cfg.seed).spawn(4)
     rng = np.random.default_rng(curriculum_ss)          # replay choices
     env_rng = np.random.default_rng(env_ss)             # per-episode initial-state seeds
