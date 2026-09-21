@@ -65,6 +65,7 @@ tests fail, so they are not vacuous).
 | replay ranking | `P(i) ~ 1/rank^alpha`, alpha = 1.0, stable sort so ties go to the lower index | same | matches (tested) |
 | score smoothing | EMA beta = 0.2; first visit uses the raw score | same | matches (tested) |
 | new-slot placeholder | `1e10`, so unscored slots rank first | same | matches (tested) |
+| structure | ACL lives inside a `ScenicGymEnv`-derived env: scene picking, the simulation loop, the buffer and the feedback in one class | ACL is a standalone `PLRCurriculum` driven by a separate training loop; building on `ScenicGymEnv` was considered and declined | deliberate; the scoring and buffer behavior is what the tests check |
 | buffer | 5000, FIFO; scenes pickled to disk | 5000, FIFO; task parameters in memory | storage differs |
 | replay probability | 0.5; `-1` disables replay | 0.5; ACL off | matches (tested) |
 | replay episodes | do not call the sampler | same | matches (tested) |
