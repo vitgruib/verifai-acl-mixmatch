@@ -1,9 +1,9 @@
 # Ablation design (CartPole): does each component exist as an effect?
 
-Status: the eight methods are defined and runnable (`acl_bench/suite/ablation.py`,
-`acl_bench/suite/run_arms.py`). Calibration is done (training length 614,400 steps,
-learning rate 3e-4) and the whole exam, including the hard and easy sections, is
-locked (docs/cartpole_suite.md, "Stages"). The 800-run comparison is the next step.
+Status: **the solo-component comparison is done (N, A, S_ce, S_mab, S_sa; 100 runs
+each, 500 runs). The combined "both" arms (B_ce, B_mab, B_sa) were not run this pass**
+(pruned to shorten turnaround; a few leftover runs from before pruning remain in
+`results/main.csv` but are not analyzed here). Results are in "Results" below.
 
 ## The question, in plain English
 
@@ -101,6 +101,46 @@ one "aggressiveness" setting per picker (cross-entropy `alpha`, bandit `thres`,
 annealing `T`), and the shared-vs-separate switch, about 15 variants at 100 runs each.
 That would lose any interaction between `replay_prob` and `rank_alpha`, which the full
 3x3 grid would have kept.
+
+## Results (solo-component comparison, 100 runs each)
+
+Ran C1 and C2 (a/b/c) -- the review pile alone, and each picker alone, each against
+plain random practice with the pile off. The combined arms were not run this pass.
+
+| arm | `AUC_E0` mean (SD) | `success_E6` mean (SD) |
+|---|---|---|
+| N (neither) | 0.590 (0.090) | 0.334 (0.171) |
+| A (pile only) | 0.590 (0.075) | 0.337 (0.195) |
+| S_ce (cross-entropy only) | 0.604 (0.072) | 0.309 (0.194) |
+| S_mab (bandit only) | 0.592 (0.094) | 0.343 (0.186) |
+| S_sa (annealing only) | 0.583 (0.087) | 0.337 (0.179) |
+
+Measured noise matched the calibration estimate (SD ~0.07-0.09 per arm on `AUC_E0`,
+close to the predicted 0.075), so the planned power held.
+
+**On both primary metrics, no comparison is significant after Holm correction, and none
+was significant even before correction.** All four 95% confidence intervals include
+zero on `AUC_E0` (largest difference: cross-entropy +0.014, CI [-0.008, +0.037],
+p=0.22) and on `success_E6` (largest: bandit +0.009, CI [-0.042, +0.058], p=0.73). With
+100 runs per arm the study could detect a difference of about 0.035 in `AUC_E0`; the
+largest difference actually observed was 0.014, well under that. **Reading this as "no
+effect" rather than "not enough data" is reasonable here**, unlike the earlier pilot,
+because the observed effects are small relative to the detection threshold, not merely
+non-significant.
+
+One secondary, non-primary result: cross-entropy alone scored higher than plain
+practice on the macro-average across the edge sections (E1-E5), `S_edge` +0.028, CI
+[+0.005, +0.055], p=0.032 unadjusted. This was not one of the two pre-declared primary
+metrics, was not Holm-corrected against the other secondary checks available, and nothing
+in the corrected primary analysis supports it, so it is reported as a lead worth
+re-testing, not a finding.
+
+**What this does and does not show.** At the calibrated budget and standard settings,
+neither the review pile alone nor any single VerifAI picker alone moved the two primary
+scores measurably against plain random practice. This does not test the combined arms
+(does the pile plus a picker help together, which was the original "mix-and-match"
+question) -- that comparison was deliberately deferred and can be resumed with
+`--arms B_ce B_mab B_sa --resume` (12-16 runs of it already exist from before pruning).
 
 ## Known limits
 
