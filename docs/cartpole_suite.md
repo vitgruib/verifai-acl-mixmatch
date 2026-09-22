@@ -203,44 +203,47 @@ E1-E5 above were hand-set parameter quartiles taken from that one-policy probe. 
 (`frozen_sets/cartpole_v3/`) replaces them with sections found by actually searching for
 failures: each VerifAI sampler (ce, mab, sa) was pointed at the ten `REF` agents instead
 of a training run and kept every question it visited (`acl_bench/suite/find_edge_cases.py`,
-3,000 tasks x 5 starts per sampler, raw pools in `frozen_sets/cartpole_v3_search/`). A
-question counts as hard-but-winnable when 50-99% of the reference agents fail it, the same
-rule as E6.
+3,000 tasks x 5 starts per sampler, raw pools in `frozen_sets/cartpole_v3_search/`).
 
-| sampler | questions drawn | hard, winnable | nobody passes |
-|---|---|---|---|
-| ce | 15,000 | 1,302 (8.7%) | 5,323 |
-| mab | 15,000 | 524 (3.5%) | 2,111 |
-| sa | 15,000 | 47 (0.3%) | 981 |
+**What counts as an edge question: 6 or more of the 10 reference agents fail it,
+including questions all 10 fail**, minus questions no policy can win (the episode ends
+on step 1 whichever way the agent pushes; `lost_on_first_step`). Unlike E6, this keeps
+questions nobody passed, so some kept questions may still be unwinnable; only the
+provably unwinnable ones are removed.
 
-For comparison, passive random sampling found hard questions 0.31% of the time (E6's
-pool), so ce is about 28x more efficient; sa is no better than random here.
-
-The 1,873 hard questions were clustered (k-means, 5 clusters, normalized parameter space;
-`acl_bench/suite/build_edge_sections.py`) and each cluster became one locked section of up
-to 100 questions. E0, E6 and E7 carry over from v2 unchanged. Rebuilding from the saved
-search reproduces the manifest fingerprints exactly.
-
-| section | found | kept | mean fail fraction | dominant parameters |
+| sampler | questions drawn | 5-9 of 10 fail | all 10 fail | of those, lost on step 1 |
 |---|---|---|---|---|
-| E1v | 520 | 100 | 0.72 | weak push, long pole |
-| E2v | 742 | 100 | 0.74 | long pole, wide start range |
-| E3v | 12 | 12 | 0.53 | short pole, light cart |
-| E4v | 47 | 47 | 0.65 | wide start range, weak push |
-| E5v | 552 | 100 | 0.74 | weak push, heavy cart |
+| ce | 15,000 | 1,302 (8.7%) | 5,323 | 3,504 |
+| mab | 15,000 | 524 (3.5%) | 2,111 | 1,622 |
+| sa | 15,000 | 47 (0.3%) | 981 | 918 |
 
-What this shows: the probe's "weak push" and "weak push + heavy cart" regions are real
-(E1v, E5v), but **a long pole** is a weak spot the quartile sections never isolated (E1v,
-E2v). Caveats:
+For comparison, passive random sampling found hard-but-winnable questions 0.31% of the
+time (E6's pool), so ce is about 28x more efficient; sa is no better than random here.
+Most of the searches' all-fail hits are starts already past the angle limit.
 
-- **E3v (12 questions) is too small to score on its own** (standard error ~0.14);
-  E4v (47) is marginal (~0.07). Use them only inside a macro-average, or drop them.
-- The clusters overlap in meaning (three involve weak push, two long pole); they are
-  regions of one failure landscape, not independent skills.
-- "Hard" is judged by the same ten reference agents the search used, the same selection
-  bias as E6, and adaptive samplers revisit neighborhoods, so questions within a section
+Of 9,993 questions with 6+ of 10 failing, 6,044 are lost on step 1 and dropped; the other
+3,949 (2,371 of them failed by all ten agents) were clustered (k-means, 5 clusters,
+normalized parameter space; `acl_bench/suite/build_edge_sections.py`) and each cluster
+became one locked section of up to 100 questions. E0, E6 and E7 carry over from v2 unchanged.
+
+| section | found | kept | mean fail fraction | share all-10-fail | dominant parameters |
+|---|---|---|---|---|---|
+| E1v | 1,639 | 100 | 0.92 | 62% | heavy cart, weak push |
+| E2v | 31 | 31 | 0.94 | 77% | weak push, heavy cart |
+| E3v | 1,290 | 100 | 0.91 | 61% | weak push, wide start range |
+| E4v | 115 | 100 | 0.93 | 75% | wide start range, fairly weak push |
+| E5v | 874 | 100 | 0.89 | 51% | weak push, long pole |
+
+What this shows: a weak push dominates the failure landscape (in every cluster); a heavy
+cart, a wide start range and a long pole are the parameters that make it worse. Caveats:
+
+- These sections are **much harder than E6** (reference agents fail about 90% of them), so
+  scores will be near the floor and differences small in absolute terms.
+- E1v and E2v describe the same region; k-means split it. E2v (31 questions) is small.
+- "Hard" is judged by the same ten reference agents the search used (selection bias,
+  as E6), and adaptive samplers revisit neighborhoods, so questions within a section
   can be near-duplicates.
-- The Stage 1 snapshots have not yet been graded on v3.
+- A first version (commit `90bf392`) used E6's rule, 5-9 of 10 failing; it is superseded.
 
 ## Evaluation protocol
 
@@ -435,8 +438,8 @@ three adaptive samplers are run at full depth rather than picking one by screeni
    re-grader, and the comparison code: done. Still to add: logging each training
    episode's start and task, and the take-off-time score.
 4. Stage 0 calibration and E6 / E7 / POOL: done. Stage 1: next.
-5. v3 edge sections (E1v-E5v) found by falsification search: done. Re-grading the Stage 1
-   snapshots on them: next.
+5. v3 edge sections (E1v-E5v) found by falsification search: done. Stage 1 completion (B arms)
+   and re-grading every snapshot on v3: in progress.
 
 ## Known limits
 

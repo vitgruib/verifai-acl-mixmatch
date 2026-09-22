@@ -1,32 +1,38 @@
 {
   "edge_clusters": {
     "E1v": {
-      "description": "force_mag=very low, length=very high",
-      "mean_fail_frac": 0.7173076923076923,
-      "n_found": 520
+      "description": "masscart=very high, force_mag=very low",
+      "mean_fail_frac": 0.9208663819402074,
+      "n_found": 1639,
+      "share_all_fail": 0.62477120195241
     },
     "E2v": {
-      "description": "length=very high, init_range=very high",
-      "mean_fail_frac": 0.7381401617250675,
-      "n_found": 742
+      "description": "force_mag=very low, masscart=very high",
+      "mean_fail_frac": 0.9387096774193548,
+      "n_found": 31,
+      "share_all_fail": 0.7741935483870968
     },
     "E3v": {
-      "description": "length=very low, masscart=very low",
-      "mean_fail_frac": 0.5333333333333333,
-      "n_found": 12
+      "description": "force_mag=very low, init_range=very high",
+      "mean_fail_frac": 0.9073643410852713,
+      "n_found": 1290,
+      "share_all_fail": 0.610077519379845
     },
     "E4v": {
-      "description": "init_range=very high, force_mag=very low",
-      "mean_fail_frac": 0.6468085106382978,
-      "n_found": 47
+      "description": "init_range=very high, force_mag=low",
+      "mean_fail_frac": 0.9330434782608695,
+      "n_found": 115,
+      "share_all_fail": 0.7478260869565218
     },
     "E5v": {
-      "description": "force_mag=very low, masscart=very high",
-      "mean_fail_frac": 0.7405797101449275,
-      "n_found": 552
+      "description": "force_mag=very low, length=very high",
+      "mean_fail_frac": 0.8851258581235698,
+      "n_found": 874,
+      "share_all_fail": 0.5148741418764302
     }
   },
-  "note": "E1v..Env replace v2's quartile-assumed E1-E5; found by VerifAI falsification search (find_edge_cases.py), not assumed. E0/E6/E7 carried over unchanged from v2.",
+  "min_fail_frac": 0.6,
+  "note": "E1v..Env replace v2's quartile-assumed E1-E5; found by VerifAI falsification search (find_edge_cases.py), not assumed. E0/E6/E7 carried over unchanged from v2. Edge sections include questions every reference agent fails, so some may be unwinnable.",
   "sets": {
     "E0": {
       "n": 282,
@@ -34,23 +40,23 @@
     },
     "E1v": {
       "n": 100,
-      "sha256": "386eb79715b8c56b3eecdf641334fa4994340b9a29bd187c0ae6413c59e1f08c"
+      "sha256": "f472876fdfb213d3db2e09d1a51b8bffd416e5a1cb2fd7a80d3e3401fe697425"
     },
     "E2v": {
-      "n": 100,
-      "sha256": "2e293043407be330f5b14c07447da995a32b07e6324d661ee7c2168030a37a4f"
+      "n": 31,
+      "sha256": "22ec85e82fce889354d1036a45a778079af2c454fdcb10961cbcc556ddefdce0"
     },
     "E3v": {
-      "n": 12,
-      "sha256": "2899f64b93a52f397a73d1aa0ef2f7a15159ef2d2b4f07e34742b2e41ae183cd"
+      "n": 100,
+      "sha256": "92923ec4cb1031f7bfd82cedc17bbe95c06d99671a11938d909a1ddcdd6d06d2"
     },
     "E4v": {
-      "n": 47,
-      "sha256": "88be4c7304292965b4ac5a5ddfb442a3d8f7ed299406123f343a87237b7d63a8"
+      "n": 100,
+      "sha256": "79cd4a107c1685668f0947612c1de274b1879e9f058a5094ac7ec301b007f8de"
     },
     "E5v": {
       "n": 100,
-      "sha256": "4fc8cbddfc40c113895acbe8df6e4de39cced8c7415b7ea6bd60477c87590ffe"
+      "sha256": "36f22097b7be4cf41a28ec05d002d51a60b99a24c928fab93e8a90c0501f1825"
     },
     "E6": {
       "n": 248,
