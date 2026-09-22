@@ -5,3 +5,4 @@ torch
 numpy
 pandas
 matplotlib
+scikit-learn

@@ -1,0 +1,24 @@
+{
+  "iters": 3000,
+  "samplers": [
+    "ce",
+    "mab",
+    "sa"
+  ],
+  "seed": 20260922,
+  "sets": {
+    "SEARCH_ce": {
+      "n": 15000,
+      "sha256": "42e9a3aa8c53e6ef03f063f33936c6a2f23a061ec42185b106f7a69124e416ca"
+    },
+    "SEARCH_mab": {
+      "n": 15000,
+      "sha256": "ea43ba122da2044e32baae03c9eb9f7cb9ac8ef418c20566f57000bdfb00434e"
+    },
+    "SEARCH_sa": {
+      "n": 15000,
+      "sha256": "f0f39b92d23803a90daac9133bba8351bdec2ef08ff92dd5e07edb1377422538"
+    }
+  },
+  "starts_per_task": 5
+}
