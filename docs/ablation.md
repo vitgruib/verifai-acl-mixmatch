@@ -142,6 +142,35 @@ scores measurably against plain random practice. This does not test the combined
 question) -- that comparison was deliberately deferred and can be resumed with
 `--arms B_ce B_mab B_sa --resume` (12-16 runs of it already exist from before pruning).
 
+## Exploratory sweep: every metric, every section, FDR-controlled
+
+The result above uses only the two pre-declared primary metrics. To check whether
+anything shows up elsewhere, every metric on every exam section was tested: final
+success, area-under-the-learning-curve success, and final mean steps survived, for
+all 10 sections (E0, E1, E1b, E2, E3a, E3b, E4, E5, E6, E7), against each of the four
+comparisons -- **120 tests**. Because this is exploratory rather than a small
+pre-declared set, it is controlled for **false discovery rate** (Benjamini-Hochberg:
+bounds the expected share of false positives *among findings called significant*)
+rather than Holm's family-wise control (which bounds the chance of *any* false
+positive and is the right tool for the two primary metrics above, not for a sweep
+this size). Full table: `results/analysis/fdr_sweep.csv`.
+
+**Nothing survives.** 13 of 120 raw p-values are below 0.05 (versus about 6 expected
+by chance alone if every one of the 120 null hypotheses were true), all of them in a
+single comparison (cross-entropy alone vs. neither); the other three comparisons have
+zero. After Benjamini-Hochberg correction, the smallest q-value in the whole sweep is
+0.32 -- nothing clears even a lenient FDR of 10%, let alone 5%.
+
+The 13 raw hits are not 13 independent pieces of evidence: they are `final_<set>` and
+`final_steps_<set>` for many different, correlated sections (a run that does slightly
+better tends to do slightly better on most sections at once), so they are closer to
+one weak, unconfirmed signal counted many times than to a broad effect. Combined with
+the FDR result, the honest reading is that the earlier secondary lead (cross-entropy
+on the edge-section macro-average, `S_edge` p=0.032) does not gain support from
+looking further -- it looks like the same noise viewed from another angle, not a
+finding that keeps showing up. **The two-primary-metric result stands: no detectable
+effect from any solo component at this budget.**
+
 ## Known limits
 
 - Conclusions are conditional on the fixed standard settings; a component that helps
