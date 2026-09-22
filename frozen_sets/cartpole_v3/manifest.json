@@ -1,0 +1,64 @@
+{
+  "edge_clusters": {
+    "E1v": {
+      "description": "force_mag=very low, length=very high",
+      "mean_fail_frac": 0.7173076923076923,
+      "n_found": 520
+    },
+    "E2v": {
+      "description": "length=very high, init_range=very high",
+      "mean_fail_frac": 0.7381401617250675,
+      "n_found": 742
+    },
+    "E3v": {
+      "description": "length=very low, masscart=very low",
+      "mean_fail_frac": 0.5333333333333333,
+      "n_found": 12
+    },
+    "E4v": {
+      "description": "init_range=very high, force_mag=very low",
+      "mean_fail_frac": 0.6468085106382978,
+      "n_found": 47
+    },
+    "E5v": {
+      "description": "force_mag=very low, masscart=very high",
+      "mean_fail_frac": 0.7405797101449275,
+      "n_found": 552
+    }
+  },
+  "note": "E1v..Env replace v2's quartile-assumed E1-E5; found by VerifAI falsification search (find_edge_cases.py), not assumed. E0/E6/E7 carried over unchanged from v2.",
+  "sets": {
+    "E0": {
+      "n": 282,
+      "sha256": "79f4d0c640610ec949ffb8fc83542d83b44117c0a4739ba10eb7a3ac5ad856ed"
+    },
+    "E1v": {
+      "n": 100,
+      "sha256": "386eb79715b8c56b3eecdf641334fa4994340b9a29bd187c0ae6413c59e1f08c"
+    },
+    "E2v": {
+      "n": 100,
+      "sha256": "2e293043407be330f5b14c07447da995a32b07e6324d661ee7c2168030a37a4f"
+    },
+    "E3v": {
+      "n": 12,
+      "sha256": "2899f64b93a52f397a73d1aa0ef2f7a15159ef2d2b4f07e34742b2e41ae183cd"
+    },
+    "E4v": {
+      "n": 47,
+      "sha256": "88be4c7304292965b4ac5a5ddfb442a3d8f7ed299406123f343a87237b7d63a8"
+    },
+    "E5v": {
+      "n": 100,
+      "sha256": "4fc8cbddfc40c113895acbe8df6e4de39cced8c7415b7ea6bd60477c87590ffe"
+    },
+    "E6": {
+      "n": 248,
+      "sha256": "87e4847a9cba4e9d0a68d07193f921a70b1c2e5c4efcddb80e9c3f7cd8bc6874"
+    },
+    "E7": {
+      "n": 100,
+      "sha256": "0a06cdc75c7f9095afd156a9cdcad39faf394ec0bba5098d6dad50ec76f18244"
+    }
+  }
+}
