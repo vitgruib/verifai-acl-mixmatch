@@ -25,23 +25,38 @@ def _final(values: np.ndarray) -> float:
 
 
 def derive_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    """One row per (arm, seed): `AUC_E0` (mean E0 success over the whole learning
-    curve, trapezoid over steps, step 0 included), `final_<set>` (mean over the last
-    checkpoints) and `S_edge` (macro-average final success over the edge sets)."""
+    """One row per (arm, seed). For every exam section present (every column
+    `<set>/success` in `df`): `final_<set>` (mean success over the last checkpoints)
+    and `auc_<set>` (mean success over the whole learning curve, trapezoid over steps,
+    step 0 included). For every `<set>/mean_steps` column: `final_steps_<set>`. Also
+    `AUC_E0` (an alias for `auc_E0`, kept for backward compatibility) and `S_edge`
+    (macro-average `final_<set>` over the edge sets)."""
     rows = []
     for (arm, seed), g in df.groupby(["arm", "seed"]):
         g = g.sort_values("step")
         steps = g["step"].to_numpy(dtype=float)
-        row = {"arm": arm, "seed": seed,
-               "AUC_E0": float(np.trapezoid(g["E0/success"].to_numpy(), steps) / (steps[-1] - steps[0]))}
+        span = steps[-1] - steps[0]
+        row = {"arm": arm, "seed": seed}
         for col in g.columns:
             if col.endswith("/success"):
-                row[f"final_{col[:-len('/success')]}"] = _final(g[col].to_numpy())
+                name = col[:-len("/success")]
+                values = g[col].to_numpy()
+                row[f"final_{name}"] = _final(values)
+                row[f"auc_{name}"] = float(np.trapezoid(values, steps) / span) if span > 0 else float(values[-1])
+            elif col.endswith("/mean_steps"):
+                row[f"final_steps_{col[:-len('/mean_steps')]}"] = _final(g[col].to_numpy())
+        if "auc_E0" in row:
+            row["AUC_E0"] = row["auc_E0"]
         edge = [row[f"final_{s}"] for s in EDGE_SETS if f"final_{s}" in row]
         if edge:
             row["S_edge"] = float(np.mean(edge))
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def exam_sections(df: pd.DataFrame) -> list[str]:
+    """Section names present as `<name>/success` columns, e.g. E0, E1, ..., E7."""
+    return [c[:-len("/success")] for c in df.columns if c.endswith("/success")]
 
 
 def group_values(metrics: pd.DataFrame, arm: str, metric: str) -> np.ndarray:
@@ -83,10 +98,30 @@ def compare_arms(metrics: pd.DataFrame, a: str, b: str, metric: str, n_boot: int
 
 
 def holm(pvalues: dict[str, float]) -> dict[str, float]:
-    """Holm-Bonferroni adjusted p-values."""
+    """Holm-Bonferroni adjusted p-values: controls the family-wise error rate (chance
+    of *any* false positive among the tests). Conservative; use for a small,
+    pre-declared set of confirmatory comparisons."""
     items = sorted(pvalues.items(), key=lambda kv: kv[1])
     m, running, adjusted = len(items), 0.0, {}
     for i, (key, p) in enumerate(items):
         running = max(running, min(1.0, (m - i) * p))
         adjusted[key] = running
     return adjusted
+
+
+def benjamini_hochberg(pvalues: dict[str, float]) -> dict[str, float]:
+    """Benjamini-Hochberg adjusted p-values (q-values): controls the false discovery
+    rate (expected share of false positives *among findings called significant*), not
+    the chance of any false positive. Less conservative than Holm; appropriate for a
+    large, exploratory sweep (e.g. every metric on every exam section) where some
+    false positives are tolerable as long as most flagged results are real. A result
+    is significant at FDR `q` if its returned value is <= q."""
+    items = sorted(pvalues.items(), key=lambda kv: kv[1])
+    m = len(items)
+    adjusted = [0.0] * m
+    running = 1.0
+    for i in range(m - 1, -1, -1):
+        _, p = items[i]
+        running = min(running, p * m / (i + 1))
+        adjusted[i] = running
+    return {items[i][0]: adjusted[i] for i in range(m)}
