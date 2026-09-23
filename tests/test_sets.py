@@ -1,7 +1,6 @@
 """The locked exam (frozen_sets/cartpole): intact, on-spec, and built by its stated rules."""
 import json
 import os
-import re
 
 import numpy as np
 import pytest
@@ -15,32 +14,18 @@ DIR = "frozen_sets/cartpole"
 
 @pytest.fixture(scope="module")
 def sets():
-    return load_sets(DIR)          # raises if any section no longer matches its checksum
+    return load_sets(DIR)          # raises if any suite no longer matches its checksum
 
 
-def edge(sets):
-    return [n for n in sets if re.fullmatch(r"E\d+v", n)]
-
-
-def test_sections_and_counts(sets):
-    assert {"E0", "E6", "E7"} <= set(sets) and edge(sets)
-    assert (len(sets["E0"]), len(sets["E6"]), len(sets["E7"])) == (282, 250, 100)
-    assert all(30 <= len(sets[n]) <= 100 for n in edge(sets))
+def test_two_suites_and_counts_match_the_manifest(sets):
+    assert set(sets) == {"random", "verifai"}
+    assert len(sets["random"]) == 282 and len(sets["verifai"]) > 1000
     manifest = json.load(open(os.path.join(DIR, "manifest.json")))
     assert {n: m["n"] for n, m in manifest["sets"].items()} == {n: len(ps) for n, ps in sets.items()}
 
 
-def test_searched_sections_follow_their_rules(sets):
-    for name in ["E6", *edge(sets)]:
-        assert (sets[name].ref_fail_frac >= 0.6 - 1e-9).all(), name       # 6+ of 10 fail, all-10 included
-    assert (sets["E7"].ref_fail_frac == 0.0).all()                          # every agent passes
-
-
-def test_hard_and_edge_sections_share_no_question(sets):
-    key = lambda ps: {tuple(np.round(np.r_[p, s], 12)) for p, s in zip(ps.params, ps.s0)}
-    e6 = key(sets["E6"])
-    for name in edge(sets):
-        assert not (e6 & key(sets[name])), name
+def test_verifai_questions_are_ones_6_or_more_of_10_reference_agents_fail(sets):
+    assert (sets["verifai"].ref_fail_frac >= 0.6 - 1e-9).all()
 
 
 def test_all_questions_inside_the_task_box(sets):
@@ -50,17 +35,17 @@ def test_all_questions_inside_the_task_box(sets):
             assert lo <= ps.params[:, i].min() and ps.params[:, i].max() <= hi, (name, k)
 
 
-def test_a_sample_of_every_searched_section_is_proven_winnable(sets):
-    for name in ["E6", "E7", *edge(sets)]:
-        ps = sets[name]
-        assert (classify(ps.params[:15], ps.s0[:15])["status"] == WINNABLE).all(), name
+def test_a_sample_of_the_verifai_suite_is_proven_winnable(sets):
+    ps = sets["verifai"]
+    idx = np.random.default_rng(0).choice(len(ps), 30, replace=False)
+    assert (classify(ps.params[idx], ps.s0[idx])["status"] == WINNABLE).all()
 
 
 def test_checksum_detects_tampering(sets, tmp_path):
-    save_sets({"E7": sets["E7"]}, str(tmp_path))
-    assert load_sets(str(tmp_path))["E7"].digest() == sets["E7"].digest()
-    z = dict(np.load(tmp_path / "E7.npz"))
+    save_sets({"random": sets["random"]}, str(tmp_path))
+    assert load_sets(str(tmp_path))["random"].digest() == sets["random"].digest()
+    z = dict(np.load(tmp_path / "random.npz"))
     z["s0"] = z["s0"] + 1e-3
-    np.savez(tmp_path / "E7.npz", **z)
+    np.savez(tmp_path / "random.npz", **z)
     with pytest.raises(ValueError):
         load_sets(str(tmp_path))

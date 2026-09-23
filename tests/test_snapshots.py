@@ -34,11 +34,11 @@ def test_snapshots_can_be_graded_on_a_different_exam_later(tmp_path):
     small = tmp_path / "exam"
     os.makedirs(small)
     manifest = json.load(open(os.path.join(EXAM, "manifest.json")))
-    manifest["sets"] = {"E0": manifest["sets"]["E0"]}
-    shutil.copy(os.path.join(EXAM, "E0.npz"), small / "E0.npz")
+    manifest["sets"] = {"random": manifest["sets"]["random"]}
+    shutil.copy(os.path.join(EXAM, "random.npz"), small / "random.npz")
     json.dump(manifest, open(small / "manifest.json", "w"))
     only = grade_run("N", 1, str(tmp_path / "snaps" / "N" / "1.npz"), load_sets(str(small)))
-    assert all("E0/success" in r and "E6/success" not in r for r in only)
+    assert all("random/success" in r and "verifai/success" not in r for r in only)
 
 
 def test_snapshots_are_small(tmp_path):

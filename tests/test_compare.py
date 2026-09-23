@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from acl_bench.study.compare import benjamini_hochberg, compare_arms, derive_metrics, holm, min_detectable
+from acl_bench.study.compare import compare_arms, derive_metrics, holm, min_detectable
 
 
 def two_groups(mean_a, mean_b, sd, n=400, seed=0):
@@ -42,51 +42,20 @@ def test_holm_matches_textbook_example():
     assert adj == {"a": pytest.approx(0.03), "c": pytest.approx(0.06), "b": pytest.approx(0.06)}
 
 
-def test_auc_and_final_metrics():
-    df = pd.DataFrame({"arm": "x", "seed": 1, "step": [0, 100, 200], "E0/success": [0.0, 0.5, 1.0],
-                       "E1/success": [1.0, 1.0, 1.0]})
-    m = derive_metrics(df).iloc[0]
-    assert m["AUC_E0"] == pytest.approx(0.5)             # linear ramp 0 -> 1
-    assert m["final_E0"] == pytest.approx(0.5)           # mean of the last three checkpoints
-
-
-def test_benjamini_hochberg_matches_the_textbook_example():
-    adj = benjamini_hochberg({"a": 0.01, "b": 0.02, "c": 0.03, "d": 0.04, "e": 0.5})
-    assert adj == {"a": pytest.approx(0.05), "b": pytest.approx(0.05), "c": pytest.approx(0.05),
-                   "d": pytest.approx(0.05), "e": pytest.approx(0.5)}
-
-
-def test_benjamini_hochberg_matches_scipy_reference():
-    from scipy.stats import false_discovery_control
-    rng = np.random.default_rng(0)
-    pvals = rng.uniform(0, 1, 25)
-    keys = [f"k{i}" for i in range(len(pvals))]
-    mine = benjamini_hochberg(dict(zip(keys, pvals)))
-    ref = false_discovery_control(pvals, method="bh")
-    for k, p, r in zip(keys, pvals, ref):
-        assert mine[k] == pytest.approx(r), (k, p)
-
-
-def test_benjamini_hochberg_is_never_stricter_than_holm():
-    rng = np.random.default_rng(1)
-    d = {f"k{i}": p for i, p in enumerate(rng.uniform(0, 0.2, 15))}
-    bh, h = benjamini_hochberg(d), holm(d)
-    for k in d:
-        assert bh[k] <= h[k] + 1e-9
-
-
-def test_derive_metrics_computes_every_section_and_metric_present():
+def test_derive_metrics_computes_final_and_curve_for_success_and_steps():
     df = pd.DataFrame({
         "arm": "x", "seed": 1, "step": [0, 100, 200],
-        "E0/success": [0.0, 0.5, 1.0], "E0/mean_steps": [10.0, 250.0, 500.0],
-        "E6/success": [0.0, 0.0, 0.2],
+        "random/success": [0.0, 0.5, 1.0], "random/mean_steps": [10.0, 250.0, 500.0],
+        "verifai/success": [0.0, 0.0, 0.2], "verifai/mean_steps": [0.0, 100.0, 300.0],
     })
     m = derive_metrics(df).iloc[0]
-    assert m["auc_E0"] == pytest.approx(0.5) and m["AUC_E0"] == pytest.approx(0.5)
-    assert m["final_E0"] == pytest.approx(0.5)
-    assert m["final_steps_E0"] == pytest.approx((10 + 250 + 500) / 3)
-    assert m["auc_E6"] == pytest.approx(0.05)   # trapezoid: (0+0)/2*100 + (0+0.2)/2*100, /span 200
-    assert m["final_E6"] == pytest.approx(0.2 / 3)
+    assert m["auc_random"] == pytest.approx(0.5)                     # linear ramp 0 -> 1
+    assert m["final_random"] == pytest.approx(0.5)                   # mean of the last three check-ins
+    assert m["final_steps_random"] == pytest.approx((10 + 250 + 500) / 3)
+    assert m["auc_steps_random"] == pytest.approx((130 * 100 + 375 * 100) / 200)
+    assert m["auc_verifai"] == pytest.approx(0.05)   # trapezoid: (0+0)/2*100 + (0+0.2)/2*100, /span 200
+    assert m["final_verifai"] == pytest.approx(0.2 / 3)
+    assert m["auc_steps_verifai"] == pytest.approx((50 * 100 + 200 * 100) / 200)
 
 
 def test_checkpoint_grid_is_every_third_checkin_ending_at_the_final_model():

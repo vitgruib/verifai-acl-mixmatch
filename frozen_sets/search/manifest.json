@@ -17,14 +17,6 @@
       "seed": 20260922,
       "starts_per_task": 5
     },
-    "SEARCH_random": {
-      "iters": 3000,
-      "order_in_run": [
-        "random"
-      ],
-      "seed": 20260923,
-      "starts_per_task": 5
-    },
     "SEARCH_sa": {
       "iters": 3000,
       "order_in_run": [
@@ -80,7 +72,7 @@
         "step": 552960
       }
     },
-    "rule": "best of the last 5 check-ins on E0 (exam.search.pick_reference)"
+    "rule": "best of the last 5 check-ins on the random suite (exam.search.pick_reference)"
   },
   "sets": {
     "SEARCH_ce": {
@@ -90,10 +82,6 @@
     "SEARCH_mab": {
       "n": 15000,
       "sha256": "ea43ba122da2044e32baae03c9eb9f7cb9ac8ef418c20566f57000bdfb00434e"
-    },
-    "SEARCH_random": {
-      "n": 15000,
-      "sha256": "1508004a94e47ed9ce676aca22d7821f906c4a890b550e9abbb661f8aa0559e7"
     },
     "SEARCH_sa": {
       "n": 15000,

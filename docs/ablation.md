@@ -1,7 +1,7 @@
 # The ablation: does each component exist as an effect?
 
 **Status: done.** Eight methods x 100 runs (800 runs of 614,400 steps), every run graded
-on the final exam (docs/exam.md) at 10 checkpoints. Results below; the interactive
+on both test suites (docs/exam.md) at 10 checkpoints. Results below; the interactive
 report is linked from the README.
 
 ## The question
@@ -38,7 +38,7 @@ setting is fixed at a standard value, so a result cannot be an artifact of tunin
 | **S_ce**, **S_mab**, **S_sa** | cross-entropy / bandit / annealing | off | that picker only |
 | **B_ce**, **B_mab**, **B_sa** | cross-entropy / bandit / annealing | on | both |
 
-## The comparisons, decided in advance
+## The comparisons
 
 | id | comparison | asks |
 |---|---|---|
@@ -48,18 +48,16 @@ setting is fixed at a standard value, so a result cannot be an artifact of tunin
 | C4 | B_x vs S_x (3 pickers) | does adding the pile help beyond the picker? |
 | C5 | B_x vs A (3 pickers) | does adding the picker help beyond the pile? |
 
-13 comparisons x 3 primary metrics = 39 tests, Holm-corrected together:
-- **`AUC_E0`**: success on the general section averaged over the learning curve (how
-  well *and* how fast it learned);
-- **`final_E0`**: success on the general section at the end (added after the runs);
-- **`final_E6`**: success on the hard section at the end.
+Each is measured on two test suites (docs/exam.md): **random** (282 random questions)
+and **verifai** (1,782 questions the VerifAI samplers discovered that the plain-trained
+reference agents fail, each proven winnable). Per suite, four metrics:
 
-"At the end" means the average of the last three graded checkpoints (491k, 553k, 614k
-steps): agents dip briefly at single checkpoints, so this measures the final model more
-reliably than the last snapshot alone.
+| | final (last three checkpoints, 491k-614k steps) | curve (all ten checkpoints) |
+|---|---|---|
+| success (share passed) | `final_<suite>` | `auc_<suite>` |
+| mean steps survived (0-500) | `final_steps_<suite>` | `auc_steps_<suite>` |
 
-Secondary metrics (easy section E7, the E6 learning curve, every edge section and their
-average) are one exploratory family of 156 tests, Benjamini-Hochberg-corrected.
+13 comparisons x 8 metrics = **104 tests, Holm-corrected together.**
 
 ## The settings, all fixed at standard values
 
@@ -80,41 +78,36 @@ annealing are conditional on them.
 
 ## Results
 
-| method | `AUC_E0` | final E0 | **final E6 (hard)** | final E7 (easy) | edge average |
-|---|---|---|---|---|---|
-| N | 0.626 | 0.906 | 0.291 | 0.918 | 0.287 |
-| A | 0.650 | 0.913 | 0.298 | 0.925 | 0.291 |
-| S_ce | 0.660 | **0.961** | 0.262 | **0.974** | 0.258 |
-| S_mab | 0.644 | 0.915 | 0.289 | 0.926 | 0.285 |
-| S_sa | 0.624 | 0.876 | 0.280 | 0.888 | 0.276 |
-| B_ce | 0.645 | 0.942 | 0.282 | 0.954 | 0.277 |
-| B_mab | **0.665** | 0.922 | **0.319** | 0.934 | **0.314** |
-| B_sa | 0.632 | 0.887 | 0.305 | 0.898 | 0.300 |
+| method | random: final success | random: curve success | random: final steps | random: curve steps | verifai: final success | verifai: curve success | verifai: final steps | verifai: curve steps |
+|---|---|---|---|---|---|---|---|---|
+| N | 0.906 | 0.626 | 479.7 | 412.4 | 0.292 | 0.244 | 205.7 | 209.8 |
+| A | 0.913 | 0.650 | 481.5 | 418.3 | 0.298 | 0.255 | 208.4 | 215.2 |
+| S_ce | **0.961** | 0.660 | 490.5 | 409.0 | 0.263 | 0.254 | 186.1 | 209.6 |
+| S_mab | 0.915 | 0.644 | 482.8 | 413.1 | 0.290 | 0.250 | 206.8 | 213.4 |
+| S_sa | 0.876 | 0.624 | 473.1 | 411.1 | 0.280 | 0.228 | 201.8 | 205.2 |
+| B_ce | 0.942 | 0.645 | 485.9 | 406.6 | 0.282 | 0.249 | 197.0 | 210.1 |
+| B_mab | 0.922 | 0.665 | 482.1 | 417.4 | 0.320 | 0.274 | 220.4 | 220.0 |
+| B_sa | 0.887 | 0.632 | 476.4 | 411.6 | 0.305 | 0.260 | 213.4 | 215.5 |
 
-Run-to-run SD per method: `AUC_E0` 0.09-0.13, final E6 0.18-0.23.
+**Finding: the cross-entropy picker improves final performance on random questions.**
+Final success on the random suite rises from 0.906 (plain) to 0.961 with the
+cross-entropy picker alone: +0.055, 95% CI [+0.026, +0.085], p = 0.0003, Holm-adjusted
+p = 0.034 across all 104 tests. The other measures point the same way without passing
+correction: final mean steps +10.8 (p = 0.004), and the combined method
+(cross-entropy + replay, separate runs) +0.036 final success (p = 0.019).
 
-**Finding: the cross-entropy picker improves final performance.** Final success on the
-general section rises from 0.906 (plain) to 0.961 with the cross-entropy picker alone:
-+0.055, 95% CI [+0.026, +0.085], p = 0.0003, Holm-adjusted p = 0.013 across all 39
-primary tests. The combined method
-(cross-entropy + replay, separate runs) points the same way: +0.036, p = 0.019. The easy
-section agrees (+0.056). No other picker, and not replay, shows an effect.
+**Nothing else is detectable.** No other test survives correction (7 of 104 have raw
+p < 0.05, about 5 expected by chance). In particular, **no method improved on the
+VerifAI-discovered questions**; cross-entropy alone is, if anything, slightly lower there
+(final success -0.030, p = 0.30). Each test could reliably detect (80% power, Bonferroni
+level) a difference of about:
 
-**Nothing else is detectable.** No other primary test survives Holm correction. The largest differences are
-both-with-bandit vs plain on `AUC_E0` (+0.039, 95% CI [+0.009, +0.068], p = 0.011) and
-cross-entropy alone vs plain on `AUC_E0` (+0.033, [+0.005, +0.061], p = 0.019). With
-this noise, each comparison could reliably detect (80% power, Bonferroni level) a true
-difference of about **0.06 in `AUC_E0`** and **0.11 in final E6**; smaller effects may
-exist and would be missed.
-
-**Secondary family:** 9 of 156 raw p < 0.05 (about 8 expected by chance); nothing
-survives Benjamini-Hochberg (smallest q = 0.07).
-
-**What this does and does not show.** At the calibrated budget and standard settings,
-the cross-entropy picker raised final performance on ordinary tasks; nothing measurably
-changed learning speed or hard-question success. Effects smaller than the
-detection limits above are not ruled out, and a component that helps only at other
-settings would look absent here.
+| | random suite | verifai suite |
+|---|---|---|
+| final success | 0.08 | 0.12 |
+| curve success | 0.07 | 0.07 |
+| final mean steps | 18 | 57 |
+| curve mean steps | 17 | 28 |
 
 ## Known limits
 
