@@ -1,8 +1,10 @@
 verifai
 scenic
+dotmap
 gymnasium
 torch
 numpy
+scipy
 pandas
-matplotlib
 scikit-learn
+pytest

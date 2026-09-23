@@ -1,0 +1,103 @@
+{
+  "provenance": {
+    "SEARCH_ce": {
+      "iters": 3000,
+      "order_in_run": [
+        "ce"
+      ],
+      "seed": 20260922,
+      "starts_per_task": 5
+    },
+    "SEARCH_mab": {
+      "iters": 3000,
+      "order_in_run": [
+        "ce",
+        "mab"
+      ],
+      "seed": 20260922,
+      "starts_per_task": 5
+    },
+    "SEARCH_random": {
+      "iters": 3000,
+      "order_in_run": [
+        "random"
+      ],
+      "seed": 20260923,
+      "starts_per_task": 5
+    },
+    "SEARCH_sa": {
+      "iters": 3000,
+      "order_in_run": [
+        "ce",
+        "mab",
+        "sa"
+      ],
+      "seed": 20260922,
+      "starts_per_task": 5
+    }
+  },
+  "reference_agents": {
+    "arm": "REF",
+    "picks": {
+      "1": {
+        "E0_success": 0.9894,
+        "step": 614400
+      },
+      "10": {
+        "E0_success": 0.9823,
+        "step": 614400
+      },
+      "2": {
+        "E0_success": 0.9858,
+        "step": 573440
+      },
+      "3": {
+        "E0_success": 0.9894,
+        "step": 614400
+      },
+      "4": {
+        "E0_success": 0.9894,
+        "step": 532480
+      },
+      "5": {
+        "E0_success": 0.9894,
+        "step": 593920
+      },
+      "6": {
+        "E0_success": 0.9965,
+        "step": 614400
+      },
+      "7": {
+        "E0_success": 0.9858,
+        "step": 532480
+      },
+      "8": {
+        "E0_success": 0.9894,
+        "step": 614400
+      },
+      "9": {
+        "E0_success": 0.9929,
+        "step": 552960
+      }
+    },
+    "rule": "best of the last 5 check-ins on E0 (exam.search.pick_reference)"
+  },
+  "sets": {
+    "SEARCH_ce": {
+      "n": 15000,
+      "sha256": "42e9a3aa8c53e6ef03f063f33936c6a2f23a061ec42185b106f7a69124e416ca"
+    },
+    "SEARCH_mab": {
+      "n": 15000,
+      "sha256": "ea43ba122da2044e32baae03c9eb9f7cb9ac8ef418c20566f57000bdfb00434e"
+    },
+    "SEARCH_random": {
+      "n": 15000,
+      "sha256": "1508004a94e47ed9ce676aca22d7821f906c4a890b550e9abbb661f8aa0559e7"
+    },
+    "SEARCH_sa": {
+      "n": 15000,
+      "sha256": "f0f39b92d23803a90daac9133bba8351bdec2ef08ff92dd5e07edb1377422538"
+    }
+  }
+}

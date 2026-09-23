@@ -1,18 +1,14 @@
 """A seed must fully determine a run, and each arm must get independent seeds."""
 import numpy as np
 
-from acl_bench.envs.registry import ENV_SPECS
-from acl_bench.potential.functions import resolve_potential_fn
 from acl_bench.ppo import PPOConfig, run_training
-from acl_bench.scenic_sampling import ScenicTaskSampler
-
-SPEC = ENV_SPECS["cartpole"]
+from acl_bench.sampling import ScenicTaskSampler
+from acl_bench.scoring import pvl_gae
 
 
 def train(seed, acl=True, sampler="random", steps=3072):
     cfg = PPOConfig(total_timesteps=steps, seed=seed, acl=acl)
-    task_sampler = ScenicTaskSampler.load(SPEC.scenic_file, sampler)
-    log, _ = run_training(SPEC, task_sampler, resolve_potential_fn("pvl_gae", SPEC.success_return), cfg)
+    log, _ = run_training(ScenicTaskSampler.load(sampler), pvl_gae, cfg)
     return log
 
 
@@ -27,7 +23,7 @@ def test_different_seeds_differ():
 
 
 def test_arm_seeds_are_independent_stable_and_distinct():
-    from acl_bench.suite.run_arms import arm_seed
+    from acl_bench.study.run import arm_seed
     assert arm_seed("N", 1) == arm_seed("N", 1)                       # stable across calls
     assert arm_seed("N", 1) != arm_seed("A", 1)                       # same replicate, different arm
     seeds = {arm_seed(a, r) for a in ("N", "A", "B_sa", "S_ce") for r in range(1, 201)}

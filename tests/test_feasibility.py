@@ -1,10 +1,10 @@
 import numpy as np
 
-from acl_bench.envs.param_cartpole import PARAM_BOUNDS
-from acl_bench.suite.evaluator import PARAM_ORDER, step_physics, terminated
-from acl_bench.suite.feasibility import (IMPOSSIBLE, WINNABLE, beam_search, classify, interval_doom_step,
+from acl_bench.cartpole import PARAM_BOUNDS, PARAM_ORDER
+from acl_bench.exam.feasibility import (IMPOSSIBLE, WINNABLE, beam_search, classify, interval_doom_step,
                                          interval_step, replay_survives, split_interval_doom_step)
-from acl_bench.suite.sets import load_sets
+from acl_bench.exam.grader import step_physics, terminated
+from acl_bench.exam.sets import load_sets
 
 CENTER = np.array([(PARAM_BOUNDS[k][0] + PARAM_BOUNDS[k][1]) / 2 for k in PARAM_ORDER])
 FORCE = PARAM_ORDER.index("force_mag")
@@ -61,7 +61,7 @@ def test_replay_rejects_a_sequence_that_fails():
     assert not replay_survives(params, s0, always_left)[0]
 
 
-def test_every_locked_exam_question_in_E6_is_certified_winnable():
-    e6 = load_sets("frozen_sets/cartpole_v2", names=["E6"])["E6"]
-    r = classify(e6.params[:60], e6.s0[:60])
+def test_locked_general_questions_are_certified_winnable():
+    e0 = load_sets("frozen_sets/cartpole", names=["E0"])["E0"]         # cleaned once by an LQR expert
+    r = classify(e0.params[:60], e0.s0[:60])
     assert (r["status"] == WINNABLE).all()

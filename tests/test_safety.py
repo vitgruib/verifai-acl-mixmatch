@@ -5,9 +5,9 @@ import time
 import pandas as pd
 import pytest
 
-from acl_bench.suite import safety
-from acl_bench.suite.run_arms import append_rows
-from acl_bench.suite.safety import Limits, Watchdog, run_jobs
+from acl_bench.study import safety
+from acl_bench.study.run import append_rows
+from acl_bench.study.safety import Limits, Watchdog, run_jobs
 
 
 # ---- job functions (module level so spawned workers can import them) ----
