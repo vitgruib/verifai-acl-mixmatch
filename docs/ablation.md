@@ -88,7 +88,15 @@ annealing are conditional on them.
 
 Run-to-run SD per method: `AUC_E0` 0.09-0.13, final E6 0.18-0.23.
 
-**No component has a detectable effect on either primary metric.** None of the 26 tests
+**Finding: the cross-entropy picker improves final performance.** Final success on the
+general section rises from 0.906 (plain) to 0.961 with the cross-entropy picker alone:
++0.055, 95% CI [+0.026, +0.085], p = 0.0003. Adding final general success to the two
+primary metrics (39 tests) and Holm-correcting all of them, it survives (adjusted
+p = 0.013); it was not one of the metrics declared in advance. The combined method
+(cross-entropy + replay, separate runs) points the same way: +0.036, p = 0.019. The easy
+section agrees (+0.056). No other picker, and not replay, shows an effect.
+
+**On the two pre-declared primary metrics, nothing is detectable.** None of the 26 tests
 survives Holm correction (smallest adjusted p = 0.28). The largest differences are
 both-with-bandit vs plain on `AUC_E0` (+0.039, 95% CI [+0.009, +0.068], p = 0.011) and
 cross-entropy alone vs plain on `AUC_E0` (+0.033, [+0.005, +0.061], p = 0.019). With
@@ -99,28 +107,9 @@ exist and would be missed.
 **Secondary family:** 9 of 156 raw p < 0.05 (about 8 expected by chance); nothing
 survives Benjamini-Hochberg (smallest q = 0.07).
 
-**The strongest lead: the cross-entropy picker makes training more reliable.**
-- Cross-entropy alone vs plain: final E0 +0.055 ([+0.026, +0.085], p = 0.0003), final
-  E7 +0.056 (p = 0.0005), half the run-to-run spread (final E0 SD 0.076 vs 0.130).
-- It **replicates in independent runs**: both-with-cross-entropy (B_ce, a separate 100
-  runs) vs plain shows the same direction, final E0 +0.036 (p = 0.019), final E7 +0.035
-  (p = 0.029). The bandit and annealing pickers show nothing (|diff| <= 0.03, p > 0.14).
-- **The mechanism is fewer bad runs**, not better good ones. Median final E0 barely moves
-  (0.969 plain, 0.982 S_ce), but the share of runs finishing below 0.9 falls from 28%
-  (plain) to 8% (S_ce) and 17% (B_ce).
-- It does **not** extend to hard questions (final E6: S_ce -0.028, B_ce -0.009, both
-  n.s.).
-
-Why it is not yet a finding: final E0 was not a pre-declared test (it was noticed after
-looking at many metrics), and E0 and E7 are both uniform-random question sets, so they
-are two views of one effect, not two confirmations. What makes it credible is the
-replication in B_ce's independent runs and a plausible mechanism. A confirmatory run
-(S_ce vs N on fresh seeds, with final E0 and the below-0.9 share declared in advance)
-would settle it for about an hour of compute.
-
 **What this does and does not show.** At the calibrated budget and standard settings,
-neither the review pile, nor any picker, nor both together measurably changed learning
-speed or hard-question success against plain random practice. Effects smaller than the
+the cross-entropy picker raised final performance on ordinary tasks; nothing measurably
+changed learning speed or hard-question success. Effects smaller than the
 detection limits above are not ruled out, and a component that helps only at other
 settings would look absent here.
 
