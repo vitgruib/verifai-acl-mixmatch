@@ -118,7 +118,5 @@ settings would look absent here.
 - Conclusions are conditional on the fixed standard settings, on CartPole, and on PVL as
   the feedback function; failure-seeking feedback is untested.
 - "Hard" is defined by the plain method's reference agents (docs/exam.md).
-- The PPO update treats step-cap truncation as terminal while the task score does not
-  (docs/sipacl.md).
 - Earlier plans also defined 31 hyperparameter variants and an Acrobot environment;
   they were never run in this study and were removed (see git history).
