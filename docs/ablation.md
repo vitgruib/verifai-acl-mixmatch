@@ -14,6 +14,18 @@ Two components can each be switched on or off:
   ones the agent is learning most from (cross-entropy, bandit or simulated annealing),
   instead of at random.
 
+**The feedback function.** Both components are driven by the same task score,
+**positive value loss** (`pvl_gae`, SIPACL's learning-potential score): the mean over an
+episode of max(GAE advantage, 0), i.e. how much better the episode went than the critic
+expected. The pile replays tasks ranked by it; after every newly drawn task the picker
+receives `rho = -clip(z, -3, 3) / 3`, where `z` is that score z-scored against the run's
+feedback so far, so an above-average learning potential reads as a VerifAI
+"counterexample" (docs/sipacl.md). **So the pickers here seek learning potential, not
+failure.** VerifAI's samplers were built for falsification (feedback = how badly the
+system did); a failure-seeking feedback (e.g. `neg_return`, minus the episode return) is
+a different experiment and is not tested here. Every conclusion below is conditional on
+PVL feedback.
+
 **Does each help at all, and do they help together?** This is an *existence* test: every
 setting is fixed at a standard value, so a result cannot be an artifact of tuning.
 
@@ -25,8 +37,6 @@ setting is fixed at a standard value, so a result cannot be an artifact of tunin
 | **A** | random | on | review pile only |
 | **S_ce**, **S_mab**, **S_sa** | cross-entropy / bandit / annealing | off | that picker only |
 | **B_ce**, **B_mab**, **B_sa** | cross-entropy / bandit / annealing | on | both |
-
-The pile and the pickers score tasks with `pvl_gae`, SIPACL's own score.
 
 ## The comparisons, decided in advance
 
@@ -89,13 +99,24 @@ exist and would be missed.
 **Secondary family:** 9 of 156 raw p < 0.05 (about 8 expected by chance); nothing
 survives Benjamini-Hochberg (smallest q = 0.07).
 
-**One exploratory lead.** Cross-entropy alone ends up better on *ordinary* questions:
-final E0 +0.055 vs plain ([+0.026, +0.085], p = 0.0003, not a pre-declared test) and
-final E7 +0.056 (p = 0.0005, q = 0.07), with about half the run-to-run spread (final E0
-SD 0.076 vs 0.130). It is *not* better on hard questions (final E6 -0.029, p = 0.33). A
-plausible reading is that it steers practice toward the bulk of the task space and makes
-the final policy more reliable there, at no gain on the hard corner. It needs a
-confirmatory test before it is a finding.
+**The strongest lead: the cross-entropy picker makes training more reliable.**
+- Cross-entropy alone vs plain: final E0 +0.055 ([+0.026, +0.085], p = 0.0003), final
+  E7 +0.056 (p = 0.0005), half the run-to-run spread (final E0 SD 0.076 vs 0.130).
+- It **replicates in independent runs**: both-with-cross-entropy (B_ce, a separate 100
+  runs) vs plain shows the same direction, final E0 +0.036 (p = 0.019), final E7 +0.035
+  (p = 0.029). The bandit and annealing pickers show nothing (|diff| <= 0.03, p > 0.14).
+- **The mechanism is fewer bad runs**, not better good ones. Median final E0 barely moves
+  (0.969 plain, 0.982 S_ce), but the share of runs finishing below 0.9 falls from 28%
+  (plain) to 8% (S_ce) and 17% (B_ce).
+- It does **not** extend to hard questions (final E6: S_ce -0.028, B_ce -0.009, both
+  n.s.).
+
+Why it is not yet a finding: final E0 was not a pre-declared test (it was noticed after
+looking at many metrics), and E0 and E7 are both uniform-random question sets, so they
+are two views of one effect, not two confirmations. What makes it credible is the
+replication in B_ce's independent runs and a plausible mechanism. A confirmatory run
+(S_ce vs N on fresh seeds, with final E0 and the below-0.9 share declared in advance)
+would settle it for about an hour of compute.
 
 **What this does and does not show.** At the calibrated budget and standard settings,
 neither the review pile, nor any picker, nor both together measurably changed learning
@@ -105,7 +126,8 @@ settings would look absent here.
 
 ## Known limits
 
-- Conclusions are conditional on the fixed standard settings and on CartPole.
+- Conclusions are conditional on the fixed standard settings, on CartPole, and on PVL as
+  the feedback function; failure-seeking feedback is untested.
 - "Hard" is defined by the plain method's reference agents (docs/exam.md).
 - The PPO update treats step-cap truncation as terminal while the task score does not
   (docs/sipacl.md).
