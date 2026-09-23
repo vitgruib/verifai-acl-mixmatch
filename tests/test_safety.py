@@ -55,7 +55,8 @@ def test_real_probes_return_sane_values_on_this_machine():
 
 # ---- watchdog decisions ----
 def dog(**probes):
-    base = {"ac": lambda: True, "speed": lambda: None, "memory": lambda: 60, "disk": lambda: 100.0}
+    base = {"ac": lambda: True, "speed": lambda: None, "memory": lambda: 60, "disk": lambda: 100.0,
+            "battery": lambda: 80}
     return Watchdog(Limits(), check_every=0, probes={**base, **probes})
 
 
@@ -69,8 +70,18 @@ def test_watchdog_flags_each_hazard():
 
 def test_battery_is_allowed_only_when_asked():
     wd = Watchdog(Limits(require_ac=False), check_every=0, probes={"ac": lambda: False, "speed": lambda: None,
-                                                                    "memory": lambda: 60, "disk": lambda: 100.0})
+                                                                    "memory": lambda: 60, "disk": lambda: 100.0,
+                                                                    "battery": lambda: 80})
     assert wd.status()[0] is True
+
+
+def test_allowed_battery_still_pauses_below_the_charge_floor():
+    probes = {"ac": lambda: False, "speed": lambda: None, "memory": lambda: 60, "disk": lambda: 100.0,
+              "battery": lambda: 20}
+    ok, reason = Watchdog(Limits(require_ac=False), check_every=0, probes=probes).status()
+    assert not ok and "battery low" in reason
+    probes["ac"] = lambda: True                        # the floor only applies on battery
+    assert Watchdog(Limits(require_ac=False), check_every=0, probes=probes).status()[0] is True
 
 
 def test_watchdog_does_not_probe_more_often_than_asked():

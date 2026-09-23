@@ -6,7 +6,8 @@ runaway memory, so `run_jobs` protects against those:
 
   - workers run at reduced CPU priority (`nice`), so the interactive desktop wins;
   - a watchdog is consulted before every new job is dispatched; if the machine is
-    thermally throttled, low on free memory, on battery, or short on disk, dispatch
+    thermally throttled, low on free memory, on battery (or, when battery use is
+    allowed, below a charge floor), or short on disk, dispatch
     PAUSES (jobs already running finish) and resumes when it clears;
   - a stop file (`touch <file>`) stops dispatching new jobs and exits cleanly;
   - one failed job is logged and skipped instead of aborting a multi-hour run.
@@ -40,6 +41,11 @@ def on_ac_power() -> bool | None:
     return None
 
 
+def battery_percent() -> int | None:
+    m = re.search(r"(\d+)%;", _run(["pmset", "-g", "batt"]))
+    return int(m.group(1)) if m else None
+
+
 def thermal_speed_limit() -> int | None:
     """macOS's CPU speed limit in percent (100 = unthrottled), or None if no throttling
     has been recorded."""
@@ -61,6 +67,7 @@ class Limits:
     min_free_memory_pct: int = 15
     min_cpu_speed_limit: int = 90        # below this macOS is thermally throttling
     require_ac: bool = True
+    min_battery_pct: int = 25            # on battery (when allowed), pause below this charge
     min_free_disk_gb: float = 5.0
 
 
@@ -71,7 +78,8 @@ class Watchdog:
                  probes: dict[str, Callable] | None = None, clock: Callable[[], float] = time.monotonic):
         self.limits, self.disk_path, self.check_every, self.clock = limits or Limits(), disk_path, check_every, clock
         self.probes = {"ac": on_ac_power, "speed": thermal_speed_limit, "memory": free_memory_percent,
-                       "disk": lambda: free_disk_gb(disk_path), **(probes or {})}
+                       "disk": lambda: free_disk_gb(disk_path),
+                       "battery": battery_percent, **(probes or {})}
         self._cached: tuple[bool, str] = (True, "ok")
         self._at = -1e18
 
@@ -87,6 +95,8 @@ class Watchdog:
             ok, reason = False, f"low free memory ({mem}%)"
         elif lim.require_ac and ac is False:
             ok, reason = False, "running on battery"
+        elif ac is False and (batt := p["battery"]()) is not None and batt < lim.min_battery_pct:
+            ok, reason = False, f"battery low ({batt}%)"
         elif disk is not None and disk < lim.min_free_disk_gb:
             ok, reason = False, f"low free disk ({disk:.1f} GB)"
         self._cached, self._at = (ok, reason), self.clock()

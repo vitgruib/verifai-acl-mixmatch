@@ -103,6 +103,8 @@ def main():
     parser.add_argument("--nice", type=int, default=10, help="lower workers' CPU priority (0-19)")
     parser.add_argument("--allow-battery", action="store_true", help="keep dispatching on battery power")
     parser.add_argument("--min-free-memory-pct", type=int, default=15)
+    parser.add_argument("--min-battery-pct", type=int, default=25,
+                        help="with --allow-battery, pause dispatching below this charge")
     parser.add_argument("--stop-file", default="results/STOP",
                         help="create this file to stop starting new runs (running ones finish)")
     args = parser.parse_args()
@@ -139,7 +141,8 @@ def main():
     os.makedirs(where, exist_ok=True)
     if free_disk_gb(where) < need_gb:
         raise SystemExit(f"need about {need_gb:.1f} GB free at {where}, have {free_disk_gb(where):.1f}")
-    watchdog = Watchdog(Limits(min_free_memory_pct=args.min_free_memory_pct, require_ac=not args.allow_battery),
+    watchdog = Watchdog(Limits(min_free_memory_pct=args.min_free_memory_pct, require_ac=not args.allow_battery,
+                               min_battery_pct=args.min_battery_pct),
                         disk_path=where)
     ok, reason = watchdog.status()
     print(f"{len(jobs)} runs ({len(names)} arms) on {args.workers} workers at nice {args.nice}; "
