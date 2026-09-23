@@ -6,11 +6,13 @@ where the agent is still learning? An ablation on CartPole with five physical ta
 parameters (pole length and mass, cart mass, push force, start range), sampled through
 Scenic and VerifAI.
 
-**Result:** with 100 independent runs per method, **no component had a detectable
-effect** on learning speed or on hard-question success (none of 26 pre-declared tests
-survives Holm correction). One exploratory lead: the cross-entropy picker alone makes
-the final policy more reliable on ordinary tasks (+0.055 final success on the general
-section, p = 0.0003, not pre-declared). Details in [docs/ablation.md](docs/ablation.md);
+**Result:** with 100 independent runs per method and learning-potential (PVL) feedback,
+**no component had a detectable effect** on learning speed or on hard-question success
+(none of 26 pre-declared tests survives Holm correction). The strongest lead: the
+cross-entropy picker makes training more reliable on ordinary tasks. Runs finishing
+below 0.9 general success fall from 28% to 8% (final success +0.055, p = 0.0003), and the
+effect replicates in the independent both-with-cross-entropy runs (+0.036, p = 0.019).
+It was not pre-declared, so it awaits a confirmatory run. Details in [docs/ablation.md](docs/ablation.md);
 interactive report (private until shared): https://claude.ai/artifact/TCcHBgEY9kiA8oDq4kdsNm
 
 ## What is compared
@@ -25,8 +27,10 @@ interactive report (private until shared): https://claude.ai/artifact/TCcHBgEY9k
 - **Review pile (ACL):** SIPACL's prioritized replay, `P(i) ~ 1/rank` by a
   learning-potential score (positive value loss). Differences from SIPACL, including
   truncation and sampler feedback: [docs/sipacl.md](docs/sipacl.md).
-- **Picker:** a VerifAI sampler behind Scenic's external-parameter API. After each new
-  task, its score becomes the sampler's feedback `rho = -z(score)/3`.
+- **Picker:** a VerifAI sampler behind Scenic's external-parameter API. **Feedback is the
+  same positive value loss** that ranks replay: after each new task, `rho = -z(PVL)/3`,
+  so the picker seeks tasks with high learning potential, *not* tasks the agent fails.
+  Failure-seeking feedback is not tested here.
 - **Exam:** every run is graded on a locked set of questions: a general section, a hard
   section, an easy section and four edge sections. The hard ones were *found* by
   searching for failures with the samplers and *proven* winnable with a planner and
