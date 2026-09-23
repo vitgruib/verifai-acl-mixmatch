@@ -1,11 +1,11 @@
 """Comparing arms: independent groups of runs, no seed-by-seed pairing.
 
-Each arm is trained on its own seeds (run_arms derives an independent seed per
+Each arm is trained on its own seeds (study.run derives an independent seed per
 (arm, replicate)), so the runs of two arms are independent groups and are compared
 as groups: difference of means, a bootstrap interval that resamples each group
 separately, and Welch's t-test.
 
-Seed-by-seed pairing was tried and removed: a pilot (results/pilot_pairing.csv)
+Seed-by-seed pairing was tried and removed: a pilot (results/calibration/pilot_pairing.csv)
 found runs that share a seed are identical at step 0 but uncorrelated by the first
 checkpoint (20,480 steps), so pairing removed 0-28% of the variance of a difference
 and made some comparisons slightly worse (docs/exam.md).
