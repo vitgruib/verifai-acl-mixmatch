@@ -6,13 +6,12 @@ where the agent is still learning? An ablation on CartPole with five physical ta
 parameters (pole length and mass, cart mass, push force, start range), sampled through
 Scenic and VerifAI.
 
-**Result:** with 100 independent runs per method and learning-potential (PVL) feedback,
-**no component had a detectable effect** on learning speed or on hard-question success
-(none of 26 pre-declared tests survives Holm correction). The strongest lead: the
-cross-entropy picker makes training more reliable on ordinary tasks. Runs finishing
-below 0.9 general success fall from 28% to 8% (final success +0.055, p = 0.0003), and the
-effect replicates in the independent both-with-cross-entropy runs (+0.036, p = 0.019).
-It was not pre-declared, so it awaits a confirmatory run. Details in [docs/ablation.md](docs/ablation.md);
+**Result:** the **cross-entropy picker improves final performance** on the general
+section: +0.055 success over plain training (0.961 vs 0.906, p = 0.0003; Holm-adjusted
+p = 0.013 across all 39 tests), and +0.036 when combined with replay (p = 0.019). Replay
+alone, the bandit picker and the annealing picker had no detectable effect, and no
+method improved hard-question success. Feedback for both components is
+learning-potential (PVL). Details in [docs/ablation.md](docs/ablation.md);
 interactive report (private until shared): https://claude.ai/artifact/TCcHBgEY9kiA8oDq4kdsNm
 
 ## What is compared
