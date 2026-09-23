@@ -20,3 +20,9 @@ def test_merge_joins_on_run_and_step_and_refuses_ungraded_runs():
     df = merge(main[main.arm == "N"], edge)
     assert list(df["E1v/success"]) == [0.0, 0.3]
     assert "E1/success" not in df.columns              # v2 edge sections dropped
+
+
+def test_edge_sections_found_from_columns_in_numeric_order():
+    from acl_bench.suite.analyze import edge_sections
+    df = pd.DataFrame(columns=["arm", "E10v/success", "E2v/success", "E2v/n", "E6/success", "E1v/success"])
+    assert edge_sections(df) == ["E1v", "E2v", "E10v"]

@@ -1,0 +1,9 @@
+9993 questions with fail_frac >= 0.6 from 3 samplers; classifying winnability (a few minutes)...
+feasibility: {'winnable': {'fail_6_9': 1578, 'fail_all': 204}, 'impossible': {'fail_6_9': 0, 'fail_all': 7258}, 'unknown': {'fail_6_9': 0, 'fail_all': 953}}
+1782 proven winnable kept (204 failed by every reference agent)
+E1v: 703 found, kept 100, mean fail_frac 0.81 -- length=very high, masscart=very high
+E2v: 563 found, kept 100, mean fail_frac 0.80 -- force_mag=very low, masscart=very high
+E3v: 480 found, kept 100, mean fail_frac 0.79 -- force_mag=very low, length=very high
+E4v: 33 found, kept 33, mean fail_frac 0.78 -- force_mag=very low, init_range=very high
+dropped a cluster of 3 (< 30): length=very low, masscart=very low
+saved -> frozen_sets/cartpole_v3

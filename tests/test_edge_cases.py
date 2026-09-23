@@ -63,11 +63,3 @@ def test_normalize_maps_bounds_to_unit_interval():
     np.testing.assert_allclose(normalize(lo), 0.0)
     np.testing.assert_allclose(normalize(hi), 1.0)
 
-
-def test_lost_on_first_step_flags_only_starts_past_the_angle_limit():
-    from acl_bench.envs.param_cartpole import PARAM_BOUNDS
-    from acl_bench.suite.build_edge_sections import lost_on_first_step
-    center = np.array([[(PARAM_BOUNDS[k][0] + PARAM_BOUNDS[k][1]) / 2 for k in PARAM_ORDER]] * 2)
-    s0 = np.array([[0.0, 0.0, 0.0, 0.0],      # upright: winnable
-                   [0.0, 0.0, 0.5, 1.0]])     # 0.5 rad and falling further: gone whatever the push
-    np.testing.assert_array_equal(lost_on_first_step(center, s0), [False, True])

@@ -1,38 +1,52 @@
 {
+  "dropped_small_clusters": [
+    {
+      "description": "length=very low, masscart=very low",
+      "n_found": 3
+    }
+  ],
   "edge_clusters": {
     "E1v": {
-      "description": "masscart=very high, force_mag=very low",
-      "mean_fail_frac": 0.9208663819402074,
-      "n_found": 1639,
-      "share_all_fail": 0.62477120195241
+      "description": "length=very high, masscart=very high",
+      "mean_fail_frac": 0.809103840682788,
+      "n_found": 703,
+      "share_all_fail": 0.12091038406827881
     },
     "E2v": {
       "description": "force_mag=very low, masscart=very high",
-      "mean_fail_frac": 0.9387096774193548,
-      "n_found": 31,
-      "share_all_fail": 0.7741935483870968
+      "mean_fail_frac": 0.7960923623445827,
+      "n_found": 563,
+      "share_all_fail": 0.11367673179396093
     },
     "E3v": {
-      "description": "force_mag=very low, init_range=very high",
-      "mean_fail_frac": 0.9073643410852713,
-      "n_found": 1290,
-      "share_all_fail": 0.610077519379845
+      "description": "force_mag=very low, length=very high",
+      "mean_fail_frac": 0.7875,
+      "n_found": 480,
+      "share_all_fail": 0.10416666666666667
     },
     "E4v": {
-      "description": "init_range=very high, force_mag=low",
-      "mean_fail_frac": 0.9330434782608695,
-      "n_found": 115,
-      "share_all_fail": 0.7478260869565218
+      "description": "force_mag=very low, init_range=very high",
+      "mean_fail_frac": 0.7848484848484848,
+      "n_found": 33,
+      "share_all_fail": 0.15151515151515152
+    }
+  },
+  "feasibility": {
+    "impossible": {
+      "fail_6_9": 0,
+      "fail_all": 7258
     },
-    "E5v": {
-      "description": "force_mag=very low, length=very high",
-      "mean_fail_frac": 0.8851258581235698,
-      "n_found": 874,
-      "share_all_fail": 0.5148741418764302
+    "unknown": {
+      "fail_6_9": 0,
+      "fail_all": 953
+    },
+    "winnable": {
+      "fail_6_9": 1578,
+      "fail_all": 204
     }
   },
   "min_fail_frac": 0.6,
-  "note": "E1v..Env replace v2's quartile-assumed E1-E5; found by VerifAI falsification search (find_edge_cases.py), not assumed. E0/E6/E7 carried over unchanged from v2. Edge sections include questions every reference agent fails, so some may be unwinnable.",
+  "note": "E1v..Env replace v2's quartile-assumed E1-E5; found by VerifAI falsification search (find_edge_cases.py), not assumed. E0/E6/E7 carried over unchanged from v2. Edge sections include questions every reference agent fails, but only questions proven winnable (feasibility.py).",
   "sets": {
     "E0": {
       "n": 282,
@@ -40,23 +54,19 @@
     },
     "E1v": {
       "n": 100,
-      "sha256": "f472876fdfb213d3db2e09d1a51b8bffd416e5a1cb2fd7a80d3e3401fe697425"
+      "sha256": "66be9f240f19764eda818ce86dffa59d6143c8be5743f0ee5a5f4a6ea0156dfa"
     },
     "E2v": {
-      "n": 31,
-      "sha256": "22ec85e82fce889354d1036a45a778079af2c454fdcb10961cbcc556ddefdce0"
+      "n": 100,
+      "sha256": "765d7d51fc0c8aad730b617e876adca98c0dda4962fd5550a50ae205c33bd9a7"
     },
     "E3v": {
       "n": 100,
-      "sha256": "92923ec4cb1031f7bfd82cedc17bbe95c06d99671a11938d909a1ddcdd6d06d2"
+      "sha256": "35d601894de86b1507f6f2025242a39cca647b67f60bea3be1930ffcee852238"
     },
     "E4v": {
-      "n": 100,
-      "sha256": "79cd4a107c1685668f0947612c1de274b1879e9f058a5094ac7ec301b007f8de"
-    },
-    "E5v": {
-      "n": 100,
-      "sha256": "36f22097b7be4cf41a28ec05d002d51a60b99a24c928fab93e8a90c0501f1825"
+      "n": 33,
+      "sha256": "8c0b250a34d683c37cca10e9f5f7c818416864643d039cfc8b5c77c301a9b47c"
     },
     "E6": {
       "n": 248,

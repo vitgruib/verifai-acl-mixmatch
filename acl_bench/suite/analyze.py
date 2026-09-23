@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -22,9 +23,14 @@ from acl_bench.scenic_sampling import ADAPTIVE_SAMPLERS
 from acl_bench.suite.compare import benjamini_hochberg, compare_arms, derive_metrics, holm
 
 MAIN_ARMS = ["N", "A"] + [f"S_{s}" for s in ADAPTIVE_SAMPLERS] + [f"B_{s}" for s in ADAPTIVE_SAMPLERS]
-EDGE_V3 = ("E1v", "E2v", "E3v", "E4v", "E5v")
 PRIMARY = ("AUC_E0", "final_E6")
-KEEP_SECTIONS = ("E0", "E6", "E7") + EDGE_V3
+KEEP_SECTIONS = ("E0", "E6", "E7")          # from training-time grading; edge sections come from the re-grade
+
+
+def edge_sections(df: pd.DataFrame) -> list[str]:
+    """v3 edge sections present as `E<k>v/success` columns, in order."""
+    return sorted((c.split("/")[0] for c in df.columns if re.fullmatch(r"E\d+v/success", c)),
+                  key=lambda s: int(s[1:-1]))
 
 
 def comparisons() -> list[tuple[str, str, str]]:
@@ -50,10 +56,10 @@ def merge(main: pd.DataFrame, edge: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_edge_macro(metrics: pd.DataFrame) -> pd.DataFrame:
+def add_edge_macro(metrics: pd.DataFrame, edge: list[str]) -> pd.DataFrame:
     metrics = metrics.copy()
-    metrics["S_edge_v3"] = metrics[[f"final_{s}" for s in EDGE_V3]].mean(axis=1)
-    metrics["auc_edge_v3"] = metrics[[f"auc_{s}" for s in EDGE_V3]].mean(axis=1)
+    metrics["S_edge_v3"] = metrics[[f"final_{s}" for s in edge]].mean(axis=1)
+    metrics["auc_edge_v3"] = metrics[[f"auc_{s}" for s in edge]].mean(axis=1)
     return metrics
 
 
@@ -67,11 +73,11 @@ def run_family(metrics: pd.DataFrame, metric_names, correction) -> pd.DataFrame:
     return table
 
 
-def curves(df: pd.DataFrame) -> dict:
+def curves(df: pd.DataFrame, edge: list[str]) -> dict:
     """Mean success per arm per checkpoint, for plotting."""
     df = df.copy()
-    df["edge_v3/success"] = df[[f"{s}/success" for s in EDGE_V3]].mean(axis=1)
-    cols = ["E0/success", "E6/success", "E7/success", "edge_v3/success"] + [f"{s}/success" for s in EDGE_V3]
+    df["edge_v3/success"] = df[[f"{s}/success" for s in edge]].mean(axis=1)
+    cols = ["E0/success", "E6/success", "E7/success", "edge_v3/success"] + [f"{s}/success" for s in edge]
     g = df.groupby(["arm", "step"])[cols].mean().reset_index()
     return {arm: {"step": sub["step"].tolist(), **{c.split("/")[0]: sub[c].round(4).tolist() for c in cols}}
             for arm, sub in g.groupby("arm")}
@@ -89,17 +95,18 @@ def main():
     main_df = main_df[main_df["arm"].isin(MAIN_ARMS)]
     edge_df = pd.read_csv(args.edge)
     df = merge(main_df, edge_df[edge_df["arm"].isin(MAIN_ARMS)])
-    metrics = add_edge_macro(derive_metrics(df))
+    edge = edge_sections(df)
+    metrics = add_edge_macro(derive_metrics(df), edge)
     metrics.to_csv(os.path.join(args.out, "per_run_metrics.csv"), index=False)
 
     primary = run_family(metrics, PRIMARY, holm)
-    secondary_metrics = ["S_edge_v3", "auc_edge_v3"] + [f"final_{s}" for s in EDGE_V3] + [f"auc_{s}" for s in EDGE_V3]
+    secondary_metrics = ["S_edge_v3", "auc_edge_v3"] + [f"final_{s}" for s in edge] + [f"auc_{s}" for s in edge]
     secondary = run_family(metrics, secondary_metrics, benjamini_hochberg)
     primary.to_csv(os.path.join(args.out, "primary_holm.csv"), index=False)
     secondary.to_csv(os.path.join(args.out, "edge_v3_fdr.csv"), index=False)
 
     summary_cols = ["AUC_E0", "final_E0", "final_E6", "final_E7", "S_edge_v3", "auc_edge_v3"] + \
-                   [f"final_{s}" for s in EDGE_V3]
+                   [f"final_{s}" for s in edge]
     by_arm = metrics.groupby("arm")[summary_cols].agg(["mean", "std", "count"])
     by_arm.columns = [f"{m}|{s}" for m, s in by_arm.columns]
     by_arm = by_arm.reindex(MAIN_ARMS)
@@ -109,7 +116,8 @@ def main():
         json.dump({"by_arm": by_arm.reset_index().to_dict(orient="records"),
                    "primary": primary.to_dict(orient="records"),
                    "secondary": secondary.to_dict(orient="records"),
-                   "curves": curves(df)}, f)
+                   "edge_sections": edge,
+                   "curves": curves(df, edge)}, f)
 
     pd.set_option("display.width", 200)
     print(by_arm[[c for c in by_arm.columns if c.endswith("|mean")]].round(3))

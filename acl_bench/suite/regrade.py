@@ -5,7 +5,8 @@
 
 `--names` grades only some sections, `--arms` only some arms (e.g. to leave out arms
 still training, whose snapshot files may be half-written), `--workers` grades runs
-in parallel, and `--resume` skips (arm, seed) pairs already in `--out`, appending the rest.
+in parallel under the same safeguards as run_arms (acl_bench/suite/safety.py), and
+`--resume` skips (arm, seed) pairs already in `--out`, appending the rest.
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ def regrade(snapshot_dir: str, sets_dir: str, names=None, arms=None) -> pd.DataF
 
 
 def _grade_job(job):
-    import torch
+    import torch                                   # spawned worker: keep torch to one thread
     torch.set_num_threads(1)
     arm, replicate, path, sets_dir, names = job
     return grade_run(arm, replicate, path, load_sets(sets_dir, names=names))
@@ -48,6 +49,10 @@ def main():
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
     parser.add_argument("--out", required=True)
+    parser.add_argument("--nice", type=int, default=10)
+    parser.add_argument("--allow-battery", action="store_true")
+    parser.add_argument("--min-battery-pct", type=int, default=25)
+    parser.add_argument("--stop-file", default="results/STOP_REGRADE")
     args = parser.parse_args()
 
     from acl_bench.suite.run_arms import append_rows
@@ -61,17 +66,22 @@ def main():
             if (args.arms is None or arm in args.arms) and (arm, rep) not in done]
     print(f"grading {len(jobs)} runs on {args.workers} workers", flush=True)
 
-    if args.workers == 1:
-        results = map(_grade_job, jobs)
-    else:
-        from multiprocessing import get_context
-        pool = get_context("spawn").Pool(args.workers)
-        results = pool.imap_unordered(_grade_job, jobs)
-    for i, rows in enumerate(results, 1):
+    from acl_bench.suite.safety import Limits, Watchdog, run_jobs
+    watchdog = Watchdog(Limits(require_ac=not args.allow_battery, min_battery_pct=args.min_battery_pct),
+                        disk_path=os.path.dirname(os.path.abspath(args.out)))
+    state = {"done": 0}
+
+    def on_result(rows):
         append_rows(args.out, rows)
-        if i % 50 == 0 or i == len(jobs):
-            print(f"  {i}/{len(jobs)} runs graded", flush=True)
-    print(f"graded {len(jobs)} runs -> {args.out}")
+        state["done"] += 1
+        if state["done"] % 50 == 0 or state["done"] == len(jobs):
+            print(f"  {state['done']}/{len(jobs)} runs graded", flush=True)
+
+    failed = run_jobs(jobs, _grade_job, args.workers, on_result, watchdog, niceness=args.nice,
+                      stop_file=args.stop_file, log=lambda m: print(m, flush=True))
+    print(f"graded {state['done']} runs -> {args.out}, {len(failed)} failed")
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

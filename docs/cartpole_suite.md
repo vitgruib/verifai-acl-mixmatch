@@ -206,44 +206,80 @@ of a training run and kept every question it visited (`acl_bench/suite/find_edge
 3,000 tasks x 5 starts per sampler, raw pools in `frozen_sets/cartpole_v3_search/`).
 
 **What counts as an edge question: 6 or more of the 10 reference agents fail it,
-including questions all 10 fail**, minus questions no policy can win (the episode ends
-on step 1 whichever way the agent pushes; `lost_on_first_step`). Unlike E6, this keeps
-questions nobody passed, so some kept questions may still be unwinnable; only the
-provably unwinnable ones are removed.
+including questions all 10 fail, and it is proven winnable.**
 
-| sampler | questions drawn | 5-9 of 10 fail | all 10 fail | of those, lost on step 1 |
-|---|---|---|---|---|
-| ce | 15,000 | 1,302 (8.7%) | 5,323 | 3,504 |
-| mab | 15,000 | 524 (3.5%) | 2,111 | 1,622 |
-| sa | 15,000 | 47 (0.3%) | 981 | 918 |
+| sampler | questions drawn | 5-9 of 10 fail | all 10 fail |
+|---|---|---|---|
+| ce | 15,000 | 1,302 (8.7%) | 5,323 |
+| mab | 15,000 | 524 (3.5%) | 2,111 |
+| sa | 15,000 | 47 (0.3%) | 981 |
 
 For comparison, passive random sampling found hard-but-winnable questions 0.31% of the
 time (E6's pool), so ce is about 28x more efficient; sa is no better than random here.
-Most of the searches' all-fail hits are starts already past the angle limit.
 
-Of 9,993 questions with 6+ of 10 failing, 6,044 are lost on step 1 and dropped; the other
-3,949 (2,371 of them failed by all ten agents) were clustered (k-means, 5 clusters,
-normalized parameter space; `acl_bench/suite/build_edge_sections.py`) and each cluster
-became one locked section of up to 100 questions. E0, E6 and E7 carry over from v2 unchanged.
+#### Proving a question winnable or impossible (`acl_bench/suite/feasibility.py`)
 
-| section | found | kept | mean fail fraction | share all-10-fail | dominant parameters |
-|---|---|---|---|---|---|
-| E1v | 1,639 | 100 | 0.92 | 62% | heavy cart, weak push |
-| E2v | 31 | 31 | 0.94 | 77% | weak push, heavy cart |
-| E3v | 1,290 | 100 | 0.91 | 61% | weak push, wide start range |
-| E4v | 115 | 100 | 0.93 | 75% | wide start range, fairly weak push |
-| E5v | 874 | 100 | 0.89 | 51% | weak push, long pole |
+"Every reference agent fails it" is not evidence of impossibility, and "some agent
+survives X steps" is evidence but not proof. Because the grader's physics is
+deterministic and known, both directions can be *proven* per question:
 
-What this shows: a weak push dominates the failure landscape (in every cluster); a heavy
-cart, a wide start range and a long pole are the parameters that make it worse. Caveats:
+- **Winnable (certificate):** a beam search over push sequences, ranked by each
+  question's LQR cost-to-go (the value-function heuristic used for balancing tasks, cf.
+  LQR-trees, Tedrake 2010), finds a sequence that keeps the pole up for the whole episode;
+  the sequence is then replayed through the grader's physics and must survive. This is
+  "some model lasts X steps" with X = the full episode and a physics-aware planner as the
+  model.
+- **Impossible (proof):** either the search was exhaustive (never dropped a live branch)
+  and every branch died, or **interval reachability** shows it: a box containing every
+  state reachable under *any* force in [-f, f] (a superset of the two pushes), intersected
+  with the safe set each step, becomes empty. This is the over-approximation used by
+  reachability tools (e.g. CORA, Althoff et al.; viability-kernel methods, Aubin,
+  Saint-Pierre). A split variant branches exactly over the first 6 pushes, then boxes
+  from each branch, which keeps the boxes tight for longer.
+- **Unknown:** neither.
 
-- These sections are **much harder than E6** (reference agents fail about 90% of them), so
-  scores will be near the floor and differences small in absolute terms.
-- E1v and E2v describe the same region; k-means split it. E2v (31 questions) is small.
-- "Hard" is judged by the same ten reference agents the search used (selection bias,
-  as E6), and adaptive samplers revisit neighborhoods, so questions within a section
-  can be near-duplicates.
-- A first version (commit `90bf392`) used E6's rule, 5-9 of 10 failing; it is superseded.
+Soundness checks: every question some reference agent passes (all 1,578 here, plus a
+3,000-question sample of the search pools and all 630 of E0/E6/E7) is certified
+winnable and none is ever called impossible; a unit test checks the interval step
+contains the true successor on 40,000 random state/force pairs.
+
+Of the 9,993 questions with 6+ of 10 failing:
+
+| | 6-9 of 10 fail | all 10 fail |
+|---|---|---|
+| proven winnable | 1,578 | **204** |
+| proven impossible | 0 | 7,258 |
+| unknown | 0 | 953 |
+
+The earlier first-step test (lost on step 1 whichever way the agent pushes) caught 6,044
+of these; the proofs above catch all of those plus 1,214 more that die later. The 204
+questions all ten agents fail but a planner wins are the hardest genuinely winnable
+questions found. A wider beam (1024) and deeper splitting (depth 10) each resolved only a
+few percent of the unknowns, which are most likely slow-dying impossible starts; **edge
+sections keep proven-winnable questions only** (1,782), so they contain no impossible or
+unresolved questions.
+
+The 1,782 were clustered (k-means, 5 clusters, normalized parameter space;
+`acl_bench/suite/build_edge_sections.py`), largest cluster first; clusters under 30
+questions are dropped (one of 3 questions: short pole, light cart). E0, E6 and E7 carry
+over from v2 unchanged.
+
+| section | found | kept | mean fail fraction | dominant parameters |
+|---|---|---|---|---|
+| E1v | 703 | 100 | 0.81 | long pole, heavy cart |
+| E2v | 563 | 100 | 0.80 | weak push, heavy cart |
+| E3v | 480 | 100 | 0.79 | weak push, long pole |
+| E4v | 33 | 33 | 0.78 | weak push, wide start range |
+
+What this shows: weak push, heavy cart and long pole are the failure factors, and they
+compound in pairs. Caveats:
+
+- E4v (33 questions) is small (standard error up to ~0.09).
+- "Hard" is judged by the same ten reference agents the search used (selection bias, as
+  E6), and adaptive samplers revisit neighborhoods, so questions within a section can be
+  near-duplicates.
+- Earlier versions (commits `90bf392`, `1d73469`) used E6's 5-9-of-10 rule and then a
+  first-step impossibility test; both are superseded.
 
 ## Evaluation protocol
 
@@ -438,7 +474,7 @@ three adaptive samplers are run at full depth rather than picking one by screeni
    re-grader, and the comparison code: done. Still to add: logging each training
    episode's start and task, and the take-off-time score.
 4. Stage 0 calibration and E6 / E7 / POOL: done. Stage 1: next.
-5. v3 edge sections (E1v-E5v) found by falsification search: done. Stage 1 completion (B arms)
+5. v3 edge sections (E1v-E4v) found by falsification search: done. Stage 1 completion (B arms)
    and re-grading every snapshot on v3: in progress.
 
 ## Known limits
