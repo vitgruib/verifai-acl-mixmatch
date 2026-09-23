@@ -1,6 +1,11 @@
 """The full pre-declared analysis (docs/ablation.md, C1-C5) over the eight main arms,
 with the v3 edge sections (found by falsification search) as secondary metrics.
 
+Every metric is computed on the same N_CHECKPOINTS evenly spaced check-ins
+(compare.checkpoint_grid: every 61,440 steps up to the final model at 614,400), so
+learning-curve and end-of-training scores mean the same thing for every arm, whether a
+run was graded at all 30 check-ins or only on the grid.
+
 Primary: `AUC_E0` and `final_E6` on all 13 comparisons, Holm-corrected together
 (26 tests). Secondary: final and AUC success on each v3 edge section plus their
 macro-average `S_edge_v3`, on the same 13 comparisons, Benjamini-Hochberg-corrected
@@ -20,10 +25,11 @@ import numpy as np
 import pandas as pd
 
 from acl_bench.scenic_sampling import ADAPTIVE_SAMPLERS
-from acl_bench.suite.compare import benjamini_hochberg, compare_arms, derive_metrics, holm
+from acl_bench.suite.compare import benjamini_hochberg, checkpoint_grid, compare_arms, derive_metrics, holm
 
 MAIN_ARMS = ["N", "A"] + [f"S_{s}" for s in ADAPTIVE_SAMPLERS] + [f"B_{s}" for s in ADAPTIVE_SAMPLERS]
 PRIMARY = ("AUC_E0", "final_E6")
+N_CHECKPOINTS = 10
 KEEP_SECTIONS = ("E0", "E6", "E7")          # from training-time grading; edge sections come from the re-grade
 
 
@@ -48,7 +54,7 @@ def merge(main: pd.DataFrame, edge: pd.DataFrame) -> pd.DataFrame:
     re-grading the saved snapshots, joined on (arm, seed, step)."""
     keep = ["arm", "seed", "step"] + [c for c in main.columns
                                       if c.split("/")[0] in KEEP_SECTIONS and "/" in c]
-    df = main[keep].merge(edge, on=["arm", "seed", "step"], how="inner", validate="one_to_one")
+    df = main[keep].merge(edge, on=["arm", "seed", "step"], how="inner", validate="one_to_one")   # edge may be grid-only
     if df.groupby(["arm", "seed"]).ngroups != main.groupby(["arm", "seed"]).ngroups:
         missing = set(map(tuple, main[["arm", "seed"]].drop_duplicates().to_numpy())) - \
                   set(map(tuple, df[["arm", "seed"]].drop_duplicates().to_numpy()))
@@ -95,6 +101,10 @@ def main():
     main_df = main_df[main_df["arm"].isin(MAIN_ARMS)]
     edge_df = pd.read_csv(args.edge)
     df = merge(main_df, edge_df[edge_df["arm"].isin(MAIN_ARMS)])
+    grid = checkpoint_grid(main_df["step"], N_CHECKPOINTS)
+    df = df[df["step"].isin(grid)]
+    if df.groupby(["arm", "seed"]).size().ne(len(grid)).any():
+        raise SystemExit(f"some runs lack a grid check-in; grid = {grid}")
     edge = edge_sections(df)
     metrics = add_edge_macro(derive_metrics(df), edge)
     metrics.to_csv(os.path.join(args.out, "per_run_metrics.csv"), index=False)
@@ -116,7 +126,7 @@ def main():
         json.dump({"by_arm": by_arm.reset_index().to_dict(orient="records"),
                    "primary": primary.to_dict(orient="records"),
                    "secondary": secondary.to_dict(orient="records"),
-                   "edge_sections": edge,
+                   "edge_sections": edge, "checkpoint_steps": grid,
                    "curves": curves(df, edge)}, f)
 
     pd.set_option("display.width", 200)
