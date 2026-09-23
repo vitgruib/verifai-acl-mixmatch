@@ -10,7 +10,8 @@ Scenic and VerifAI.
 effect** on learning speed or on hard-question success (none of 26 pre-declared tests
 survives Holm correction). One exploratory lead: the cross-entropy picker alone makes
 the final policy more reliable on ordinary tasks (+0.055 final success on the general
-section, p = 0.0003, not pre-declared). Details in [docs/ablation.md](docs/ablation.md).
+section, p = 0.0003, not pre-declared). Details in [docs/ablation.md](docs/ablation.md);
+interactive report (private until shared): https://claude.ai/artifact/TCcHBgEY9kiA8oDq4kdsNm
 
 ## What is compared
 
