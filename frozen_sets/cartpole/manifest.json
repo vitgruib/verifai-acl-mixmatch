@@ -1,102 +1,45 @@
 {
-  "E0": {
+  "random": {
     "how_made": "Filtered once from cartpole_v1: kept only questions the LQR oracle proved winnable (feasible start AND oracle survives 500 steps). Dropped guaranteed one-step failures and questions the oracle could not solve. The oracle was then removed from the repository.",
     "note": "Locked: random questions from fixed seeds, cleaned once by an LQR expert (since removed). All 282 are also certified winnable by acl_bench.exam.feasibility.",
     "oracle_source_commit": "fe37d00",
     "oracle_source_sha256": "912972945ec5d3fc4c344636d111430a449d12993339347d5c992eb0dafef772"
   },
-  "searched_sections": {
-    "E6": {
-      "mean_fail_frac": 0.8048000000000001,
-      "n_after_edge": 1484,
-      "n_hard_winnable": 1834,
-      "share_all_fail": 0.108
-    },
-    "E7": {
-      "rule": "every reference agent passes; proven winnable",
-      "source": "SEARCH_random"
-    },
-    "dropped_small_clusters": [
-      {
-        "description": "length=very low, masscart=very low, force_mag=very high",
-        "n_found": 5
-      }
-    ],
-    "edge": {
-      "E1v": {
-        "description": "length=very high, init_range=very high, masscart=very high, force_mag=very low",
-        "mean_fail_frac": 0.8087447108603667,
-        "n_found": 709,
-        "share_all_fail": 0.12129760225669958
-      },
-      "E2v": {
-        "description": "force_mag=very low, masscart=very high, init_range=very high, length=very high",
-        "mean_fail_frac": 0.7959363957597173,
-        "n_found": 566,
-        "share_all_fail": 0.11307420494699646
-      },
-      "E3v": {
-        "description": "force_mag=very low, length=very high",
-        "mean_fail_frac": 0.7871031746031747,
-        "n_found": 504,
-        "share_all_fail": 0.10317460317460317
-      },
-      "E4v": {
-        "description": "force_mag=very low, length=very high, init_range=very high, masspole=very low",
-        "mean_fail_frac": 0.7639999999999999,
-        "n_found": 50,
-        "share_all_fail": 0.14
-      }
-    },
-    "feasibility_of_hard_candidates": {
-      "impossible": {
-        "fail_all": 8263,
-        "fail_some": 0
-      },
-      "unknown": {
-        "fail_all": 970,
-        "fail_some": 0
-      },
-      "winnable": {
-        "fail_all": 209,
-        "fail_some": 1625
-      }
-    },
-    "min_fail_frac": 0.6,
-    "note": "Every searched question is proven winnable (feasibility.py). E0 is locked and not rebuilt.",
-    "seed": 20260922
-  },
   "sets": {
-    "E0": {
+    "random": {
       "n": 282,
       "n_before_filter": 300,
       "n_removed_impossible": 15,
       "n_removed_unclear": 3,
       "sha256": "79f4d0c640610ec949ffb8fc83542d83b44117c0a4739ba10eb7a3ac5ad856ed"
     },
-    "E1v": {
-      "n": 100,
-      "sha256": "8f74b69d60ccccaddb2d545c36a811f372f4f8f155b5f794eb971939cfd40c1f"
-    },
-    "E2v": {
-      "n": 100,
-      "sha256": "f76ec8ce42ec938767672f5780cdb8b0313e754a637c28bd137a9477dac5d0d2"
-    },
-    "E3v": {
-      "n": 100,
-      "sha256": "0851b39491283f718753b649c72d522e88f7cfac168533a7185292e3fd94a5ea"
-    },
-    "E4v": {
-      "n": 50,
-      "sha256": "79259ed6a69ae38d6f7b6d8886de5f1a02c65439f69de7ea6741eb132385e1be"
-    },
-    "E6": {
-      "n": 250,
-      "sha256": "f2163254db97cd8b671f5688ebb62abfc008c42e4b93b18b834bb2fce279980d"
-    },
-    "E7": {
-      "n": 100,
-      "sha256": "0714372ab39eaabce47896606b98fbde78de5d5052b45d3999a71af0a0ca55c2"
+    "verifai": {
+      "n": 1782,
+      "sha256": "dfc8f32a5a686e8c5fea8e1c623151698db7f4227b44773f73ff9f41426f0e10"
     }
+  },
+  "verifai": {
+    "feasibility_of_candidates": {
+      "impossible": {
+        "fail_all": 7258,
+        "fail_some": 0
+      },
+      "unknown": {
+        "fail_all": 953,
+        "fail_some": 0
+      },
+      "winnable": {
+        "fail_all": 204,
+        "fail_some": 1578
+      }
+    },
+    "mean_fail_frac": 0.7984287317620652,
+    "min_fail_frac": 0.6,
+    "samplers": [
+      "ce",
+      "mab",
+      "sa"
+    ],
+    "share_failed_by_all": 0.11447811447811448
   }
 }

@@ -6,5 +6,4 @@ torch
 numpy
 scipy
 pandas
-scikit-learn
 pytest

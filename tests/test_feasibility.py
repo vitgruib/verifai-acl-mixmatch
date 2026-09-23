@@ -62,6 +62,6 @@ def test_replay_rejects_a_sequence_that_fails():
 
 
 def test_locked_general_questions_are_certified_winnable():
-    e0 = load_sets("frozen_sets/cartpole", names=["E0"])["E0"]         # cleaned once by an LQR expert
-    r = classify(e0.params[:60], e0.s0[:60])
+    suite = load_sets("frozen_sets/cartpole", names=["random"])["random"]     # cleaned once by an LQR expert
+    r = classify(suite.params[:60], suite.s0[:60])
     assert (r["status"] == WINNABLE).all()

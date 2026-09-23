@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from acl_bench.study.analyze import comparisons, edge_sections, on_grid
+from acl_bench.study.analyze import METRICS, comparisons, on_grid
 
 
 def test_thirteen_predeclared_comparisons_all_distinct():
@@ -11,9 +11,9 @@ def test_thirteen_predeclared_comparisons_all_distinct():
     assert ("C1", "A", "N") in comps and ("C5_ce", "B_ce", "A") in comps
 
 
-def test_edge_sections_found_from_columns_in_numeric_order():
-    df = pd.DataFrame(columns=["arm", "E10v/success", "E2v/success", "E2v/n", "E6/success", "E1v/success"])
-    assert edge_sections(df) == ["E1v", "E2v", "E10v"]
+def test_four_metrics_per_suite():
+    assert len(METRICS) == 8
+    assert {"final_random", "auc_verifai", "final_steps_verifai", "auc_steps_random"} <= set(METRICS)
 
 
 def test_on_grid_keeps_the_same_checkpoints_for_every_run_and_refuses_gaps():

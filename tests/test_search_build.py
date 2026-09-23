@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from acl_bench.cartpole import PARAM_BOUNDS, PARAM_ORDER
-from acl_bench.exam.build import describe_cluster, normalize
 from acl_bench.exam.grader import rollout_steps
 from acl_bench.exam.search import search
 from acl_bench.study.arms import ARMS
@@ -33,21 +32,3 @@ def test_search_questions_stay_within_task_param_bounds(agents):
     for i, name in enumerate(PARAM_ORDER):
         lo, hi = PARAM_BOUNDS[name]
         assert (pool.params[:, i] >= lo - 1e-9).all() and (pool.params[:, i] <= hi + 1e-9).all()
-
-
-def test_describe_cluster_names_the_extreme_parameter():
-    lo = np.array([PARAM_BOUNDS[k][0] for k in PARAM_ORDER])
-    hi = np.array([PARAM_BOUNDS[k][1] for k in PARAM_ORDER])
-    # force_mag near its lower bound, everything else at the box center
-    params = np.tile((lo + hi) / 2, (10, 1))
-    params[:, PARAM_ORDER.index("force_mag")] = lo[PARAM_ORDER.index("force_mag")]
-    desc = describe_cluster(params)
-    assert "force_mag=very low" in desc
-
-
-def test_normalize_maps_bounds_to_unit_interval():
-    lo = np.array([[PARAM_BOUNDS[k][0] for k in PARAM_ORDER]])
-    hi = np.array([[PARAM_BOUNDS[k][1] for k in PARAM_ORDER]])
-    np.testing.assert_allclose(normalize(lo), 0.0)
-    np.testing.assert_allclose(normalize(hi), 1.0)
-

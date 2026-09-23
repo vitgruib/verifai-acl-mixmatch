@@ -1,15 +1,15 @@
-"""Search the task space for questions the reference agents fail, instead of assuming
-which regions are hard. Each VerifAI sampler (acl_bench.sampling) is pointed at the
-reference agents instead of a live training run and keeps every question it visits;
-`random` runs too, as the passive baseline and the source of easy questions.
+"""Search the task space for questions the reference agents fail: VerifAI falsification.
+Each adaptive VerifAI sampler (ce, mab, sa; acl_bench.sampling) is pointed at the
+reference agents instead of a live training run and keeps every question it visits.
 
 A drawn task gets `rho = success_rate - 0.5` over the reference agents and a few starts
-(bounded in [-0.5, 0.5], so no z-scoring), so VerifAI's convention holds: rho < 0 (its
-threshold) is a counterexample. Every visited (task, start) pair is saved with the
+(bounded in [-0.5, 0.5], so no z-scoring), so VerifAI's convention holds: a task with
+rho below the threshold 0 is a counterexample (its falsifier uses rho <= fal_thres = 0;
+the ce and mab samplers update on rho < thres = 0). Every visited (task, start) pair is saved with the
 share of reference agents that fail it.
 
     python -m acl_bench.exam.search --snapshots results/snapshots --iters 3000 \\
-        --starts-per-task 5 --samplers random ce mab sa
+        --starts-per-task 5
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import numpy as np
 from acl_bench.cartpole import PARAM_ORDER
 from acl_bench.exam.grader import rollout_steps
 from acl_bench.exam.sets import MAX_STEPS, PairSet, load_sets, save_sets
-from acl_bench.sampling import SAMPLER_NAMES, ScenicTaskSampler
+from acl_bench.sampling import ADAPTIVE_SAMPLERS, ScenicTaskSampler
 from acl_bench.snapshots import find_runs, load_run
 
 EXAM_DIR = "frozen_sets/cartpole"
@@ -30,21 +30,21 @@ SEARCH_DIR = "frozen_sets/search"
 LAST_K = 5
 
 
-def pick_reference(agents_by_step: dict, e0, last_k: int = LAST_K):
-    """(step, agent, score): the best of the last `last_k` check-ins on E0 (ties to the
-    later one). Runs sometimes dip after reaching their plateau, and a collapsed
-    check-in would misjudge difficulty. Selecting by E0 is fine because reference
-    agents are not among the methods compared."""
+def pick_reference(agents_by_step: dict, suite, last_k: int = LAST_K):
+    """(step, agent, score): the best of the last `last_k` check-ins on the random suite
+    (ties to the later one). Runs sometimes dip after reaching their plateau, and a
+    collapsed check-in would misjudge difficulty. Selecting this way is fine because
+    reference agents are not among the methods compared."""
     steps = sorted(agents_by_step)[-last_k:]
-    scores = {s: float((rollout_steps(agents_by_step[s], e0.params, e0.s0, MAX_STEPS) == MAX_STEPS).mean())
+    scores = {s: float((rollout_steps(agents_by_step[s], suite.params, suite.s0, MAX_STEPS) == MAX_STEPS).mean())
               for s in steps}
     best = max(steps, key=lambda s: (scores[s], s))
     return best, agents_by_step[best], scores[best]
 
 
 def load_reference_agents(snapshot_dir: str, exam_dir: str = EXAM_DIR, arm: str = "REF") -> list:
-    e0 = load_sets(exam_dir, names=["E0"])["E0"]
-    agents = [pick_reference(load_run(path), e0)[1] for a, _rep, path in find_runs(snapshot_dir) if a == arm]
+    suite = load_sets(exam_dir, names=["random"])["random"]
+    agents = [pick_reference(load_run(path), suite)[1] for a, _rep, path in find_runs(snapshot_dir) if a == arm]
     if len(agents) < 5:
         raise SystemExit(f"need at least 5 reference runs of arm {arm!r}, found {len(agents)}")
     return agents
@@ -74,11 +74,11 @@ def search(sampler_name: str, agents: list, n_iters: int, starts_per_task: int,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshots", required=True)
-    parser.add_argument("--exam", default=EXAM_DIR, help="where E0 lives, for picking reference agents")
+    parser.add_argument("--exam", default=EXAM_DIR, help="where the random suite lives, for picking reference agents")
     parser.add_argument("--out", default=SEARCH_DIR)
     parser.add_argument("--iters", type=int, default=3000, help="drawn tasks per sampler")
     parser.add_argument("--starts-per-task", type=int, default=5)
-    parser.add_argument("--samplers", nargs="+", default=list(SAMPLER_NAMES))
+    parser.add_argument("--samplers", nargs="+", default=list(ADAPTIVE_SAMPLERS))
     parser.add_argument("--seed", type=int, default=20260922)
     args = parser.parse_args()
 
