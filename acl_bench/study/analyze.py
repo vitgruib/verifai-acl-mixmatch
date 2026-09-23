@@ -2,8 +2,9 @@
 main arms, every metric computed on the same N_CHECKPOINTS evenly spaced check-ins
 (compare.checkpoint_grid: every 61,440 steps up to the final model at 614,400).
 
-  - Primary, Holm-corrected together (26 tests): `AUC_E0` (E0 success averaged over
-    the learning curve) and `final_E6` (hard-section success at the end).
+  - Primary, Holm-corrected together (39 tests): `AUC_E0` (E0 success averaged over
+    the learning curve), `final_E0` (E0 success at the end; added after the runs) and
+    `final_E6` (hard-section success at the end).
   - Secondary, Benjamini-Hochberg-corrected together: easy-section success (E7), the
     learning curve on E6, and every edge section (final and curve) plus their
     macro-averages `S_edge` / `auc_edge`.
@@ -27,7 +28,7 @@ from acl_bench.study.compare import (benjamini_hochberg, checkpoint_grid, compar
                                     min_detectable)
 
 N_CHECKPOINTS = 10
-PRIMARY = ("AUC_E0", "final_E6")
+PRIMARY = ("AUC_E0", "final_E0", "final_E6")
 
 
 def edge_sections(df: pd.DataFrame) -> list[str]:
@@ -116,7 +117,7 @@ def main():
     pd.set_option("display.width", 220)
     print(by_arm[[c for c in by_arm.columns if c.endswith("|mean")]].round(3))
     cols = ["id", "metric", "mean_diff", "ci_lo", "ci_hi", "p", "p_adj", "detectable"]
-    print("\nPRIMARY (Holm over 26):\n", primary[cols].round(4).to_string(index=False))
+    print(f"\nPRIMARY (Holm over {len(primary)}):\n", primary[cols].round(4).to_string(index=False))
     print(f"\nSECONDARY (BH over {len(secondary)}), smallest p:\n",
           secondary.sort_values("p")[cols].head(12).round(4).to_string(index=False))
 

@@ -8,7 +8,7 @@ Scenic and VerifAI.
 
 **Result:** the **cross-entropy picker improves final performance** on the general
 section: +0.055 success over plain training (0.961 vs 0.906, p = 0.0003; Holm-adjusted
-p = 0.013 across all 39 tests), and +0.036 when combined with replay (p = 0.019). Replay
+p = 0.013 across all 39 primary tests), and +0.036 when combined with replay (p = 0.019). Replay
 alone, the bandit picker and the annealing picker had no detectable effect, and no
 method improved hard-question success. Feedback for both components is
 learning-potential (PVL). Details in [docs/ablation.md](docs/ablation.md);
@@ -56,7 +56,7 @@ acl_bench/study/           the ablation
   run.py                   train arms in parallel (independent seeds, safeguards)
   regrade.py               grade saved snapshots on the exam
   compare.py               group comparison, Holm / Benjamini-Hochberg, checkpoint grid
-  analyze.py               the pre-declared analysis -> results/analysis/
+  analyze.py               the analysis -> results/analysis/
   safety.py                pause on battery, heat, low memory or disk
 frozen_sets/cartpole/      the locked exam (E0, E1v-E4v, E6, E7)
 frozen_sets/search/        raw search pools the exam was built from
