@@ -2,8 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from acl_bench.suite.compare import (benjamini_hochberg, compare_arms, derive_metrics, exam_sections,
-                                     holm, min_detectable, seeds_needed)
+from acl_bench.study.compare import benjamini_hochberg, compare_arms, derive_metrics, holm, min_detectable
 
 
 def two_groups(mean_a, mean_b, sd, n=400, seed=0):
@@ -33,10 +32,9 @@ def test_groups_are_independent_not_matched_by_seed():
     assert compare_arms(df, "a", "b", "m")["p"] == pytest.approx(compare_arms(shuffled, "a", "b", "m")["p"])
 
 
-def test_seeds_needed_matches_hand_calculation_and_inverts_min_detectable():
-    # (2.50 + 0.84)^2 = 11.16; sd 0.1 in both groups, delta 0.05 -> 11.16 * 0.02 / 0.0025 = 89.3 -> 90
-    assert seeds_needed(0.1, 0.1, 0.05) == 90
-    assert min_detectable(0.1, 0.1, 90) <= 0.05 < min_detectable(0.1, 0.1, 80)
+def test_min_detectable_matches_hand_calculation():
+    # z = 2.50 + 0.84 at alpha 0.0125, 80% power; sd 0.1 in both groups, 90 runs each
+    assert min_detectable(0.1, 0.1, 90) == pytest.approx(3.339 * (0.02 / 90) ** 0.5, rel=1e-3)
 
 
 def test_holm_matches_textbook_example():
@@ -50,7 +48,6 @@ def test_auc_and_final_metrics():
     m = derive_metrics(df).iloc[0]
     assert m["AUC_E0"] == pytest.approx(0.5)             # linear ramp 0 -> 1
     assert m["final_E0"] == pytest.approx(0.5)           # mean of the last three checkpoints
-    assert m["S_edge"] == pytest.approx(1.0)
 
 
 def test_benjamini_hochberg_matches_the_textbook_example():
@@ -92,13 +89,8 @@ def test_derive_metrics_computes_every_section_and_metric_present():
     assert m["final_E6"] == pytest.approx(0.2 / 3)
 
 
-def test_exam_sections_lists_every_success_column():
-    df = pd.DataFrame(columns=["E0/success", "E0/mean_steps", "E6/success", "arm"])
-    assert sorted(exam_sections(df)) == ["E0", "E6"]
-
-
 def test_checkpoint_grid_is_every_third_checkin_ending_at_the_final_model():
-    from acl_bench.suite.compare import checkpoint_grid
+    from acl_bench.study.compare import checkpoint_grid
     steps = [20_480 * k for k in range(31)]            # step 0 plus 30 check-ins
     grid = checkpoint_grid(steps, 10)
     assert grid == [61_440 * k for k in range(1, 11)]

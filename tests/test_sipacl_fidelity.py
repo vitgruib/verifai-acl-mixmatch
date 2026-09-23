@@ -1,5 +1,5 @@
 """Checks acl_bench's ACL against the reference implementation in
-SIPACL/Work/custom/custom_gym.py (`MetaDriveEnv`).
+SIPACL/Work/custom/custom_gym.py (`MetaDriveEnv`); differences are in docs/sipacl.md.
 
 The `_ref_*` functions below are transcribed from that file (constants
 DEFAULT_LP_EMA_BETA=0.2, DEFAULT_LP_RANK_ALPHA=1.0, _NEW_SCENE_LEARNING_POTENTIAL
@@ -8,8 +8,8 @@ DEFAULT_LP_EMA_BETA=0.2, DEFAULT_LP_RANK_ALPHA=1.0, _NEW_SCENE_LEARNING_POTENTIA
 import numpy as np
 import pytest
 
-from acl_bench.curriculum.plr import NEW, REPLAY, PLRCurriculum
-from acl_bench.potential.functions import pvl_gae
+from acl_bench.acl import NEW, REPLAY, PLRCurriculum
+from acl_bench.scoring import pvl_gae
 
 BETA, ALPHA, PLACEHOLDER = 0.2, 1.0, 1e10
 
@@ -59,7 +59,7 @@ class FakeSampler:
 
 
 def make(use_replay=True, buffer_max=5000, score=1.0, seed=0):
-    fn = lambda r, v, nv, g, l, st: (score() if callable(score) else score, st)
+    fn = lambda r, v, nv, g, l: score() if callable(score) else score
     sampler = FakeSampler()
     cur = PLRCurriculum(sampler, ("a",), fn, 0.99, 0.95, use_replay=use_replay,
                         buffer_max=buffer_max, rng=np.random.default_rng(seed))
@@ -73,8 +73,8 @@ def run_episode(cur):
 
 
 def test_constants_match_sipacl():
-    from acl_bench.curriculum import plr
-    assert (plr._LP_EMA_BETA, plr._RANK_ALPHA, plr._NEW_TASK_LP) == (BETA, ALPHA, PLACEHOLDER)
+    from acl_bench import acl
+    assert (acl._LP_EMA_BETA, acl._RANK_ALPHA, acl._NEW_TASK_LP) == (BETA, ALPHA, PLACEHOLDER)
     from acl_bench.ppo import PPOConfig
     assert PPOConfig().buffer_max == 5000 and PPOConfig().replay_prob == 0.5
 
@@ -85,7 +85,7 @@ def test_rank_probabilities_match_including_ties_and_placeholders(seed):
     lp = rng.integers(0, 4, size=25).astype(float)          # many ties
     lp[rng.integers(0, 25, size=3)] = PLACEHOLDER            # unscored new slots
     cur, _ = make()
-    from acl_bench.curriculum.plr import _Slot
+    from acl_bench.acl import _Slot
     cur.slots = [_Slot(params={}, lp=float(x)) for x in lp]
     np.testing.assert_allclose(cur._replay_probs(), _ref_replay_probs(lp))
 
@@ -108,15 +108,15 @@ def test_pvl_equals_sipacl_lp_delta_under_its_terminal_convention(seed):
     rng = np.random.default_rng(seed)
     n = int(rng.integers(2, 60))
     rewards, values = rng.normal(size=n).tolist(), rng.normal(size=n).tolist()
-    mine, _ = pvl_gae(rewards, values, 0.0, 0.99, 0.95, {})
+    mine = pvl_gae(rewards, values, 0.0, 0.99, 0.95)
     assert mine == pytest.approx(_ref_lp_delta(rewards, values, 0.99, 0.95))
 
 
 def test_pvl_differs_from_sipacl_only_by_truncation_bootstrap():
     """Documented deviation: a truncated episode bootstraps from the critic."""
     rewards, values = [1.0] * 10, [5.0] * 10
-    terminal, _ = pvl_gae(rewards, values, 0.0, 0.99, 0.95, {})
-    truncated, _ = pvl_gae(rewards, values, 5.0, 0.99, 0.95, {})
+    terminal = pvl_gae(rewards, values, 0.0, 0.99, 0.95)
+    truncated = pvl_gae(rewards, values, 5.0, 0.99, 0.95)
     assert truncated != pytest.approx(terminal)
 
 
