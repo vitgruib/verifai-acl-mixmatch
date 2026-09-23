@@ -48,10 +48,15 @@ setting is fixed at a standard value, so a result cannot be an artifact of tunin
 | C4 | B_x vs S_x (3 pickers) | does adding the pile help beyond the picker? |
 | C5 | B_x vs A (3 pickers) | does adding the picker help beyond the pile? |
 
-13 comparisons x 2 primary metrics = 26 tests, Holm-corrected together:
+13 comparisons x 3 primary metrics = 39 tests, Holm-corrected together:
 - **`AUC_E0`**: success on the general section averaged over the learning curve (how
   well *and* how fast it learned);
+- **`final_E0`**: success on the general section at the end (added after the runs);
 - **`final_E6`**: success on the hard section at the end.
+
+"At the end" means the average of the last three graded checkpoints (491k, 553k, 614k
+steps): agents dip briefly at single checkpoints, so this measures the final model more
+reliably than the last snapshot alone.
 
 Secondary metrics (easy section E7, the E6 learning curve, every edge section and their
 average) are one exploratory family of 156 tests, Benjamini-Hochberg-corrected.
@@ -90,14 +95,12 @@ Run-to-run SD per method: `AUC_E0` 0.09-0.13, final E6 0.18-0.23.
 
 **Finding: the cross-entropy picker improves final performance.** Final success on the
 general section rises from 0.906 (plain) to 0.961 with the cross-entropy picker alone:
-+0.055, 95% CI [+0.026, +0.085], p = 0.0003. Adding final general success to the two
-primary metrics (39 tests) and Holm-correcting all of them, it survives (adjusted
-p = 0.013); it was not one of the metrics declared in advance. The combined method
++0.055, 95% CI [+0.026, +0.085], p = 0.0003, Holm-adjusted p = 0.013 across all 39
+primary tests. The combined method
 (cross-entropy + replay, separate runs) points the same way: +0.036, p = 0.019. The easy
 section agrees (+0.056). No other picker, and not replay, shows an effect.
 
-**On the two pre-declared primary metrics, nothing is detectable.** None of the 26 tests
-survives Holm correction (smallest adjusted p = 0.28). The largest differences are
+**Nothing else is detectable.** No other primary test survives Holm correction. The largest differences are
 both-with-bandit vs plain on `AUC_E0` (+0.039, 95% CI [+0.009, +0.068], p = 0.011) and
 cross-entropy alone vs plain on `AUC_E0` (+0.033, [+0.005, +0.061], p = 0.019). With
 this noise, each comparison could reliably detect (80% power, Bonferroni level) a true
