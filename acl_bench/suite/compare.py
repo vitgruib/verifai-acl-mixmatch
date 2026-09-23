@@ -20,6 +20,15 @@ EDGE_SETS = ("E1", "E1b", "E2", "E3a", "E3b", "E4", "E5")
 FINAL_CHECKPOINTS = 3
 
 
+def checkpoint_grid(steps, n: int) -> list[int]:
+    """`n` evenly spaced checkpoints ending at the last one: every k-th trained
+    checkpoint counting back from the final model (k = len // n), step 0 excluded.
+    With 30 check-ins at 20,480 steps and n = 10: every 61,440 steps up to 614,400."""
+    trained = sorted(s for s in set(steps) if s > 0)
+    stride = max(1, len(trained) // n)
+    return sorted(trained[::-1][::stride][:n])
+
+
 def _final(values: np.ndarray) -> float:
     return float(np.mean(values[-FINAL_CHECKPOINTS:]))
 

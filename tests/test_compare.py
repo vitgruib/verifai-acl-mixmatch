@@ -95,3 +95,11 @@ def test_derive_metrics_computes_every_section_and_metric_present():
 def test_exam_sections_lists_every_success_column():
     df = pd.DataFrame(columns=["E0/success", "E0/mean_steps", "E6/success", "arm"])
     assert sorted(exam_sections(df)) == ["E0", "E6"]
+
+
+def test_checkpoint_grid_is_every_third_checkin_ending_at_the_final_model():
+    from acl_bench.suite.compare import checkpoint_grid
+    steps = [20_480 * k for k in range(31)]            # step 0 plus 30 check-ins
+    grid = checkpoint_grid(steps, 10)
+    assert grid == [61_440 * k for k in range(1, 11)]
+    assert checkpoint_grid(steps, 40) == steps[1:]     # asking for more than exist keeps them all

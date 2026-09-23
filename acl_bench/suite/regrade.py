@@ -3,7 +3,8 @@
     python -m acl_bench.suite.regrade --snapshots results/snapshots \\
         --sets frozen_sets/cartpole_v2 --out results/regraded.csv
 
-`--names` grades only some sections, `--arms` only some arms (e.g. to leave out arms
+`--names` grades only some sections, `--n-checkpoints` only an evenly spaced subset
+of check-ins ending at the final model, `--arms` only some arms (e.g. to leave out arms
 still training, whose snapshot files may be half-written), `--workers` grades runs
 in parallel under the same safeguards as run_arms (acl_bench/suite/safety.py), and
 `--resume` skips (arm, seed) pairs already in `--out`, appending the rest.
@@ -15,13 +16,15 @@ import os
 
 import pandas as pd
 
+from acl_bench.suite.compare import checkpoint_grid
 from acl_bench.suite.sets import evaluate_sets, load_sets
 from acl_bench.suite.snapshots import find_runs, load_run
 
 
-def grade_run(arm: str, replicate: int, path: str, sets: dict) -> list[dict]:
-    return [{"arm": arm, "seed": replicate, "step": step, **evaluate_sets(agent, sets)}
-            for step, agent in load_run(path).items()]
+def grade_run(arm: str, replicate: int, path: str, sets: dict, n_checkpoints: int | None = None) -> list[dict]:
+    agents = load_run(path)
+    steps = checkpoint_grid(agents, n_checkpoints) if n_checkpoints else list(agents)
+    return [{"arm": arm, "seed": replicate, "step": step, **evaluate_sets(agents[step], sets)} for step in steps]
 
 
 def regrade(snapshot_dir: str, sets_dir: str, names=None, arms=None) -> pd.DataFrame:
@@ -36,8 +39,8 @@ def regrade(snapshot_dir: str, sets_dir: str, names=None, arms=None) -> pd.DataF
 def _grade_job(job):
     import torch                                   # spawned worker: keep torch to one thread
     torch.set_num_threads(1)
-    arm, replicate, path, sets_dir, names = job
-    return grade_run(arm, replicate, path, load_sets(sets_dir, names=names))
+    arm, replicate, path, sets_dir, names, n_checkpoints = job
+    return grade_run(arm, replicate, path, load_sets(sets_dir, names=names), n_checkpoints)
 
 
 def main():
@@ -47,6 +50,8 @@ def main():
     parser.add_argument("--names", nargs="+", default=None, help="sections to grade (default: all)")
     parser.add_argument("--arms", nargs="+", default=None, help="arms to grade (default: all)")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--n-checkpoints", type=int, default=None,
+                        help="grade only this many evenly spaced checkpoints ending at the final one")
     parser.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
     parser.add_argument("--out", required=True)
     parser.add_argument("--nice", type=int, default=10)
@@ -62,7 +67,7 @@ def main():
         done = set(zip(prior["arm"], prior["seed"]))
     elif os.path.exists(args.out):
         os.remove(args.out)
-    jobs = [(arm, rep, path, args.sets, args.names) for arm, rep, path in find_runs(args.snapshots)
+    jobs = [(arm, rep, path, args.sets, args.names, args.n_checkpoints) for arm, rep, path in find_runs(args.snapshots)
             if (args.arms is None or arm in args.arms) and (arm, rep) not in done]
     print(f"grading {len(jobs)} runs on {args.workers} workers", flush=True)
 
