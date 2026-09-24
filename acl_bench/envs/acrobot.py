@@ -20,9 +20,9 @@ from gymnasium.envs.classic_control.acrobot import AcrobotEnv
 
 PARAM_BOUNDS = {
     "link_length_1": (0.5, 1.5),  # first link length (m); its centre of mass is at half of it
-    "link_mass_1": (0.5, 2.0),    # first link mass (kg)
-    "link_mass_2": (0.5, 2.0),    # second link mass (kg)
-    "torque": (0.5, 2.0),         # magnitude of the joint torque (N m)
+    "link_mass_1": (0.5, 3.0),    # first link mass (kg)
+    "link_mass_2": (0.5, 3.0),    # second link mass (kg)
+    "torque": (0.25, 2.0),        # magnitude of the joint torque (N m)
     "init_range": (0.05, 0.3),    # |initial state| ~ U(-init_range, init_range)
 }
 PARAM_ORDER = tuple(PARAM_BOUNDS)

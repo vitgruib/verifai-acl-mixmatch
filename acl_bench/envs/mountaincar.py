@@ -17,8 +17,8 @@ import numpy as np
 from gymnasium.envs.classic_control.mountain_car import MountainCarEnv
 
 PARAM_BOUNDS = {
-    "force": (0.0005, 0.002),     # engine force per step (gymnasium: 0.001)
-    "gravity": (0.00125, 0.005),  # gravity per step (gymnasium: 0.0025)
+    "force": (0.001, 0.004),      # engine force per step (gymnasium: 0.001)
+    "gravity": (0.0015, 0.0035),  # gravity per step (gymnasium: 0.0025)
     "init_range": (0.05, 0.3),    # start position ~ U(-0.5 - init_range, -0.5 + init_range)
 }
 PARAM_ORDER = tuple(PARAM_BOUNDS)
