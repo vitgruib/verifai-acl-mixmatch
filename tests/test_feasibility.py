@@ -1,9 +1,10 @@
 import numpy as np
 
-from acl_bench.cartpole import PARAM_BOUNDS, PARAM_ORDER
-from acl_bench.exam.feasibility import (IMPOSSIBLE, WINNABLE, beam_search, classify, interval_doom_step,
-                                         interval_step, replay_survives, split_interval_doom_step)
-from acl_bench.exam.grader import step_physics, terminated
+from acl_bench.envs import cartpole
+from acl_bench.envs.cartpole import PARAM_BOUNDS, PARAM_ORDER, step_physics
+from acl_bench.exam.certify import beam_search, replay_passes
+from acl_bench.exam.feasibility import (IMPOSSIBLE, WINNABLE, classify, interval_doom_step, interval_step,
+                                         split_interval_doom_step)
 from acl_bench.exam.sets import load_sets
 
 CENTER = np.array([(PARAM_BOUNDS[k][0] + PARAM_BOUNDS[k][1]) / 2 for k in PARAM_ORDER])
@@ -31,9 +32,9 @@ def test_interval_step_contains_every_point_successor():
 
 def test_upright_start_is_winnable_with_a_replayable_certificate():
     params, s0 = CENTER[None, :], np.zeros((1, 4))
-    survived, exhaustive, actions = beam_search(params, s0, beam=16)
+    survived, exhaustive, actions = beam_search(cartpole, params, s0, beam=16)
     assert survived[0] and exhaustive[0] == 0
-    assert replay_survives(params, s0, actions)[0]
+    assert replay_passes(cartpole, params, s0, actions)[0]
     assert interval_doom_step(params, s0)[0] == 0         # no false proof of doom
 
 
@@ -49,8 +50,8 @@ def test_split_interval_never_contradicts_a_certificate():
     rng = np.random.default_rng(1)
     params = random_params(rng, 200)
     s0 = rng.uniform(-0.05, 0.05, size=(200, 4))           # mostly easy, winnable starts
-    survived, _, actions = beam_search(params, s0, beam=32)
-    certified = survived & replay_survives(params, s0, actions)
+    survived, _, actions = beam_search(cartpole, params, s0, beam=32)
+    certified = survived & replay_passes(cartpole, params, s0, actions)
     assert certified.mean() > 0.9
     assert (split_interval_doom_step(params[certified], s0[certified], depth=4) == 0).all()
 
@@ -58,7 +59,7 @@ def test_split_interval_never_contradicts_a_certificate():
 def test_replay_rejects_a_sequence_that_fails():
     params, s0 = CENTER[None, :], np.array([[0.0, 0.0, 0.1, 0.0]])
     always_left = np.zeros((1, 499), dtype=np.int8)
-    assert not replay_survives(params, s0, always_left)[0]
+    assert not replay_passes(cartpole, params, s0, always_left)[0]
 
 
 def test_locked_general_questions_are_certified_winnable():

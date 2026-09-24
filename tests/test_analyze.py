@@ -11,6 +11,11 @@ def test_thirteen_predeclared_comparisons_all_distinct():
     assert ("C1", "A", "N") in comps and ("C5_ce", "B_ce", "A") in comps
 
 
+def test_combinations_are_compared_only_where_trained():
+    comps = comparisons({"N", "A", "S_ce", "S_mab", "S_sa", "B_ce"})
+    assert [c[0] for c in comps] == ["C1", "C2_ce", "C2_mab", "C2_sa", "C3_ce", "C4_ce", "C5_ce"]
+
+
 def test_four_metrics_per_suite():
     assert len(METRICS) == 8
     assert {"final_random", "auc_verifai", "final_steps_verifai", "auc_steps_random"} <= set(METRICS)

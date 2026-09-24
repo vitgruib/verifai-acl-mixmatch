@@ -1,6 +1,6 @@
 """Save agent snapshots and grade them later: training as a black box.
 
-`acl_bench.study.run --snapshots DIR` writes one file per run, `DIR/<arm>/<replicate>.npz`,
+`acl_bench.study.run` writes one file per run, `results/<env>/snapshots/<arm>/<replicate>.npz`,
 holding the agent's weights at every check-in (about 37 KB each). Any exam, including
 sections built after training, can then be graded against the saved agents with
 `python -m acl_bench.study.regrade`, without retraining.
@@ -31,7 +31,8 @@ def load_run(path: str) -> dict[int, Agent]:
         states.setdefault(int(step), {})[name] = torch.as_tensor(z[key])
     agents = {}
     for step in sorted(states):
-        agent = Agent()
+        obs_dim = states[step]["actor.0.weight"].shape[1]
+        agent = Agent(obs_dim, states[step]["actor.4.weight"].shape[0])
         agent.load_state_dict(states[step])
         agents[step] = agent
     return agents
