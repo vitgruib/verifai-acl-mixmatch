@@ -1,15 +1,10 @@
 """Is a CartPole question winnable at all? Sound proofs both ways, with the grader's
-own physics (evaluator.step_physics, deterministic, so a question is a fixed initial
+own physics (acl_bench.envs.cartpole.step_physics, deterministic, so a question is a fixed initial
 state of a known discrete-time system with two actions).
 
-- WINNABLE (certificate): a beam search over action sequences finds one that keeps the
-  pole up for as long as the grader requires (the idea of "some model survives X steps",
-  taken to X = the full episode, with a planner that knows the physics as the model).
-  The found sequence is replayed through `step_physics` and must survive, so a
-  "winnable" label never rests on the heuristic. Beam selection uses each question's LQR
-  cost-to-go (discrete Riccati solution of the linearization about upright) as the
-  score: the standard value-function heuristic for underactuated balancing (cf. LQR
-  trees, Tedrake 2010).
+- WINNABLE (certificate, acl_bench.exam.certify): a beam search over push sequences,
+  ranked by each question's LQR cost-to-go, finds one that keeps the pole up for the
+  whole episode; it is replayed through the grader's physics and must survive.
 - IMPOSSIBLE (proof), by either of two sound arguments:
   1. exhaustive search: the beam never had to drop a live branch, and every branch
      died, so every action sequence dies;
@@ -33,92 +28,14 @@ certified winnable, and ~11% stay unknown. A wider beam (1024) and deeper splitt
 from __future__ import annotations
 
 import numpy as np
-from scipy.linalg import solve_discrete_are
 
-from acl_bench.exam.grader import (G, TAU, THETA_THRESHOLD, X_THRESHOLD, _FORCE, _LENGTH, _MASSCART,
-                                   _MASSPOLE, step_physics, terminated)
-from acl_bench.exam.sets import MAX_STEPS
+from acl_bench.envs import cartpole
+from acl_bench.envs.cartpole import (G, TAU, THETA_THRESHOLD, X_THRESHOLD, _FORCE, _LENGTH, _MASSCART, _MASSPOLE,
+                                     step_physics, terminated)
+from acl_bench.exam.certify import beam_search, horizon, replay_passes
 
 WINNABLE, IMPOSSIBLE, UNKNOWN = "winnable", "impossible", "unknown"
-# rollout_steps records a death at step t as `steps = t` and passes a question when
-# steps == max_steps, so dying exactly at the last step still passes: survive to max_steps - 1.
-MUST_SURVIVE = MAX_STEPS - 1
-
-
-# ---------------------------------------------------------------- LQR heuristic
-def lqr_cost_matrices(params: np.ndarray) -> np.ndarray:
-    """(N, 4, 4) discrete-time LQR cost-to-go P for each question's linearization about
-    upright, with the Euler step the grader uses. Only a ranking heuristic."""
-    Q = np.diag([1 / X_THRESHOLD ** 2, 0.1, 1 / THETA_THRESHOLD ** 2, 0.1])
-    out = np.empty((len(params), 4, 4))
-    for i, p in enumerate(params):
-        length, mp, mc, f = p[_LENGTH], p[_MASSPOLE], p[_MASSCART], p[_FORCE]
-        M = mp + mc
-        D = length * (4.0 / 3.0 - mp / M)
-        Ac = np.array([[0, 1, 0, 0], [0, 0, -mp * length * G / (M * D), 0], [0, 0, 0, 1], [0, 0, G / D, 0]])
-        Bc = np.array([[0], [1 / M + mp * length / (M * M * D)], [0], [-1 / (M * D)]])
-        out[i] = solve_discrete_are(np.eye(4) + TAU * Ac, TAU * Bc, Q, np.array([[1 / f ** 2]]))
-    return out
-
-
-# ---------------------------------------------------------------- beam search
-def beam_search(params: np.ndarray, s0: np.ndarray, beam: int = 128, horizon: int = MUST_SURVIVE,
-                rng: np.random.Generator | None = None):
-    """Returns (survived, exhaustive_death_step, actions). `survived[i]`: some branch was
-    alive after `horizon` steps. `exhaustive_death_step[i]`: step at which every branch
-    had died *without the beam ever dropping a live branch* (a proof), else 0.
-    `actions[i]` (horizon,) int8: the surviving sequence (1 = push right), -1 if none."""
-    rng = rng or np.random.default_rng(0)
-    n = len(params)
-    P = lqr_cost_matrices(params)
-    force = params[:, _FORCE]
-    state = np.zeros((n, beam, 4))
-    state[:, 0] = s0
-    valid = np.zeros((n, beam), dtype=bool)
-    valid[:, 0] = True
-    truncated = np.zeros(n, dtype=bool)
-    death = np.zeros(n, dtype=np.int64)
-    parents = np.empty((horizon, n, beam), dtype=np.int16)
-    rep_params = np.repeat(params, 2 * beam, axis=0)
-    signs = np.tile([-1.0, 1.0], beam)                              # child c = 2 * slot + action
-    for t in range(1, horizon + 1):
-        parent_state = np.repeat(state, 2, axis=1).reshape(-1, 4)
-        f = (np.repeat(force, 2 * beam) * np.tile(signs, n))
-        child = step_physics(parent_state, f, rep_params).reshape(n, 2 * beam, 4)
-        alive = np.repeat(valid, 2, axis=1) & ~terminated(child.reshape(-1, 4)).reshape(n, 2 * beam)
-        n_alive = alive.sum(axis=1)
-        newly_dead = (n_alive == 0) & (death == 0)
-        death[newly_dead] = t
-        truncated |= n_alive > beam
-        cost = np.einsum("nci,nij,ncj->nc", child, P, child)
-        cost *= 1.0 + 1e-6 * rng.random(cost.shape)                 # break exact ties between twins
-        cost[~alive] = np.inf
-        keep = np.argpartition(cost, beam - 1, axis=1)[:, :beam]
-        parents[t - 1] = keep
-        state = np.take_along_axis(child, keep[:, :, None], axis=1)
-        valid = np.take_along_axis(alive, keep, axis=1)
-    survived = valid.any(axis=1)
-    exhaustive_death = np.where(~survived & ~truncated, death, 0)
-
-    actions = np.full((n, horizon), -1, dtype=np.int8)
-    for i in np.flatnonzero(survived):
-        slot = int(np.flatnonzero(valid[i])[0])
-        for t in range(horizon - 1, -1, -1):
-            c = int(parents[t, i, slot])
-            actions[i, t], slot = c % 2, c // 2
-    return survived, exhaustive_death, actions
-
-
-def replay_survives(params: np.ndarray, s0: np.ndarray, actions: np.ndarray, horizon: int = MUST_SURVIVE) -> np.ndarray:
-    """Independent check of a certificate: play the action sequence through the grader's
-    physics and confirm no termination in `horizon` steps."""
-    state = np.array(s0, dtype=np.float64)
-    ok = (actions[:, 0] >= 0)
-    for t in range(horizon):
-        f = np.where(actions[:, t] == 1, params[:, _FORCE], -params[:, _FORCE])
-        state = step_physics(state, f, params)
-        ok &= ~terminated(state)
-    return ok
+MUST_SURVIVE = horizon(cartpole)
 
 
 # ---------------------------------------------------------------- interval reachability
@@ -237,8 +154,8 @@ def classify(params: np.ndarray, s0: np.ndarray, beam: int = 128, chunk: int = 5
     todo = np.flatnonzero(doom == 0)
     for start in range(0, len(todo), chunk):
         idx = todo[start:start + chunk]
-        survived, exhaustive, actions = beam_search(params[idx], s0[idx], beam=beam, rng=rng)
-        verified = survived & replay_survives(params[idx], s0[idx], actions)
+        survived, exhaustive, actions = beam_search(cartpole, params[idx], s0[idx], beam=beam, rng=rng)
+        verified = survived & replay_passes(cartpole, params[idx], s0[idx], actions)
         status[idx[verified]], proof[idx[verified]] = WINNABLE, "certificate"
         ex = exhaustive > 0
         status[idx[ex]], proof[idx[ex]] = IMPOSSIBLE, "exhaustive"

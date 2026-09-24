@@ -1,4 +1,4 @@
-"""Minimal CleanRL-style PPO on the task-parameterized CartPole, driven by the ACL
+"""Minimal CleanRL-style PPO on a task-parameterized environment (acl_bench.envs), driven by the ACL
 curriculum (acl_bench.acl). Independent of SIPACL: its Work/policy/ppo.py is not
 carried over. Like SIPACL's and CleanRL's PPO, the update treats a time-limit
 truncation as terminal; the curriculum's task score does not (docs/sipacl.md).
@@ -14,7 +14,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
 
-from acl_bench import cartpole
 from acl_bench.acl import PLRCurriculum
 
 
@@ -35,7 +34,7 @@ def _mlp(in_dim: int, out_dim: int, out_std: float) -> nn.Sequential:
 class Agent(nn.Module):
     """Actor and critic, each two 64-unit tanh layers; a Categorical over discrete actions."""
 
-    def __init__(self, obs_dim: int = cartpole.OBS_DIM, action_dim: int = cartpole.ACTION_DIM):
+    def __init__(self, obs_dim: int, action_dim: int):
         super().__init__()
         self.critic = _mlp(obs_dim, 1, out_std=1.0)
         self.actor = _mlp(obs_dim, action_dim, out_std=0.01)
@@ -80,10 +79,11 @@ class RunLog:
     checkpoint_metrics: list = field(default_factory=list)
 
 
-def run_training(task_sampler, score_fn, cfg: PPOConfig, checkpoint_every: int | None = None,
+def run_training(env_spec, task_sampler, score_fn, cfg: PPOConfig, checkpoint_every: int | None = None,
                  on_checkpoint=None) -> tuple[RunLog, Agent]:
-    """Train one agent. Every `checkpoint_every` env steps (and at step 0 and the end)
-    `on_checkpoint(step, agent)` is called and its returned dict is logged."""
+    """Train one agent on `env_spec` (a module from acl_bench.envs). Every `checkpoint_every`
+    env steps (and at step 0 and the end) `on_checkpoint(step, agent)` is called and its
+    returned dict is logged."""
     # One independent stream per component, so a seed fully determines a run (same
     # config and seed reproduce exactly) and no component's draws depend on how many
     # another consumed.
@@ -97,14 +97,14 @@ def run_training(task_sampler, score_fn, cfg: PPOConfig, checkpoint_every: int |
     np.random.seed(sampler_state)                        # these globals; nothing else here does
 
     curriculum = PLRCurriculum(
-        task_sampler=task_sampler, param_names=cartpole.PARAM_ORDER, score_fn=score_fn,
+        task_sampler=task_sampler, param_names=env_spec.PARAM_ORDER, score_fn=score_fn,
         gamma=cfg.gamma, gae_lambda=cfg.gae_lambda, use_replay=cfg.acl,
         replay_prob=cfg.replay_prob, buffer_max=cfg.buffer_max, rank_alpha=cfg.rank_alpha,
         ema_beta=cfg.ema_beta, rng=rng,
     )
 
-    obs_dim = cartpole.OBS_DIM
-    agent = Agent()
+    obs_dim = env_spec.OBS_DIM
+    agent = Agent(obs_dim, env_spec.ACTION_DIM)
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
     log = RunLog()
@@ -112,7 +112,7 @@ def run_training(task_sampler, score_fn, cfg: PPOConfig, checkpoint_every: int |
         log.checkpoint_metrics.append({"step": 0, **on_checkpoint(0, agent)})
 
     params, task_idx, mode = curriculum.pick_task()
-    env = cartpole.make_env(params)
+    env = env_spec.make_env(params)
     obs, _ = env.reset(seed=int(env_rng.integers(1 << 30)))
     ep_rewards: list[float] = []
     ep_values: list[float] = []
@@ -138,7 +138,7 @@ def run_training(task_sampler, score_fn, cfg: PPOConfig, checkpoint_every: int |
 
             next_obs, reward, terminated, truncated, _ = env.step(int(action.item()))
             ep_steps += 1
-            truncated = truncated or ep_steps >= cartpole.MAX_EPISODE_STEPS
+            truncated = truncated or ep_steps >= env_spec.MAX_EPISODE_STEPS
             done = terminated or truncated
             b_rewards[t] = reward
             b_dones[t] = float(done)
@@ -161,7 +161,7 @@ def run_training(task_sampler, score_fn, cfg: PPOConfig, checkpoint_every: int |
                 log.episode_params.append(params)
 
                 params, task_idx, mode = curriculum.pick_task()
-                env = cartpole.make_env(params)
+                env = env_spec.make_env(params)
                 obs, _ = env.reset(seed=int(env_rng.integers(1 << 30)))
                 ep_rewards, ep_values = [], []
                 ep_steps = 0

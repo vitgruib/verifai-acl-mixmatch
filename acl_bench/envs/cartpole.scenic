@@ -1,6 +1,6 @@
 # CartPole task space, sampled by VerifAI through Scenic's external-parameter
 # mechanism. No simulator model is attached -- Scenic only needs to sample
-# these five scalars; `acl_bench.cartpole` applies them to a real
+# these five scalars; `acl_bench.envs.cartpole` applies them to a real
 # CartPoleEnv. verifaiSamplerType / verifaiSamplerParams are set at load time
 # from Python (acl_bench/sampling.py) via Scenic's own
 # `scenic.scenarioFromFile(..., params={"verifaiSamplerType": ...})` API.

@@ -3,6 +3,6 @@ __pycache__/
 .venv/
 *.egg-info/
 .pytest_cache/
-results/snapshots/
-results/*.log
 results/STOP*
+results/*/snapshots/
+results/*/*.log

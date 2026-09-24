@@ -2,7 +2,7 @@
 a direct `verifai.samplers.FeatureSampler` call), using Scenic's own documented
 external-sampler API -- `scenic.scenarioFromFile(..., params={"verifaiSamplerType":
 ...})` and `Scenario.generate(feedback=...)` -- with no simulator model attached
-(see acl_bench/cartpole.scenic, and the module docstring of
+(see acl_bench/envs/cartpole.scenic, and the module docstring of
 `scenic.core.external_params` for how a plain `param x = VerifaiRange(...)`
 gets resolved without any spatial simulator).
 
@@ -42,8 +42,6 @@ import scenic
 from dotmap import DotMap
 from scenic.core.external_params import VerifaiSampler
 from verifai.samplers.feature_sampler import FeatureSampler
-
-from acl_bench.cartpole import SCENIC_FILE
 
 # random ignores the feedback it is given; ce/mab/sa steer by it.
 ADAPTIVE_SAMPLERS = ("ce", "mab", "sa")
@@ -106,7 +104,7 @@ class ScenicTaskSampler:
     pending_feedback: float | None = None
 
     @classmethod
-    def load(cls, sampler_name: str, scenic_file: str = SCENIC_FILE) -> "ScenicTaskSampler":
+    def load(cls, sampler_name: str, scenic_file: str) -> "ScenicTaskSampler":
         if sampler_name not in SAMPLER_NAMES:
             raise ValueError(f"unknown sampler {sampler_name!r}; choose from {SAMPLER_NAMES}")
         scenario = scenic.scenarioFromFile(

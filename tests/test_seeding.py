@@ -1,19 +1,23 @@
 """A seed must fully determine a run, and each arm must get independent seeds."""
 import numpy as np
+import pytest
 
+from acl_bench import envs
 from acl_bench.ppo import PPOConfig, run_training
 from acl_bench.sampling import ScenicTaskSampler
 from acl_bench.scoring import pvl_gae
 
 
-def train(seed, acl=True, sampler="random", steps=3072):
+def train(seed, acl=True, sampler="random", steps=3072, env_name="cartpole"):
+    env = envs.get(env_name)
     cfg = PPOConfig(total_timesteps=steps, seed=seed, acl=acl)
-    log, _ = run_training(ScenicTaskSampler.load(sampler), pvl_gae, cfg)
+    log, _ = run_training(env, ScenicTaskSampler.load(sampler, env.SCENIC_FILE), pvl_gae, cfg)
     return log
 
 
-def test_same_seed_reproduces_exactly():
-    a, b = train(7), train(7)
+@pytest.mark.parametrize("env_name", envs.NAMES)
+def test_same_seed_reproduces_exactly(env_name):
+    a, b = train(7, sampler="ce", env_name=env_name), train(7, sampler="ce", env_name=env_name)
     assert a.episode_returns == b.episode_returns
     assert [list(p.values()) for p in a.episode_params] == [list(p.values()) for p in b.episode_params]
 

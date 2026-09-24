@@ -16,11 +16,17 @@ from dataclasses import dataclass
 
 from acl_bench.sampling import ADAPTIVE_SAMPLERS
 
-# From the calibration run (20 plain runs to 1.2M steps): every run had taken off by 307k
-# steps and the mean success plateaus around 490k-610k, so 600 rollouts of 1024 steps.
-DEFAULT_BUDGET = 614_400
-CHECKPOINT_EVERY = 20 * 1024          # a multiple of the 1024-step rollout, so checkpoints are exact
+# Training length per environment, from its calibration runs (docs/exam.md): a multiple
+# of 30 rollouts of 1024 steps, so the 30 check-ins (every BUDGET / 30 steps) are exact.
+# cartpole: every run had taken off by 307k steps and mean success plateaus around
+# 490k-610k (20 plain runs to 1.2M), so 600 rollouts.
+BUDGET = {"cartpole": 614_400}
+N_CHECKINS = 30
 SCORE = "pvl_gae"                     # SIPACL's own score
+
+
+def checkpoint_every(budget: int) -> int:
+    return budget // N_CHECKINS
 
 
 @dataclass(frozen=True)

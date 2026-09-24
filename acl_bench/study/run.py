@@ -1,8 +1,8 @@
 """Train named arms over independent replicates, grading the exam at every checkpoint
 and optionally saving the agent at each, for re-grading later (acl_bench.study.regrade).
 
-    python -m acl_bench.study.run --arms N A S_sa B_sa --seeds 1-100 \\
-        --out results/training_new.csv --snapshots results/snapshots
+    python -m acl_bench.study.run --env cartpole --arms N A S_sa B_sa --seeds 1-100 \\
+        --out results/cartpole/training.csv --snapshots
 
 Every (arm, replicate) gets its own independent seed (`arm_seed`), so the runs of
 different arms are independent groups and are compared as groups
@@ -19,7 +19,8 @@ import time
 
 import pandas as pd
 
-from acl_bench.study.arms import ARMS, CHECKPOINT_EVERY, DEFAULT_BUDGET, Arm
+from acl_bench import envs
+from acl_bench.study.arms import ARMS, BUDGET, N_CHECKINS, Arm, checkpoint_every
 
 
 def parse_seeds(spec: str) -> list[int]:
@@ -37,33 +38,34 @@ def arm_seed(arm_name: str, replicate: int) -> int:
     return int(hashlib.sha256(f"{arm_name}:{replicate}".encode()).hexdigest()[:8], 16)
 
 
-def train_arm(arm: Arm, seed: int, steps: int, checkpoint_every: int | None = None, on_checkpoint=None):
-    """One training run of `arm` with run seed `seed`; returns (RunLog, Agent)."""
+def train_arm(env, arm: Arm, seed: int, steps: int, every: int | None = None, on_checkpoint=None):
+    """One training run of `arm` on `env` with run seed `seed`; returns (RunLog, Agent)."""
     from acl_bench.ppo import PPOConfig, run_training
     from acl_bench.sampling import ScenicTaskSampler
     from acl_bench.scoring import SCORES
     cfg = PPOConfig(total_timesteps=steps, seed=seed, acl=arm.acl)
-    return run_training(ScenicTaskSampler.load(arm.sampler), SCORES[arm.score], cfg,
-                        checkpoint_every=checkpoint_every, on_checkpoint=on_checkpoint)
+    return run_training(env, ScenicTaskSampler.load(arm.sampler, env.SCENIC_FILE), SCORES[arm.score], cfg,
+                        checkpoint_every=every, on_checkpoint=on_checkpoint)
 
 
 def run_job(job: tuple) -> list[dict]:
-    arm_name, replicate, steps, checkpoint_every, sets_dir, snapshot_dir = job
+    env_name, arm_name, replicate, steps, every, sets_dir, snapshot_dir = job
     seed = arm_seed(arm_name, replicate)
     import torch
     torch.set_num_threads(1)
     from acl_bench.exam.sets import evaluate_sets, load_sets
 
+    env = envs.get(env_name)
     sets = load_sets(sets_dir)
     snapshots: dict[int, dict] = {}
 
     def grade(step, agent):
         if snapshot_dir:
             snapshots[step] = {k: v.detach().cpu().numpy().copy() for k, v in agent.state_dict().items()}
-        return evaluate_sets(agent, sets)
+        return evaluate_sets(env, agent, sets)
 
     t0 = time.time()
-    log, _ = train_arm(ARMS[arm_name], seed, steps, checkpoint_every, grade)
+    log, _ = train_arm(env, ARMS[arm_name], seed, steps, every, grade)
     wall = time.time() - t0
     if snapshot_dir:
         from acl_bench.snapshots import save_run
@@ -89,16 +91,15 @@ def append_rows(path: str, rows: list[dict]) -> None:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--env", required=True, choices=envs.NAMES)
     parser.add_argument("--arms", nargs="+", required=True, help="names from acl_bench.study.arms.ARMS")
     parser.add_argument("--seeds", default="1-10", help="replicate numbers, e.g. 1-30 or 1,2,5-8; each arm derives its own seeds from them")
-    parser.add_argument("--steps", type=int, default=DEFAULT_BUDGET)
-    parser.add_argument("--checkpoint-every", type=int, default=CHECKPOINT_EVERY)
-    parser.add_argument("--sets", default="frozen_sets/cartpole")
+    parser.add_argument("--steps", type=int, default=None, help="default: the environment's BUDGET")
     parser.add_argument("--workers", type=int, default=max(1, min(6, (os.cpu_count() or 2) - 4)),
                         help="parallel runs; default leaves at least 4 cores free")
     parser.add_argument("--out", required=True)
-    parser.add_argument("--snapshots", default=None, metavar="DIR",
-                        help="also save each run's agent at every check-in under DIR/<arm>/<replicate>.npz")
+    parser.add_argument("--snapshots", action="store_true",
+                        help="also save each run's agent at every check-in under results/<env>/snapshots/<arm>/<replicate>.npz")
     parser.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
     parser.add_argument("--nice", type=int, default=10, help="lower workers' CPU priority (0-19)")
     parser.add_argument("--allow-battery", action="store_true", help="keep dispatching on battery power")
@@ -109,6 +110,11 @@ def main():
                         help="create this file to stop starting new runs (running ones finish)")
     args = parser.parse_args()
 
+    steps = args.steps or BUDGET[args.env]
+    if steps % (N_CHECKINS * 1024):
+        raise SystemExit(f"--steps must be a multiple of {N_CHECKINS} rollouts of 1024 steps")
+    every = checkpoint_every(steps)
+    sets_dir = envs.exam_dir(args.env)
     names = list(args.arms)
     unknown = [n for n in names if n not in ARMS]
     if unknown:
@@ -118,15 +124,16 @@ def main():
     if args.resume and os.path.exists(args.out):
         prior = pd.read_csv(args.out, usecols=["arm", "seed"]).drop_duplicates()
         done = set(zip(prior["arm"], prior["seed"]))
-    jobs = [(n, s, args.steps, args.checkpoint_every, args.sets, args.snapshots)
+    snapshot_dir = os.path.join(envs.results_dir(args.env), "snapshots") if args.snapshots else None
+    jobs = [(args.env, n, s, steps, every, sets_dir, snapshot_dir)
             for s in parse_seeds(args.seeds) for n in names if (n, s) not in done]
     if os.path.exists(args.stop_file):
         raise SystemExit(f"{args.stop_file} exists; remove it before starting")
 
     from acl_bench.study.safety import Limits, Watchdog, free_disk_gb, run_jobs
-    n_checkpoints = args.steps // args.checkpoint_every + 1
+    n_checkpoints = steps // every + 1
     need_gb = len(jobs) * n_checkpoints * 40e3 / 1e9 * (1 if args.snapshots else 0) + 5.0
-    where = args.snapshots or os.path.dirname(os.path.abspath(args.out))
+    where = snapshot_dir or os.path.dirname(os.path.abspath(args.out))
     os.makedirs(where, exist_ok=True)
     if free_disk_gb(where) < need_gb:
         raise SystemExit(f"need about {need_gb:.1f} GB free at {where}, have {free_disk_gb(where):.1f}")

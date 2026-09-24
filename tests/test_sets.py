@@ -5,7 +5,7 @@ import os
 import numpy as np
 import pytest
 
-from acl_bench.cartpole import PARAM_BOUNDS, PARAM_ORDER
+from acl_bench.envs.cartpole import PARAM_BOUNDS, PARAM_ORDER
 from acl_bench.exam.feasibility import WINNABLE, classify
 from acl_bench.exam.sets import load_sets, save_sets
 

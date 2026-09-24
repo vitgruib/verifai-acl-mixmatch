@@ -1,75 +1,104 @@
-"""The batched grader must agree with the real ParamCartPoleEnv."""
+"""Each environment's batched exam physics must agree with its real gymnasium env."""
 import numpy as np
 import pytest
 import torch
 
-from acl_bench.cartpole import PARAM_BOUNDS, PARAM_ORDER, make_env
-from acl_bench.exam.grader import rollout_steps, step_physics, terminated
+from acl_bench import envs
+from acl_bench.exam.grader import grade, rollout
+from acl_bench.ppo import Agent
 from acl_bench.study.arms import ARMS
 from acl_bench.study.run import train_arm
 
 
-def random_pairs(n, seed):
+def random_pairs(env, n, seed):
     rng = np.random.default_rng(seed)
-    params = np.array([[rng.uniform(*PARAM_BOUNDS[k]) for k in PARAM_ORDER] for _ in range(n)])
-    s0 = np.array([rng.uniform(-p[4], p[4], 4) for p in params])
-    return params, s0
+    lo, hi = (np.array([env.PARAM_BOUNDS[k][i] for k in env.PARAM_ORDER]) for i in (0, 1))
+    params = rng.uniform(lo, hi, size=(n, len(lo)))
+    return params, np.concatenate([env.sample_starts(p, 1, rng) for p in params])
 
 
-def as_dict(row):
-    return dict(zip(PARAM_ORDER, row))
+def real_env(env, row, s0):
+    e = env.make_env(dict(zip(env.PARAM_ORDER, row)))
+    e.reset(seed=0)
+    e.state = tuple(s0) if env is envs.get("mountaincar") else s0.copy()
+    return e
 
 
 @pytest.fixture(scope="module")
-def agent():
-    return train_arm(ARMS["N"], seed=1, steps=60_000)[1]
+def cartpole_agent():
+    return train_arm(envs.get("cartpole"), ARMS["N"], seed=1, steps=60_000)[1]
 
 
-def test_physics_matches_gym_step_by_step():
-    params, s0 = random_pairs(80, seed=0)
+@pytest.mark.parametrize("name", envs.NAMES)
+def test_physics_matches_gym_step_by_step(name):
+    env = envs.get(name)
+    params, s0 = random_pairs(env, 80, seed=0)
     rng = np.random.default_rng(1)
-    envs = []
-    for p, s in zip(params, s0):
-        env = make_env(as_dict(p)); env.reset(seed=0); env.state = s.copy(); envs.append(env)
+    real = [real_env(env, p, s) for p, s in zip(params, s0)]
     state = s0.copy()
     done = np.zeros(len(params), dtype=bool)
     compared = 0
     for _ in range(60):
-        action = rng.integers(0, 2, len(params))
-        force = np.where(action == 1, params[:, 3], -params[:, 3])
-        state = step_physics(state, force, params)
-        for i, env in enumerate(envs):
+        action = rng.integers(0, env.ACTION_DIM, len(params))
+        state = env.step(state, action, params)
+        for i, e in enumerate(real):
             if done[i]:
                 continue
-            _, _, term, _, _ = env.step(int(action[i]))
-            np.testing.assert_allclose(state[i], env.state, rtol=0, atol=1e-9)
+            _, _, term, _, _ = e.step(int(action[i]))
+            np.testing.assert_allclose(state[i], np.asarray(e.state, dtype=np.float64), rtol=0, atol=1e-9)
             compared += 1
-            assert bool(terminated(state[i:i + 1])[0]) == term
+            assert bool(env.terminated(state[i:i + 1])[0]) == term
             done[i] = term
     assert compared > 500
 
 
-def reference_steps(agent, row, s0, max_steps=500):
-    env = make_env(as_dict(row)); env.reset(seed=0); env.state = s0.copy()
-    for step in range(1, max_steps + 1):
-        obs = torch.as_tensor(np.array(env.state, dtype=np.float32)).unsqueeze(0)
+def reference_steps(env, agent, row, s0):
+    """(steps, ended) playing the real env one question at a time."""
+    e = real_env(env, row, s0)
+    obs = env.observe(np.asarray(s0, dtype=np.float64)[None])[0]
+    for step in range(1, env.MAX_EPISODE_STEPS + 1):
         with torch.no_grad():
-            action = int(agent.actor(obs).argmax(dim=1).item())
-        _, _, term, _, _ = env.step(action)
+            action = int(agent.actor(torch.as_tensor(np.asarray(obs, dtype=np.float32))[None]).argmax(dim=1).item())
+        obs, _, term, _, _ = e.step(action)
         if term:
-            return step
-    return max_steps
+            return step, True
+    return env.MAX_EPISODE_STEPS, False
 
 
-def test_rollout_matches_per_pair_reference_loop(agent):
-    params, s0 = random_pairs(120, seed=2)
-    batched = rollout_steps(agent, params, s0)
-    reference = np.array([reference_steps(agent, p, s) for p, s in zip(params, s0)])
-    np.testing.assert_array_equal(batched, reference)
-    assert 1 < np.median(batched) and batched.max() > 100, "test needs non-trivial trajectories"
+def test_cartpole_rollout_matches_per_question_reference_loop(cartpole_agent):
+    env = envs.get("cartpole")
+    params, s0 = random_pairs(env, 120, seed=2)
+    steps, ended = rollout(env, cartpole_agent, params, s0)
+    reference = [reference_steps(env, cartpole_agent, p, s) for p, s in zip(params, s0)]
+    np.testing.assert_array_equal(steps, [r[0] for r in reference])
+    np.testing.assert_array_equal(ended, [r[1] for r in reference])
+    assert 1 < np.median(steps) and steps.max() > 100, "test needs non-trivial trajectories"
 
 
-def test_finished_pairs_do_not_change_and_all_pairs_are_bounded(agent):
-    params, s0 = random_pairs(50, seed=3)
-    steps = rollout_steps(agent, params, s0, max_steps=40)
+@pytest.mark.parametrize("name", ["acrobot", "mountaincar"])
+def test_reach_rollout_matches_per_question_reference_loop(name):
+    """An untrained policy on a reach task. The physics agrees to rounding error (above),
+    and a chaotic system can amplify that over hundreds of steps, so almost all, not all."""
+    env = envs.get(name)
+    torch.manual_seed(0)
+    agent = Agent(env.OBS_DIM, env.ACTION_DIM)
+    params, s0 = random_pairs(env, 60, seed=2)
+    steps, ended = rollout(env, agent, params, s0)
+    reference = np.array([reference_steps(env, agent, p, s) for p, s in zip(params, s0)])
+    assert (steps == reference[:, 0]).mean() >= 0.95
+    assert (ended == reference[:, 1].astype(bool)).mean() >= 0.95
+
+
+@pytest.mark.parametrize("name", envs.NAMES)
+def test_pass_rule_and_bounds(name):
+    env = envs.get(name)
+    torch.manual_seed(0)
+    agent = Agent(env.OBS_DIM, env.ACTION_DIM)
+    params, s0 = random_pairs(env, 50, seed=3)
+    steps, ended = rollout(env, agent, params, s0, max_steps=40)
     assert steps.min() >= 1 and steps.max() <= 40
+    assert (steps[~ended] == 40).all()
+    success, _ = grade(env, agent, params, s0)
+    full_steps, full_ended = rollout(env, agent, params, s0)
+    expected = full_ended if env.GOAL == "reach" else full_steps == env.MAX_EPISODE_STEPS
+    np.testing.assert_array_equal(success, expected)

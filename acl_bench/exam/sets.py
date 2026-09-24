@@ -1,7 +1,7 @@
 """Locked exam sections (docs/exam.md).
 
 A section is a fixed list of questions, each a (task, start) pair: the physics
-(`params`, in cartpole.PARAM_ORDER) and the exact initial state (`s0`), optionally
+(`params`, in the environment's PARAM_ORDER) and the exact initial state (`s0`), optionally
 with the share of reference agents that fail it. Sections are saved as .npz files
 with a manifest of counts and SHA-256 fingerprints; loading verifies them.
 """
@@ -14,15 +14,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from acl_bench.cartpole import MAX_EPISODE_STEPS as MAX_STEPS
-from acl_bench.exam.grader import rollout_steps
+from acl_bench.exam.grader import grade
 
 
 @dataclass
 class PairSet:
     name: str
-    params: np.ndarray                          # (N, 5) in PARAM_ORDER
-    s0: np.ndarray                              # (N, 4) initial states
+    params: np.ndarray                          # (N, n_params) in PARAM_ORDER
+    s0: np.ndarray                              # (N, state_dim) initial states
     ref_fail_frac: np.ndarray | None = None     # (N,) share of reference agents that fail
 
     def __len__(self) -> int:
@@ -37,16 +36,16 @@ class PairSet:
         return h.hexdigest()
 
 
-def evaluate_sets(agent, sets: dict[str, PairSet]) -> dict[str, float]:
+def evaluate_sets(env, agent, sets: dict[str, PairSet]) -> dict[str, float]:
     """Flat metrics dict: per section, the number of questions, the share passed
-    (`success`) and the mean steps survived."""
+    (`success`) and the mean episode length in steps (`mean_steps`: steps survived for a
+    survive goal, higher is better; steps to the goal for a reach goal, lower is better)."""
     out = {}
     for name, ps in sets.items():
         if len(ps) == 0:                                   # e.g. no easy questions found: report, don't warn
             out.update({f"{name}/n": 0, f"{name}/success": float("nan"), f"{name}/mean_steps": float("nan")})
             continue
-        steps = rollout_steps(agent, ps.params, ps.s0, MAX_STEPS)
-        ok = steps == MAX_STEPS
+        ok, steps = grade(env, agent, ps.params, ps.s0)
         out[f"{name}/n"] = len(ps)
         out[f"{name}/success"] = float(ok.mean())
         out[f"{name}/mean_steps"] = float(steps.mean())
