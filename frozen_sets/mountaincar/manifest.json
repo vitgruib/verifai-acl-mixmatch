@@ -1,0 +1,31 @@
+{
+  "random": {
+    "n_drawn": 300,
+    "n_not_certified": 2,
+    "seed": 20260924
+  },
+  "sets": {
+    "random": {
+      "n": 298,
+      "sha256": "7bb13bd47e64f7d92d2f5e8bf8c2f8b80e3064e24dda1daf713c6711c25b3670"
+    },
+    "verifai": {
+      "n": 2000,
+      "sha256": "96510ee62a2d1ffc09d909d02e12d3f9a1e7c7a58fa0ca974bbfd98e60976577"
+    }
+  },
+  "verifai": {
+    "mean_fail_frac": 1.0,
+    "min_fail_frac": 0.6,
+    "n_candidates": 32746,
+    "n_failed_by_all": 32746,
+    "n_failed_by_all_certified": 32736,
+    "n_proven_winnable": 32736,
+    "sample_seed": 20260924,
+    "samplers": [
+      "ce",
+      "mab",
+      "sa"
+    ]
+  }
+}
