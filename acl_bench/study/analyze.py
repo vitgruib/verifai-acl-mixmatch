@@ -13,7 +13,9 @@ significant on some metric in that environment (docs/ablation.md).
 
     python -m acl_bench.study.analyze --env cartpole
 
-Reads results/<env>/grades.csv, writes results/<env>/analysis/.
+Reads results/<env>/grades.csv (the regrade, for an exam built after training, as
+CartPole's was) or else results/<env>/training.csv (every run graded on the whole exam
+at every check-in while it trained); writes results/<env>/analysis/.
 """
 from __future__ import annotations
 
@@ -79,7 +81,11 @@ def main():
     out = os.path.join(envs.results_dir(args.env), "analysis")
     os.makedirs(out, exist_ok=True)
 
-    grades = pd.read_csv(os.path.join(envs.results_dir(args.env), "grades.csv"))
+    source = os.path.join(envs.results_dir(args.env), "grades.csv")
+    if not os.path.exists(source):
+        source = os.path.join(envs.results_dir(args.env), "training.csv")
+    print(f"grades from {source}")
+    grades = pd.read_csv(source)
     grades = on_grid(grades[grades["arm"].isin(MAIN_ARMS)])
     metrics = derive_metrics(grades)
     metrics.to_csv(os.path.join(out, "per_run_metrics.csv"), index=False)
