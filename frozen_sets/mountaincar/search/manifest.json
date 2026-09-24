@@ -1,0 +1,45 @@
+{
+  "provenance": {
+    "SEARCH_ce": {
+      "iters": 3000,
+      "order_in_run": [
+        "ce"
+      ],
+      "seed": 20260922,
+      "starts_per_task": 5
+    },
+    "SEARCH_mab": {
+      "iters": 3000,
+      "order_in_run": [
+        "ce",
+        "mab"
+      ],
+      "seed": 20260922,
+      "starts_per_task": 5
+    },
+    "SEARCH_sa": {
+      "iters": 3000,
+      "order_in_run": [
+        "ce",
+        "mab",
+        "sa"
+      ],
+      "seed": 20260922,
+      "starts_per_task": 5
+    }
+  },
+  "sets": {
+    "SEARCH_ce": {
+      "n": 15000,
+      "sha256": "0c91da022536a99c23e9b93664f83fe7bb7e2da7ba40a3647f2b353fecad91a2"
+    },
+    "SEARCH_mab": {
+      "n": 15000,
+      "sha256": "23e84e5eb75ad91ab4d0006e9ed74ca77cbd9b5ee8ef82e49e48bc60eb6f770b"
+    },
+    "SEARCH_sa": {
+      "n": 15000,
+      "sha256": "b41204901f5f5c2cdc0aed4e955a2375f86ab8ffc403ad878e37dd74f35678f9"
+    }
+  }
+}

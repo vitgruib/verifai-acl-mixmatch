@@ -7,7 +7,9 @@
     (acl_bench.exam.search) that at least `--min-fail-frac` of the reference agents fail
     (default 0.6, i.e. 6+ of 10, including questions every agent fails) and that is
     proven winnable: some reference agent passed it (the grader is deterministic, so its
-    own play is the proof) or the planner found a replayed certificate.
+    own play is the proof) or the planner found a replayed certificate. If more than
+    `--max-verifai` qualify, a fixed-seed uniform sample of that many is kept (CartPole's
+    suite, 1,782, needed none).
 
     python -m acl_bench.exam.build --env acrobot random
     python -m acl_bench.exam.build --env acrobot verifai
@@ -36,7 +38,7 @@ def random_suite(env, n: int, seed: int) -> tuple[PairSet, dict]:
     return PairSet("random", params[ok], s0[ok]), {"n_drawn": n, "n_not_certified": int((~ok).sum()), "seed": seed}
 
 
-def verifai_suite(env, search_dir: str, min_fail_frac: float) -> tuple[PairSet, dict]:
+def verifai_suite(env, search_dir: str, min_fail_frac: float, max_n: int, seed: int) -> tuple[PairSet, dict]:
     pools = load_sets(search_dir, names=[f"SEARCH_{s}" for s in ADAPTIVE_SAMPLERS])
     params = np.concatenate([p.params for p in pools.values()])
     s0 = np.concatenate([p.s0 for p in pools.values()])
@@ -49,10 +51,14 @@ def verifai_suite(env, search_dir: str, min_fail_frac: float) -> tuple[PairSet, 
     winnable[hard[fail_frac[hard] < 1]] = True
     winnable[all_fail] = certify(env, params[all_fail], s0[all_fail])
     keep = hard[winnable[hard]]
+    n_winnable = len(keep)
+    if n_winnable > max_n:
+        keep = np.sort(np.random.default_rng(np.random.SeedSequence(seed)).choice(keep, max_n, replace=False))
     suite = PairSet("verifai", params[keep], s0[keep], fail_frac[keep])
     return suite, {"samplers": list(ADAPTIVE_SAMPLERS), "min_fail_frac": min_fail_frac,
                    "n_candidates": int(len(hard)), "n_failed_by_all": int(len(all_fail)),
                    "n_failed_by_all_certified": int(winnable[all_fail].sum()),
+                   "n_proven_winnable": int(n_winnable), "sample_seed": seed,
                    "mean_fail_frac": float(suite.ref_fail_frac.mean()) if len(suite) else float("nan")}
 
 
@@ -61,15 +67,16 @@ def main():
     parser.add_argument("--env", required=True, choices=envs.NAMES)
     parser.add_argument("suite", choices=("random", "verifai"))
     parser.add_argument("--n", type=int, default=300, help="random suite: tasks drawn")
-    parser.add_argument("--seed", type=int, default=20260924, help="random suite: seed")
+    parser.add_argument("--seed", type=int, default=20260924, help="random suite and verifai sample: seed")
     parser.add_argument("--min-fail-frac", type=float, default=0.6)
+    parser.add_argument("--max-verifai", type=int, default=2000)
     args = parser.parse_args()
     env, exam = envs.get(args.env), envs.exam_dir(args.env)
 
     if args.suite == "random":
         suite, info = random_suite(env, args.n, args.seed)
     else:
-        suite, info = verifai_suite(env, envs.search_dir(args.env), args.min_fail_frac)
+        suite, info = verifai_suite(env, envs.search_dir(args.env), args.min_fail_frac, args.max_verifai, args.seed)
         remove_sets([n for n in load_sets(exam) if n != "random"], exam)
     save_sets({suite.name: suite}, exam, extra={suite.name: info})
     print(f"{info}\n{suite.name}: {len(suite)} questions -> {exam}")
