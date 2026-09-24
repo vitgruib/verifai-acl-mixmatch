@@ -20,7 +20,11 @@ from acl_bench.sampling import ADAPTIVE_SAMPLERS
 # of 30 rollouts of 1024 steps, so the 30 check-ins (every BUDGET / 30 steps) are exact.
 # cartpole: every run had taken off by 307k steps and mean success plateaus around
 # 490k-610k (20 plain runs to 1.2M), so 600 rollouts.
-BUDGET = {"cartpole": 614_400}
+# acrobot: every run took off by 41k steps; mean success plateaus near 0.93 from ~330k
+# and mean steps to the goal from ~490k (10 plain runs to 1.2M), so 480 rollouts.
+# mountaincar: every run took off by 164k and all ten froze by 246k at the same policy,
+# always push right (10 plain runs to 1.2M), so 300 rollouts.
+BUDGET = {"cartpole": 614_400, "acrobot": 491_520, "mountaincar": 307_200}
 N_CHECKINS = 30
 SCORE = "pvl_gae"                     # SIPACL's own score
 
