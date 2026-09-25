@@ -91,10 +91,16 @@ def compare_arms(metrics: pd.DataFrame, a: str, b: str, metric: str, n_boot: int
 def holm(pvalues: dict[str, float]) -> dict[str, float]:
     """Holm-Bonferroni adjusted p-values: controls the family-wise error rate (chance
     of *any* false positive among the tests). Conservative; use for a small,
-    pre-declared set of confirmatory comparisons."""
-    items = sorted(pvalues.items(), key=lambda kv: kv[1])
+    pre-declared set of confirmatory comparisons. A NaN p (no variation in either arm,
+    e.g. every run scores 0) still counts toward m but ranks last and stays NaN;
+    otherwise it would sort unpredictably and min(1.0, nan) would set every later
+    test to 1."""
+    items = sorted(pvalues.items(), key=lambda kv: (np.isnan(kv[1]), kv[1]))
     m, running, adjusted = len(items), 0.0, {}
     for i, (key, p) in enumerate(items):
+        if np.isnan(p):
+            adjusted[key] = np.nan
+            continue
         running = max(running, min(1.0, (m - i) * p))
         adjusted[key] = running
     return adjusted
