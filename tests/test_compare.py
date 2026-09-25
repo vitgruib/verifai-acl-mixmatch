@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import pandas as pd
 import pytest
@@ -40,6 +41,14 @@ def test_min_detectable_matches_hand_calculation():
 def test_holm_matches_textbook_example():
     adj = holm({"a": 0.01, "b": 0.04, "c": 0.03})
     assert adj == {"a": pytest.approx(0.03), "c": pytest.approx(0.06), "b": pytest.approx(0.06)}
+
+
+def test_holm_ranks_nan_last_without_inflating_real_tests():
+    # a NaN placed first used to sort unpredictably and push every later test to 1
+    adj = holm({"n": float("nan"), "a": 0.01, "b": 0.04, "c": 0.03})
+    assert math.isnan(adj["n"])
+    assert adj["a"] == pytest.approx(0.04) and adj["c"] == pytest.approx(0.09)
+    assert adj["b"] == pytest.approx(0.09)
 
 
 def test_derive_metrics_computes_final_and_curve_for_success_and_steps():
