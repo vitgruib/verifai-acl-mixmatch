@@ -48,6 +48,16 @@ register("sipacl_beta01", {"beta": 0.1}, base=SIPACL)
 SFL = dict(replay_prob=0.5, sfl=True)
 register("sfl", {}, base=SFL)
 
+# ---- round 2: SFL's knobs (round 1 found no PVL-family setting better than DR on Acrobot)
+register("sfl_p09", {"replay_prob": 0.9}, base=SFL)
+register("sfl_top20", {"sfl_top": 20}, base=SFL)
+register("sfl_cheap", {"sfl_n": 500, "sfl_every": 20}, base=SFL)
+
+# ---- round 3: headroom (oracle: half the episodes on the VerifAI suite's own tasks) and
+# SFL's MountainCar curve gain with more seeds
+register("oracle50", {"replay_prob": 0.5, "oracle": "verifai"}, base=DR)
+register("sfl_p09_top20", {"replay_prob": 0.9, "sfl_top": 20}, base=SFL)
+
 
 def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)
