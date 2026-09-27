@@ -55,3 +55,19 @@ replay 0.9 (VerifAI final -0.03), buffer 200, MaxMC.
 
 So far: replay makes MountainCar converge faster and more reliably to the one policy
 PPO finds; nothing moves any suite beyond what DR's best seeds reach.
+
+## Round 4: CartPole
+
+The harness is faithful here too: DR ends at random 0.88 / VerifAI 0.24 (study N: 0.91 /
+0.29), with the same large swings between check-ins. Unlike the other two environments,
+**CartPole has headroom**: the oracle lifts VerifAI final success by about +0.2. Every
+replay config leans the same way at 8 seeds.
+
+## Round 5: CartPole, the round-1 settings plus 24 seeds for the leaders
+
+At ~23 seeds (VerifAI final vs DR): oracle +0.19 (p = 0.001), paper +0.09 (p = 0.08),
+SFL top-20 +0.11 (p = 0.056), sipacl -0.03. At 8 seeds: SFL (replay 0.5, top 100)
++0.21 (p = 0.01); paper with MaxMC +0.08, and random final +0.12 (p = 0.047).
+PLR-perp and beta 0.3 hurt the VerifAI curve (-0.10, -0.08; p < 0.05).
+So the literature's settings (and SFL) move CartPole toward the oracle; SIPACL's
+setting, which the ablation tested, does not.
