@@ -58,6 +58,10 @@ register("sfl_cheap", {"sfl_n": 500, "sfl_every": 20}, base=SFL)
 register("oracle50", {"replay_prob": 0.5, "oracle": "verifai"}, base=DR)
 register("sfl_p09_top20", {"replay_prob": 0.9, "sfl_top": 20}, base=SFL)
 
+# ---- round 6: CartPole, around the leaders (sfl, paper, paper_maxmc)
+register("sfl_top50", {"sfl_top": 50}, base=SFL)
+register("paper_maxmc_buf200", {"score": "maxmc", "buffer": 200})
+
 
 def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)
