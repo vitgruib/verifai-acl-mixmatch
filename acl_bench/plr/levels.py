@@ -49,6 +49,9 @@ class LevelConfig:
     sfl_k: int = 8
     sfl_top: int = 100
     sfl_every: int = 10
+    # diagnostic only: replays draw uniformly from this exam section's tasks (test leakage;
+    # an upper bound on what choosing training tasks can do, not a method)
+    oracle: str = ""
 
 
 class LevelSampler:
@@ -89,7 +92,7 @@ class LevelSampler:
 
     def pick(self) -> tuple[np.ndarray, int, int]:
         """(params, slot or -1, NEW/REPLAY)."""
-        if self.cfg.sfl:
+        if self.cfg.sfl or self.cfg.oracle:
             levels = getattr(self, "sfl_levels", None)
             if levels is not None and self.rng.uniform() < self.cfg.replay_prob:
                 return levels[self.rng.integers(len(levels))].copy(), -1, REPLAY
@@ -123,7 +126,7 @@ class LevelSampler:
 
     def report(self, params, slot: int, mode: int, score: float, ret: float, success: bool) -> None:
         self.clock += 1
-        if self.cfg.sfl:
+        if self.cfg.sfl or self.cfg.oracle:
             return
         if mode == REPLAY:
             a = self.cfg.score_ema

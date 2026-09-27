@@ -48,6 +48,10 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     bounds = np.array([env.PARAM_BOUNDS[k] for k in env.PARAM_ORDER], dtype=np.float64)
     levels = LevelSampler(cfg.levels, bounds, np.random.default_rng(lv_ss))
     r_step, r_term = REWARD[env_name]
+    if cfg.levels.oracle:
+        from acl_bench import envs
+        from acl_bench.exam.sets import load_sets
+        levels.set_sfl(load_sets(envs.exam_dir(env_name), names=[cfg.levels.oracle])[cfg.levels.oracle].params)
 
     K, T = cfg.n_envs, 1024 // cfg.n_envs
     agent = Agent(env.OBS_DIM, env.ACTION_DIM)
