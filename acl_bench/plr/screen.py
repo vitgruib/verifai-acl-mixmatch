@@ -92,6 +92,10 @@ register("pvl_learn_pc", {"score": "pvl_learn"}, critic_params=True)
 # planner estimating the best achievable result instead of the task-blind critic)
 register("regret", {"score": "regret", "replay_start": True})
 register("sipacl_regret", {"score": "regret", "replay_start": True}, base=SIPACL)
+# ---- round 12: SFL's scouting with PLR's score -- is PVL the problem, or is it that a
+# PLR buffer only ranks levels training happened to draw?
+register("scout_pvl", {"sfl_score": "pvl"}, base=SFL)
+register("scout_pvl_top20", {"sfl_score": "pvl", "sfl_top": 20}, base=SFL)
 register("lp", {"score": "lp"})
 register("lp_st", {"score": "lp", "replay_start": True})
 
