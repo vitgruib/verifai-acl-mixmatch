@@ -45,10 +45,13 @@ def evaluate_sets(env, agent, sets: dict[str, PairSet]) -> dict[str, float]:
         if len(ps) == 0:                                   # e.g. no easy questions found: report, don't warn
             out.update({f"{name}/n": 0, f"{name}/success": float("nan"), f"{name}/mean_steps": float("nan")})
             continue
-        ok, steps = grade(env, agent, ps.params, ps.s0)
+        extras = {}
+        ok, steps = grade(env, agent, ps.params, ps.s0, extras)
         out[f"{name}/n"] = len(ps)
         out[f"{name}/success"] = float(ok.mean())
         out[f"{name}/mean_steps"] = float(steps.mean())
+        if "return" in extras:
+            out[f"{name}/mean_return"] = float(extras["return"].mean())
     return out
 
 

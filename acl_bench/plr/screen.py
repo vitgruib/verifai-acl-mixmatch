@@ -75,6 +75,8 @@ for _sfx, _fast in (("pc", {"critic_params": True}), ("po", {"obs_params": True}
     register(f"sipacl_{_sfx}", {}, base=SIPACL, **_fast)
 register("paper_st", {"replay_start": True})
 register("paper_pc_st", {"replay_start": True}, critic_params=True)
+register("sipacl_st", {"replay_start": True}, base=SIPACL)
+register("sipacl_pc_st", {"replay_start": True}, base=SIPACL, critic_params=True)
 register("lp", {"score": "lp"})
 register("lp_st", {"score": "lp", "replay_start": True})
 

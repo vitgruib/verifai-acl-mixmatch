@@ -21,6 +21,11 @@ def horizon(env) -> int:
     return env.MAX_EPISODE_STEPS - 1 if env.GOAL == "survive" else env.MAX_EPISODE_STEPS
 
 
+def _holds(env, streak: np.ndarray) -> np.ndarray:
+    """"balance" goal: the branch ended with a full upright hold (always true otherwise)."""
+    return streak >= env.HOLD_STEPS if env.GOAL == "balance" else np.ones(streak.shape, dtype=bool)
+
+
 def beam_search(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, rng: np.random.Generator | None = None):
     """Returns (won, exhaustive_death_step, actions). `won[i]`: a passing sequence was
     found. `exhaustive_death_step[i]` (survive goals): the step at which every branch had
@@ -28,12 +33,13 @@ def beam_search(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, rng: n
     `actions[i]` (horizon,) int8: the winning sequence, -1 where unused or none."""
     rng = rng or np.random.default_rng(0)
     A, H, n = env.ACTION_DIM, horizon(env), len(params)
-    reach = env.GOAL == "reach"
+    reach, balance = env.GOAL == "reach", env.GOAL == "balance"
     cost_fn = env.planning_cost(params)
     state = np.repeat(np.asarray(s0, dtype=np.float64)[:, None, :], beam, axis=1)
     dim = state.shape[2]
     valid = np.zeros((n, beam), dtype=bool)
     valid[:, 0] = True
+    streak = np.zeros((n, beam), dtype=np.int64)                  # balance: consecutive upright steps
     truncated = np.zeros(n, dtype=bool)
     death = np.zeros(n, dtype=np.int64)
     won_at = np.zeros(n, dtype=np.int64)                          # reach: step of the first win
@@ -50,6 +56,9 @@ def beam_search(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, rng: n
             won_at[first] = t
             won_child[first] = ended[first].argmax(axis=1)
         alive = np.repeat(valid, A, axis=1) & ~ended
+        if balance:
+            child_streak = np.where(env.upright(child.reshape(-1, dim)).reshape(n, A * beam),
+                                    np.repeat(streak, A, axis=1) + 1, 0)
         n_alive = alive.sum(axis=1)
         newly_dead = (n_alive == 0) & (death == 0)
         death[newly_dead] = t
@@ -61,6 +70,8 @@ def beam_search(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, rng: n
         parents[t - 1] = keep
         state = np.take_along_axis(child, keep[:, :, None], axis=1)
         valid = np.take_along_axis(alive, keep, axis=1)
+        if balance:
+            streak = np.take_along_axis(child_streak, keep, axis=1)
         if reach and (won_at > 0).all():
             break
 
@@ -74,9 +85,10 @@ def beam_search(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, rng: n
                 c = int(parents[u - 1, i, slot])
                 actions[i, u - 1], slot = c % A, c // A
         return won, np.zeros(n, dtype=np.int64), actions
-    won = valid.any(axis=1)
+    final = valid & _holds(env, streak)
+    won = final.any(axis=1)
     for i in np.flatnonzero(won):
-        slot = int(np.flatnonzero(valid[i])[0])
+        slot = int(np.flatnonzero(final[i])[0])
         for t in range(H - 1, -1, -1):
             c = int(parents[t, i, slot])
             actions[i, t], slot = c % A, c // A
@@ -93,10 +105,13 @@ def replay_passes(env, params: np.ndarray, s0: np.ndarray, actions: np.ndarray) 
             state = np.where(reached[:, None], state, env.step(state, np.maximum(actions[:, t], 0), params))
             reached |= (actions[:, t] >= 0) & env.terminated(state)
         return ok & reached
+    streak = np.zeros(len(params), dtype=np.int64)
     for t in range(actions.shape[1]):
         state = env.step(state, actions[:, t], params)
         ok &= ~env.terminated(state)
-    return ok
+        if env.GOAL == "balance":
+            streak = np.where(env.upright(state), streak + 1, 0)
+    return ok & _holds(env, streak)
 
 
 def certify(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, chunk: int = 200, seed: int = 0) -> np.ndarray:

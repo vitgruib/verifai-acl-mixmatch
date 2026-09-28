@@ -1,0 +1,13 @@
+{
+  "random": {
+    "n_drawn": 300,
+    "n_not_certified": 36,
+    "seed": 20260924
+  },
+  "sets": {
+    "random": {
+      "n": 264,
+      "sha256": "78e6484a94f85e1762cb5e71e22c985f5beb048a2a07ac5f135950f8aa00e20e"
+    }
+  }
+}

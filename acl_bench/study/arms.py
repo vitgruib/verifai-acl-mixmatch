@@ -24,7 +24,8 @@ from acl_bench.sampling import ADAPTIVE_SAMPLERS
 # and mean steps to the goal from ~490k (10 plain runs to 1.2M), so 480 rollouts.
 # mountaincar: every run took off by 164k and all ten froze by 246k at the same policy,
 # always push right (10 plain runs to 1.2M), so 300 rollouts.
-BUDGET = {"cartpole": 614_400, "acrobot": 491_520, "mountaincar": 307_200}
+BUDGET = {"cartpole": 614_400, "acrobot": 491_520, "mountaincar": 307_200,
+          "pendulum": 1_228_800}      # pendulum: provisional, for its calibration runs
 N_CHECKINS = 30
 SCORE = "pvl_gae"                     # SIPACL's own score
 
