@@ -66,6 +66,18 @@ register("paper_maxmc_buf200", {"score": "maxmc", "buffer": 200})
 register("l1_avg", {"score": "l1", "score_ema": 0.3})
 register("nvl", {"score": "nvl"})
 
+# ---- round 8: make PVL-ranked PLR work. Root cause: a task-blind critic makes PVL track
+# easiness. Fixes: a privileged critic (_pc), task-aware networks (_po), exact-start
+# replay (_st). Each network change has its own DR baseline.
+for _sfx, _fast in (("pc", {"critic_params": True}), ("po", {"obs_params": True})):
+    CONFIGS[f"DR_{_sfx}"] = (DR, _fast)
+    register(f"paper_{_sfx}", {}, **_fast)
+    register(f"sipacl_{_sfx}", {}, base=SIPACL, **_fast)
+register("paper_st", {"replay_start": True})
+register("paper_pc_st", {"replay_start": True}, critic_params=True)
+register("lp", {"score": "lp"})
+register("lp_st", {"score": "lp", "replay_start": True})
+
 
 def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)
@@ -74,8 +86,8 @@ def run_seed(env_name: str, config: str, replicate: int) -> int:
 def job_fn(job):
     import torch
     torch.set_num_threads(1)
-    from acl_bench.exam.sets import evaluate_sets, load_sets
-    from acl_bench.plr.fast import FastConfig, train
+    from acl_bench.exam.sets import load_sets
+    from acl_bench.plr.fast import FastConfig, evaluate, train
     env_name, config, replicate, steps, n_checks = job
     env = envs.get(env_name)
     sets = load_sets(envs.exam_dir(env_name))
@@ -83,7 +95,7 @@ def job_fn(job):
     cfg = FastConfig(steps=steps, seed=run_seed(env_name, config, replicate),
                      levels=dataclasses.replace(LevelConfig(), **lv), **fast)
     t0 = time.time()
-    _, checks, stats = train(env_name, env, cfg, n_checks, lambda s, a: evaluate_sets(env, a, sets))
+    _, checks, stats = train(env_name, env, cfg, n_checks, lambda s, a: evaluate(env, a, sets))
     wall = time.time() - t0
     return [{"config": config, "seed": replicate, **c, **stats, "wall_time_sec": wall} for c in checks]
 
