@@ -123,3 +123,27 @@ about half the oracle's gain.
   **hurts Acrobot** (random -0.05). Every figure is Holm-corrected over 100 fresh seeds.
 - Where choosing training tasks cannot help (the oracle, on Acrobot and on MountainCar's
   VerifAI suite), no replay method helped.
+
+## Why PVL-ranked PLR fails here
+
+One run each with SIPACL's setting, second half of training, every episode's PVL next
+to its outcome:
+
+- **Acrobot:** Spearman(PVL, episode return) = **0.99**; failed episodes score ~0. The
+  top 10% of levels by PVL are the *easiest* in the box: short, light links (3rd-13th
+  percentile of their ranges) and high torque (92nd), the opposite of the VerifAI corner.
+- **CartPole:** PVL is higher on passed than failed episodes (3.0 vs 2.3), rank
+  correlation with return 0.50; the top levels lean to narrow start ranges (0.38; the
+  VerifAI suite sits at 0.86).
+
+The cause: the policy and critic observe only the physical state, never the task
+parameters, so the critic can only predict a return averaged over tasks. An easy task
+beats that average (large positive advantages, high PVL); a hard one falls short, and
+its negative advantages are clipped away. PVL therefore measures "easier than average",
+not learning potential, and PLR spends its replays on levels the agent already handles.
+In Procgen, where PLR was developed, the level is visible, the critic learns per-level
+values, and a positive surprise does signal something left to learn. This also explains
+the screens: more replay (0.9, PLR-perp, a small buffer) was worse, and L1 value loss and
+MaxMC, which also compare against the same task-blind critic, did no better. SFL escapes
+it because it never consults the critic: p(1 - p) from repeated rollouts peaks at levels
+passed about half the time.
