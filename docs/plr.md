@@ -98,3 +98,28 @@ the one environment where choosing training tasks can matter at all (the oracle)
 `sfl` against `DR` on Acrobot and MountainCar, 100 fresh seeds each (101-200), the same
 four metrics, Holm over 4 per environment: does the CartPole setting help or harm
 elsewhere?
+
+**Result.**
+- **MountainCar: helps.** Random final +0.059 (Holm p = 0.005), curve +0.114 (Holm
+  p < 0.001); 99/100 seeds reach push-right vs 90/100 for DR. VerifAI stays 0.
+- **Acrobot: hurts.** Random final -0.053, curve -0.047, VerifAI final -0.012, curve
+  -0.011 (all Holm p < 0.001). The 8-seed screen had shown a tie (-0.004); at 100 seeds
+  the cost is clear. On Acrobot even the oracle hurt: time spent on selected levels is
+  time taken from the broad distribution, and the frontier there teaches nothing the
+  suites reward.
+
+Where SFL's levels go on CartPole (one run, medians as a share of each range; uniform
+0.50): late in training it favours wide start ranges (init_range 0.75; VerifAI 0.86)
+and slightly weaker pushes (force 0.44; VerifAI 0.09), and stays central on pole and
+cart. It reaches toward the VerifAI corner along one axis, consistent with getting
+about half the oracle's gain.
+
+## Conclusion so far
+
+- Classic PLR (PVL / L1 / MaxMC scores, Robust PLR, SIPACL's setting, the papers'
+  defaults) does not beat domain randomization on any environment here.
+- SFL, PLR's learnability-ranked successor, at its default settings: **helps CartPole**
+  (VerifAI +0.10) and **MountainCar** (random +0.06, more reliable convergence),
+  **hurts Acrobot** (random -0.05). Every figure is Holm-corrected over 100 fresh seeds.
+- Where choosing training tasks cannot help (the oracle, on Acrobot and on MountainCar's
+  VerifAI suite), no replay method helped.
