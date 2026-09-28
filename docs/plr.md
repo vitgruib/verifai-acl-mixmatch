@@ -71,3 +71,17 @@ SFL top-20 +0.11 (p = 0.056), sipacl -0.03. At 8 seeds: SFL (replay 0.5, top 100
 PLR-perp and beta 0.3 hurt the VerifAI curve (-0.10, -0.08; p < 0.05).
 So the literature's settings (and SFL) move CartPole toward the oracle; SIPACL's
 setting, which the ablation tested, does not.
+
+## Round 6: CartPole, around the leaders
+
+At 24 seeds (VerifAI final vs DR): **SFL +0.11 (p = 0.026)**, random final +0.08; SFL
+top-50 (8 seeds) +0.15, random +0.13 (p = 0.015); paper +0.09. MaxMC's lead vanished at
+24 seeds (-0.01), as did buffer 200's.
+
+## Confirmation (declared before running)
+
+On CartPole, `sfl` and `paper` at their literature defaults (not the best-looking tuned
+variant, to avoid the winner's curse) against `DR`, 100 fresh seeds each (101-200),
+fast harness. Metrics: final and curve success on the random and VerifAI suites
+(`fin_r`, `auc_r`, `fin_v`, `auc_v`); 2 configs x 4 metrics = 8 Welch tests,
+Holm-corrected together.
