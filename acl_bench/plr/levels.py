@@ -73,6 +73,7 @@ class LevelSampler:
         self.wins = np.zeros(n)
         self.tries = np.zeros(n)
         self.last_ret = np.zeros(n)          # return at the last visit (lp score)
+        self.plan = np.full(n, -np.inf)      # the planner's result on the level (regret score)
         self.starts = None                   # starting state per slot (replay_start)
         self.size = 0
         self.fifo = 0
@@ -183,7 +184,8 @@ class LevelSampler:
             return float(np.mean(np.clip(-adv, 0.0, None)))
         raise ValueError(kind)
 
-    def report(self, params, slot: int, mode: int, score: float, ret: float, success: bool, s0=None) -> None:
+    def report(self, params, slot: int, mode: int, score: float, ret: float, success: bool, s0=None,
+               plan: float | None = None) -> None:
         self.clock += 1
         if self.cfg.sfl or self.cfg.oracle:
             return
@@ -219,6 +221,8 @@ class LevelSampler:
             self.starts[i] = s0
         self.best[i], self.wins[i], self.tries[i] = ret, float(success), 1.0
         self.last_ret[i] = ret
+        if plan is not None:
+            self.plan[i] = plan
 
 
 def gae(rewards, values, next_value, gamma, lam) -> np.ndarray:

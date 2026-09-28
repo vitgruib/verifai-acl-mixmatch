@@ -88,6 +88,10 @@ register("accel_maxmc", {"accel": True, "replay_prob": 0.8, "score": "maxmc"})
 register("accel_learn", {"accel": True, "replay_prob": 0.8, "score": "pvl_learn"})
 register("paper_rho03", {"staleness": 0.3})                       # Robust PLR / ACCEL staleness
 register("pvl_learn_pc", {"score": "pvl_learn"}, critic_params=True)
+# ---- round 11: planner regret (PLR's own theory, minimax regret, with the exam's physics
+# planner estimating the best achievable result instead of the task-blind critic)
+register("regret", {"score": "regret", "replay_start": True})
+register("sipacl_regret", {"score": "regret", "replay_start": True}, base=SIPACL)
 register("lp", {"score": "lp"})
 register("lp_st", {"score": "lp", "replay_start": True})
 
