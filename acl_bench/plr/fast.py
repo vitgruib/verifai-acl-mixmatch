@@ -230,32 +230,67 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
 @torch.no_grad()
 def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random.Generator) -> np.ndarray:
     """SFL's buffer: the `sfl_top` of `sfl_n` random levels by p(1 - p), p = the share of
-    `sfl_k` stochastic-policy rollouts that pass."""
+    `sfl_k` stochastic-policy rollouts that pass. With `lc.sfl_score == "pvl"` the same
+    scouted levels are ranked by PVL instead (mean over the k rollouts of the episode's
+    mean positive GAE advantage under the current critic): SFL's search with PLR's score."""
     cand = np.stack([levels.draw_new() for _ in range(lc.sfl_n)])
     params = np.repeat(cand, lc.sfl_k, axis=0)
     state = np.concatenate([env.sample_starts(p, 1, rng) for p in params])
     alive = np.ones(len(params), dtype=bool)
     ended = np.zeros(len(params), dtype=bool)
     streak = np.zeros(len(params), dtype=int)
+    pvl = lc.sfl_score == "pvl"
+    rews, vals, alives, terms = [], [], [], []
+    r_step, r_term = REWARD.get(env.__name__.rsplit(".", 1)[-1], (0.0, 0.0))
+    xa, xc = agent.inputs
     for _ in range(env.MAX_EPISODE_STEPS):
-        logits = agent.actor(torch.as_tensor(agent.inputs[0](env.observe(state).astype(np.float32), params)))
+        raw = env.observe(state).astype(np.float32)
+        logits = agent.actor(torch.as_tensor(xa(raw, params)))
         a = torch.multinomial(torch.softmax(logits, dim=1), 1).squeeze(1).numpy()
+        if pvl:
+            vals.append(agent.critic(torch.as_tensor(xc(raw, params))).squeeze(1).numpy())
+            alives.append(alive.copy())
+            r_env = env.reward(state, a, params) if hasattr(env, "reward") else None
         state = np.where(alive[:, None], env.step(state, a, params), state)
         if env.GOAL == "balance":
             streak = np.where(env.upright(state), streak + 1, 0)
         e = alive & env.terminated(state)
+        if pvl:
+            rews.append(r_env if r_env is not None else np.where(e, r_term, r_step))
+            terms.append(e)
         ended |= e
         alive &= ~e
         if not alive.any():
             break
-    if env.GOAL == "balance":
-        success = streak >= env.HOLD_STEPS
+    if pvl:
+        v_end = agent.critic(torch.as_tensor(xc(env.observe(state).astype(np.float32), params))).squeeze(1).numpy()
+        score = _scout_pvl(np.array(rews), np.array(vals), np.array(alives), np.array(terms), v_end)
     else:
-        success = ended if env.GOAL == "reach" else ~ended
-    p = success.reshape(lc.sfl_n, lc.sfl_k).mean(1)
-    learn = p * (1 - p)
-    top = np.argsort(-learn, kind="stable")[:lc.sfl_top]
+        if env.GOAL == "balance":
+            success = streak >= env.HOLD_STEPS
+        else:
+            success = ended if env.GOAL == "reach" else ~ended
+        p = success.reshape(lc.sfl_n, lc.sfl_k).mean(1)
+        score = p * (1 - p)
+    if pvl:
+        score = score.reshape(lc.sfl_n, lc.sfl_k).mean(1)
+    top = np.argsort(-score, kind="stable")[:lc.sfl_top]
     return cand[top]
+
+
+def _scout_pvl(rew, val, alive, term, v_end, gamma: float = 0.99, lam: float = 0.95) -> np.ndarray:
+    """Per rollout, mean over its steps of max(GAE advantage, 0), for (T, N) arrays of a
+    batched rollout: termination ends an episode (next value 0), and one still running at
+    the step cap bootstraps from the critic, as the training loop's PVL does."""
+    T, n = rew.shape
+    adv_pos, last = np.zeros(n), np.zeros(n)
+    for t in reversed(range(T)):
+        nxt = np.where(term[t], 0.0, val[t + 1] if t + 1 < T else v_end)
+        delta = rew[t] + gamma * nxt - val[t]
+        last = np.where(alive[t], delta + gamma * lam * np.where(term[t], 0.0, last), 0.0)
+        adv_pos += np.where(alive[t], np.clip(last, 0.0, None), 0.0)
+    length = np.maximum(alive.sum(0), 1)
+    return adv_pos / length
 
 
 def plan_values(env, params: np.ndarray, s0: np.ndarray, beam: int = 64) -> np.ndarray:

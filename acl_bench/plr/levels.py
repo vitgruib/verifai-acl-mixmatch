@@ -50,6 +50,7 @@ class LevelConfig:
     sfl_k: int = 8
     sfl_top: int = 100
     sfl_every: int = 10
+    sfl_score: str = "learn"       # "learn": p(1 - p); "pvl": rank the scouted levels by PVL
     # diagnostic only: replays draw uniformly from this exam section's tasks (test leakage;
     # an upper bound on what choosing training tasks can do, not a method)
     oracle: str = ""
