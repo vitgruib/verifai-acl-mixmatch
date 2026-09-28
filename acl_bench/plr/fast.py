@@ -54,6 +54,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     levels = LevelSampler(cfg.levels, bounds, np.random.default_rng(lv_ss))
     r_step, r_term = REWARD.get(env_name, (0.0, 0.0))    # unused for an env with its own `reward`
     has_reward, balance = hasattr(env, "reward"), env.GOAL == "balance"
+    regret, pending = cfg.levels.score == "regret", []
     if cfg.levels.oracle:
         from acl_bench import envs
         from acl_bench.exam.sets import load_sets
@@ -157,13 +158,21 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     else:
                         success = bool(term[k]) if env.GOAL == "reach" else not term[k]
                     ret = float(sum(ep_r[k]))
-                    sc = levels.score(ep_r[k], ep_v[k], nv, cfg.gamma, cfg.lam, success, slot[k],
-                                      entropy=float(np.mean(ep_ent[k])),
-                                      disagreement=float(np.mean(ep_dis[k])) if ep_dis[k] else None)
-                    levels.report(params[k].copy(), slot[k], mode[k], sc, ret, success, ep_s0[k])
+                    if regret:
+                        # planner regret: scored in one batch at the end of the rollout
+                        pending.append((params[k].copy(), ep_s0[k], int(slot[k]), int(mode[k]), ret, success))
+                    else:
+                        sc = levels.score(ep_r[k], ep_v[k], nv, cfg.gamma, cfg.lam, success, slot[k],
+                                          entropy=float(np.mean(ep_ent[k])),
+                                          disagreement=float(np.mean(ep_dis[k])) if ep_dis[k] else None)
+                        levels.report(params[k].copy(), slot[k], mode[k], sc, ret, success, ep_s0[k])
                     stats["episodes"] += 1
                     stats["replays"] += int(mode[k] == REPLAY)
                     state[k] = start(k)
+
+        if regret and pending:
+            flush_regret(env, levels, pending, has_reward)
+            pending.clear()
 
         with torch.no_grad():
             nv = agent.critic(torch.as_tensor(xc(env.observe(state).astype(np.float32), params))).squeeze(1).numpy()
@@ -247,6 +256,43 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     learn = p * (1 - p)
     top = np.argsort(-learn, kind="stable")[:lc.sfl_top]
     return cand[top]
+
+
+def plan_values(env, params: np.ndarray, s0: np.ndarray, beam: int = 64) -> np.ndarray:
+    """What the physics planner (the exam's beam search, acl_bench.exam.certify) achieves
+    on each (task, start): the return of its sequence for an env with a reward, else 1.0
+    if its replayed sequence passes; -inf / 0.0 where it found nothing."""
+    from acl_bench.exam.certify import beam_search, replay_passes
+    won, _, actions = beam_search(env, params, s0, beam=beam)
+    if not hasattr(env, "reward"):
+        return (won & replay_passes(env, params, s0, actions)).astype(float)
+    state, ret = np.array(s0, dtype=np.float64), np.zeros(len(params))
+    for t in range(actions.shape[1]):
+        a = np.maximum(actions[:, t], 0)
+        ret += env.reward(state, a, params)
+        state = env.step(state, a, params)
+    return np.where(won, ret, -np.inf)
+
+
+def flush_regret(env, levels: LevelSampler, pending: list, continuous: bool) -> None:
+    """Score and report a rollout's finished episodes by planner regret: max(planner,
+    best outcome seen on the level, this outcome) - this outcome, where the outcome is the
+    return (continuous) or the pass indicator. New levels are planned once, in one batch;
+    replays reuse their level's stored plan (they repeat the exact start: replay_start)."""
+    new = [j for j, p in enumerate(pending) if p[3] == NEW]
+    plans = {}
+    if new:
+        vals = plan_values(env, np.stack([pending[j][0] for j in new]), np.stack([pending[j][1] for j in new]))
+        plans = dict(zip(new, vals))
+    for j, (prm, s0, slot, mode, ret, success) in enumerate(pending):
+        outcome = ret if continuous else float(success)
+        if mode == NEW:
+            plan, seen = plans[j], -np.inf
+        else:
+            plan = levels.plan[slot]
+            seen = levels.best[slot] if continuous else (1.0 if levels.wins[slot] > 0 else 0.0)
+        sc = max(plan, seen, outcome) - outcome
+        levels.report(prm, slot, mode, sc, ret, success, s0, plan=plan)
 
 
 def make_agent(env, bounds: np.ndarray, cfg: FastConfig) -> Agent:
