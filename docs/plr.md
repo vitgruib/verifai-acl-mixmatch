@@ -271,3 +271,14 @@ Caveat: Pendulum's only exam so far is its random suite, the very distribution D
 on, so any shift away from uniform costs there; PLR's claimed benefit is on hard levels,
 which CartPole's VerifAI suite measures and Pendulum does not yet. Next: Pendulum's
 reference agents (study pipeline) and VerifAI suite; CartPole leaders to 24 seeds.
+
+CartPole leaders at 24 seeds (VerifAI final vs DR 0.304): **sipacl_learn +0.145 (0.449,
+p = 0.005)**, random final +0.092 (p = 0.09); pvl_resid +0.100 (p = 0.11); entropy +0.092
+(p = 0.12); accel +0.072 (p = 0.22). For reference at 24 seeds: SFL +0.110, paper +0.085.
+
+## Confirmation 3 (declared before running)
+
+`sipacl_learn` (SIPACL's PLR, PVL gated by 4p(1-p) of the level's running pass rate from
+training episodes) against `DR` on CartPole, 100 fresh seeds (101-200; DR's from
+confirmation 1). Metrics: `fin_r`, `auc_r`, `fin_v`, `auc_v`, `fin_rc`, `fin_vc`; Holm
+over these 6.
