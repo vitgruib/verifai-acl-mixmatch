@@ -225,3 +225,28 @@ winner's curse. A VerifAI lean of about +0.06 remains, about half of SFL's confi
 Pendulum budget: 2,457,600 steps (2,400 rollouts), from 8 DR runs to 4.9M
 (`results/pendulum/plr/calibration_long.csv`): fast learning to ~2M (pass 0.67,
 return -415), then a slow creep to 0.85 / -257.
+
+## Pendulum (continuous reward), rounds 1-2, 8 seeds
+
+Final return vs DR (-418): paper + exact start -205 (p = 0.003), paper -148 (p = 0.04),
+paper at replay 0.2 -142 (p = 0.03), sipacl -107, sipacl + exact start -126; L1 +18,
+learning progress +1, visit-averaged L1 -55, SFL -47 (all n.s.). A privileged critic
+helps the baseline (DR_pc -344, +74 vs DR, n.s.) but not PLR on top of it: vs DR_pc,
+paper_pc -171 (p = 0.007), paper_pc_st -138 (p = 0.04), sipacl_pc -69 (n.s.).
+
+Mechanism (one run, sipacl, second half): Spearman(PVL, return) = +0.70; PVL's top 10%
+pass 77% of the time (average 41%), return -236, on light, low-gravity, strong-torque
+levels. L1's top 10% are the opposite: Spearman -0.86, pass 1%, return -1361, on the
+heaviest, highest-gravity, weakest-torque levels. PVL replays what the agent already
+handles; L1 on a continuous cost chases hopeless levels; neither finds the frontier.
+Continuous reward does not rescue PVL, and the loss is larger here because the hard
+levels dominate the average return.
+
+## Where PVL-ranked PLR stands
+
+Tried: SIPACL's setting; the PLR / Robust PLR / ACCEL settings; L1, negative-only, MaxMC
+and learning-progress scores; visit-averaged scores; a privileged critic; task-aware
+networks; exact-scene replay; lower and higher replay rates. On four environments, pass/
+fail and continuous: no confirmed gain; the best lead (exact-scene replay, CartPole
+VerifAI +0.06) failed confirmation; on Pendulum it hurts. The one method that confirmed,
+SFL, drops the value-based score for a measured pass rate (and uses extra simulation).

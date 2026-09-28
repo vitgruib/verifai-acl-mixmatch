@@ -77,6 +77,17 @@ register("paper_st", {"replay_start": True})
 register("paper_pc_st", {"replay_start": True}, critic_params=True)
 register("sipacl_st", {"replay_start": True}, base=SIPACL)
 register("sipacl_pc_st", {"replay_start": True}, base=SIPACL, critic_params=True)
+# ---- round 10: from the literature, aimed at the measured failure (PVL tracks easiness)
+register("pvl_learn", {"score": "pvl_learn"})                     # PVL gated to the frontier
+register("sipacl_learn", {"score": "pvl_learn"}, base=SIPACL)
+register("pvl_resid", {"score": "pvl_resid"})                     # PVL decorrelated from return
+register("entropy", {"score": "entropy"})                         # PLR paper: policy entropy
+register("vds", {"score": "vds", "n_value_ens": 5})               # value disagreement (VDS)
+register("accel", {"accel": True, "replay_prob": 0.8})            # ACCEL: PVL + level edits
+register("accel_maxmc", {"accel": True, "replay_prob": 0.8, "score": "maxmc"})
+register("accel_learn", {"accel": True, "replay_prob": 0.8, "score": "pvl_learn"})
+register("paper_rho03", {"staleness": 0.3})                       # Robust PLR / ACCEL staleness
+register("pvl_learn_pc", {"score": "pvl_learn"}, critic_params=True)
 register("lp", {"score": "lp"})
 register("lp_st", {"score": "lp", "replay_start": True})
 
