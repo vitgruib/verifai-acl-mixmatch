@@ -196,3 +196,21 @@ better.
 `sipacl_st` against `DR` on CartPole, 100 fresh seeds (101-200; DR's are the ones from
 confirmation 1). Metrics: `fin_r`, `auc_r`, `fin_v`, `auc_v`, and the continuous finals
 `fin_rc`, `fin_vc`; Holm over these 6.
+
+## Caveat: SFL's extra simulation
+
+SFL's buffer is filled by scouting rollouts outside training (every 10 updates, 1,000
+random levels x 8 rollouts), and they are not charged to the training budget; on
+CartPole that is up to ~4M simulated steps per refresh against ~10k training steps
+between refreshes. The SFL paper does the same, but it means "SFL beats DR" here is not
+an equal-budget comparison: it shows that knowing each level's pass rate is valuable,
+not that SFL wins at the same cost. Every other config, including all PVL variants, is
+equal-budget. To do: an SFL variant whose scouting counts against the budget.
+
+## Future work
+
+- **LunarLander** (gymnasium Box2D) as a second continuous-reward environment with a
+  natural pass/fail (a safe landing) on top of a shaped return, and task parameters
+  gymnasium already exposes (gravity, wind power, turbulence). Its physics cannot use
+  the batched grader, so its exam would be graded one episode at a time (much slower);
+  worth it if Pendulum's results need a second continuous-reward check.
