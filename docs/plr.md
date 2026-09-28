@@ -292,3 +292,18 @@ Across the three PVL-form confirmations on CartPole, VerifAI final lands at +0.0
 +0.061 and +0.033: always positive, never significant. A small real effect (~+0.04, a
 third of SFL's confirmed +0.105) is consistent with these; 24-seed screens cannot
 separate it from noise, and picking each round's best screen selects the luckiest.
+
+## Round 11: planner regret (8 seeds)
+
+PLR's own justification is minimax regret; PVL, L1 and MaxMC approximate regret with the
+task-blind critic. Here the exam's physics planner (beam search, acl_bench.exam.certify)
+estimates the best achievable result on each (level, start); score = max(planner, best
+seen, this outcome) - this outcome (return on Pendulum, pass indicator otherwise), with
+exact-start replay.
+
+- CartPole: VerifAI final +0.119 (paper settings) and +0.100 (SIPACL settings), n.s.: the
+  same range as the PVL leads that faded at 100 seeds.
+- Pendulum: paper settings -269 (p = 0.001; pass rate 0.68 -> 0.33): its sharp ranking
+  fixes on levels the planner solves and the agent cannot yet approach. SIPACL settings
+  -46 (n.s.), curve -1: the first PLR variant that does not hurt Pendulum's random suite.
+- Acrobot: hurts (curve -0.07 / -0.08), as the oracle predicts.
