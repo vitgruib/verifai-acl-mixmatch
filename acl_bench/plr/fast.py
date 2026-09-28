@@ -52,7 +52,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     env_rng, shuffle_rng = np.random.default_rng(env_ss), np.random.default_rng(sh_ss)
     bounds = np.array([env.PARAM_BOUNDS[k] for k in env.PARAM_ORDER], dtype=np.float64)
     levels = LevelSampler(cfg.levels, bounds, np.random.default_rng(lv_ss))
-    r_step, r_term = REWARD[env_name]
+    r_step, r_term = REWARD.get(env_name, (0.0, 0.0))    # unused for an env with its own `reward`
+    has_reward, balance = hasattr(env, "reward"), env.GOAL == "balance"
     if cfg.levels.oracle:
         from acl_bench import envs
         from acl_bench.exam.sets import load_sets
@@ -72,6 +73,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     ep_v = [[] for _ in range(K)]
     ep_train = np.ones(K, dtype=bool)         # PLR-perp: does this episode's data train the agent?
     ep_s0 = [None] * K
+    streak = np.zeros(K, dtype=int)           # consecutive upright steps ("balance" goal)
 
     def start(k):
         p, i, m = levels.pick()
@@ -81,6 +83,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         else:
             s = env.sample_starts(p, 1, env_rng)[0]
         ep_s0[k] = s.copy()
+        streak[k] = 0
         t_ep[k] = 0
         ep_r[k], ep_v[k] = [], []
         ep_train[k] = not (cfg.levels.robust and m == NEW)
@@ -115,11 +118,14 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
             b_logp[t] = logp_all.gather(1, a[:, None]).squeeze(1).numpy()
             b_val[t] = v.numpy()
             b_mask[t] = ep_train
+            rew_env = env.reward(state, a_np, params) if has_reward else None
             state = env.step(state, a_np, params)
             term = env.terminated(state)
+            if balance:
+                streak[:] = np.where(env.upright(state), streak + 1, 0)
             t_ep += 1
             trunc = t_ep >= env.MAX_EPISODE_STEPS
-            rew = np.where(term, r_term, r_step)
+            rew = rew_env if has_reward else np.where(term, r_term, r_step)
             b_rew[t] = rew
             done = term | trunc
             b_done[t] = done
@@ -133,7 +139,10 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         with torch.no_grad():
                             c = xc(env.observe(state[k:k + 1]).astype(np.float32), params[k:k + 1])
                             nv = float(agent.critic(torch.as_tensor(c)))
-                    success = bool(term[k]) if env.GOAL == "reach" else not term[k]
+                    if balance:
+                        success = bool(streak[k] >= env.HOLD_STEPS)
+                    else:
+                        success = bool(term[k]) if env.GOAL == "reach" else not term[k]
                     ret = float(sum(ep_r[k]))
                     sc = levels.score(ep_r[k], ep_v[k], nv, cfg.gamma, cfg.lam, success, slot[k])
                     levels.report(params[k].copy(), slot[k], mode[k], sc, ret, success, ep_s0[k])
@@ -195,16 +204,22 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     state = np.concatenate([env.sample_starts(p, 1, rng) for p in params])
     alive = np.ones(len(params), dtype=bool)
     ended = np.zeros(len(params), dtype=bool)
+    streak = np.zeros(len(params), dtype=int)
     for _ in range(env.MAX_EPISODE_STEPS):
         logits = agent.actor(torch.as_tensor(agent.inputs[0](env.observe(state).astype(np.float32), params)))
         a = torch.multinomial(torch.softmax(logits, dim=1), 1).squeeze(1).numpy()
         state = np.where(alive[:, None], env.step(state, a, params), state)
+        if env.GOAL == "balance":
+            streak = np.where(env.upright(state), streak + 1, 0)
         e = alive & env.terminated(state)
         ended |= e
         alive &= ~e
         if not alive.any():
             break
-    success = ended if env.GOAL == "reach" else ~ended
+    if env.GOAL == "balance":
+        success = streak >= env.HOLD_STEPS
+    else:
+        success = ended if env.GOAL == "reach" else ~ended
     p = success.reshape(lc.sfl_n, lc.sfl_k).mean(1)
     learn = p * (1 - p)
     top = np.argsort(-learn, kind="stable")[:lc.sfl_top]

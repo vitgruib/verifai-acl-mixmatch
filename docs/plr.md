@@ -161,3 +161,38 @@ VerifAI final vs DR at 24 seeds: L1 +0.067 (p = 0.22); L1 averaged over visits (
 directions does not help. Averaging over visits helps a little, consistent with
 single-episode noise (a failure often reflects the start state, which a replay redraws).
 PVL's +0.09 at 24 seeds fell to +0.02 at 100, so none of these leans is evidence yet.
+
+## Round 8: fixing PVL-ranked PLR (CartPole)
+
+Fixes for the task-blind critic and single-episode noise, each network change against a DR
+baseline with the same network: a privileged critic that sees the task parameters (`_pc`,
+the policy stays blind), task parameters visible to both networks (`_po`), exact-start
+replay (`_st`: a replay repeats the episode's starting state, as SIPACL's own replays of a
+pickled scene do), and a learning-progress score against the level's own last return
+(`lp`). Mechanism check (one run each): with a privileged critic, Acrobot's
+Spearman(PVL, return) falls from 0.99 to 0.38 and the top levels move from the easy
+corner to the middle of the box; CartPole's does not change (0.50 -> 0.61). PVL keeps
+favouring levels where the agent is improving, i.e. starting to pass.
+
+At 8 seeds: privileged critic + exact start led (VerifAI +0.14 over its baseline). Task
+parameters visible to the policy made learning slower (DR_po VerifAI curve -0.09 vs DR,
+p = 0.005). lp: no VerifAI gain.
+
+## Round 9: the leaders at 24 seeds
+
+- Privileged-critic configs: none beats DR_pc on VerifAI (paper_pc_st: +0.14 at 8 seeds,
+  -0.04 at 24).
+- **`sipacl_st`** (SIPACL's settings + exact-start replay): random final +0.127
+  (0.825 -> 0.952, p = 0.015), random curve +0.100 (p = 0.006); continuous (steps
+  survived) +0.055 (p = 0.025); VerifAI +0.045 (n.s.). Restoring SIPACL's own replay of
+  the exact scene may be what its PVL-ranked PLR needs.
+
+`summarize` now reports a continuous score next to each pass rate (`--continuous`): mean
+return where the environment has one, otherwise mean steps scaled to [0, 1], higher
+better.
+
+## Confirmation 2 (declared before running)
+
+`sipacl_st` against `DR` on CartPole, 100 fresh seeds (101-200; DR's are the ones from
+confirmation 1). Metrics: `fin_r`, `auc_r`, `fin_v`, `auc_v`, and the continuous finals
+`fin_rc`, `fin_vc`; Holm over these 6.

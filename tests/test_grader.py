@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from acl_bench import envs
-from acl_bench.exam.grader import grade, rollout
+from acl_bench.exam.grader import grade, passed, rollout
 from acl_bench.ppo import Agent
 from acl_bench.study.arms import ARMS
 from acl_bench.study.run import train_arm
@@ -50,6 +50,29 @@ def test_physics_matches_gym_step_by_step(name):
             assert bool(env.terminated(state[i:i + 1])[0]) == term
             done[i] = term
     assert compared > 500
+
+
+@pytest.mark.parametrize("name", [n for n in envs.NAMES if hasattr(envs.get(n), "reward")])
+def test_batched_reward_matches_gym(name):
+    env = envs.get(name)
+    params, s0 = random_pairs(env, 40, seed=3)
+    rng = np.random.default_rng(4)
+    real = [real_env(env, p, s) for p, s in zip(params, s0)]
+    state = s0.copy()
+    for _ in range(30):
+        action = rng.integers(0, env.ACTION_DIM, len(params))
+        r = env.reward(state, action, params)
+        state = env.step(state, action, params)
+        for i, e in enumerate(real):
+            _, r_real, _, _, _ = e.step(int(action[i]))
+            assert r[i] == pytest.approx(r_real, abs=1e-9)
+
+
+def test_balance_passes_only_on_a_final_upright_hold():
+    env = envs.get("pendulum")
+    streak = np.array([env.HOLD_STEPS, env.HOLD_STEPS - 1, 0])
+    steps = np.full(3, env.MAX_EPISODE_STEPS)
+    assert list(passed(env, steps, np.zeros(3, dtype=bool), streak=streak)) == [True, False, False]
 
 
 def reference_steps(env, agent, row, s0):
@@ -99,6 +122,10 @@ def test_pass_rule_and_bounds(name):
     assert steps.min() >= 1 and steps.max() <= 40
     assert (steps[~ended] == 40).all()
     success, _ = grade(env, agent, params, s0)
-    full_steps, full_ended = rollout(env, agent, params, s0)
-    expected = full_ended if env.GOAL == "reach" else full_steps == env.MAX_EPISODE_STEPS
+    extras = {}
+    full_steps, full_ended = rollout(env, agent, params, s0, extras=extras)
+    if env.GOAL == "balance":
+        expected = extras["streak"] >= env.HOLD_STEPS
+    else:
+        expected = full_ended if env.GOAL == "reach" else full_steps == env.MAX_EPISODE_STEPS
     np.testing.assert_array_equal(success, expected)
