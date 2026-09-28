@@ -54,6 +54,12 @@ class LevelConfig:
     # an upper bound on what choosing training tasks can do, not a method)
     oracle: str = ""
     replay_start: bool = False     # a replay also repeats the episode's starting state
+    # ACCEL (Parker-Holder et al. 2022): every replayed level spawns an edited child
+    # (Gaussian noise of `mut_sigma` x each range, clipped to the box); the next new levels
+    # are those children, scored and admitted like any new level.
+    accel: bool = False
+    mut_sigma: float = 0.05
+    n_value_ens: int = 0           # > 0: train this many extra critics for the vds score
 
 
 class LevelSampler:
@@ -104,11 +110,53 @@ class LevelSampler:
         if self.size >= self.min_fill and self.rng.uniform() < self.cfg.replay_prob:
             i = int(self.rng.choice(self.size, p=self.replay_probs()))
             return self.params[i].copy(), i, REPLAY
+        children = self.__dict__.get("children")
+        if children:
+            return children.pop(0), -1, NEW
         return self.draw_new(), -1, NEW
 
+    def _mutate(self, params: np.ndarray) -> np.ndarray:
+        lo, hi = self.bounds[:, 0], self.bounds[:, 1]
+        return np.clip(params + self.rng.normal(0, self.cfg.mut_sigma, len(lo)) * (hi - lo), lo, hi)
+
     # ---------------------------------------------------------------- scoring
-    def score(self, rewards, values, next_value, gamma, lam, success: bool, slot: int) -> float:
+    def score(self, rewards, values, next_value, gamma, lam, success: bool, slot: int,
+              entropy: float | None = None, disagreement: float | None = None) -> float:
         kind = self.cfg.score
+        if kind == "entropy":          # PLR paper's policy-based score: mean policy entropy
+            return float(entropy)
+        if kind == "vds":              # value disagreement (Zhang et al. 2020): ensemble spread
+            return float(disagreement)
+        if kind in ("pvl_learn", "pvl_resid"):
+            adv = gae(np.asarray(rewards), np.asarray(values), next_value, gamma, lam)
+            pvl = float(np.mean(np.clip(adv, 0.0, None)))
+            if kind == "pvl_learn":
+                # PVL gated to the frontier: x 4 p (1 - p), p = the level's running pass rate
+                # from its training episodes (one pseudo-observation at `prior`)
+                w = (self.wins[slot] if slot >= 0 else 0.0) + float(success) + self.cfg.prior
+                n = (self.tries[slot] if slot >= 0 else 0.0) + 2.0
+                return pvl * 4 * (w / n) * (1 - w / n)
+            # PVL minus its running linear prediction from the episode return, so that
+            # "went well" cannot by itself rank a level high
+            ret = float(np.sum(rewards))
+            return pvl - self._resid_update(ret, pvl)
+        return self._score_basic(kind, rewards, values, next_value, gamma, lam, success, slot)
+
+    def _resid_update(self, x: float, y: float, decay: float = 0.995) -> float:
+        """Exponentially weighted regression of y on x; returns the prediction for x
+        (made before adding this point)."""
+        st = self.__dict__.setdefault("_reg", {"w": 0.0, "mx": 0.0, "my": 0.0, "cxy": 0.0, "vx": 0.0})
+        pred = st["my"] + (st["cxy"] / st["vx"] * (x - st["mx"]) if st["vx"] > 1e-12 else 0.0)
+        st["w"] = decay * st["w"] + 1
+        a = 1 / st["w"]
+        dx, dy = x - st["mx"], y - st["my"]
+        st["mx"] += a * dx
+        st["my"] += a * dy
+        st["cxy"] = (1 - a) * (st["cxy"] + a * dx * dy)
+        st["vx"] = (1 - a) * (st["vx"] + a * dx * dx)
+        return pred
+
+    def _score_basic(self, kind, rewards, values, next_value, gamma, lam, success, slot) -> float:
         if kind == "learn":
             w = (self.wins[slot] if slot >= 0 else 0.0) + float(success) + self.cfg.prior
             n = (self.tries[slot] if slot >= 0 else 0.0) + 1.0 + 1.0
@@ -147,6 +195,10 @@ class LevelSampler:
             self.last_ret[slot] = ret
             self.wins[slot] += success
             self.tries[slot] += 1
+            if self.cfg.accel:
+                children = self.__dict__.setdefault("children", [])
+                children.append(self._mutate(self.params[slot]))
+                del children[:-64]                  # newest 64: replays can outpace new draws
             return
         if self.cfg.replay_prob <= 0:
             return

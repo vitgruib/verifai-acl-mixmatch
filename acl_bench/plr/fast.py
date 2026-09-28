@@ -63,6 +63,11 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     agent = make_agent(env, bounds, cfg)
     xa, xc = agent.inputs
     opt = optim.Adam(agent.parameters(), lr=cfg.lr, eps=1e-5)
+    # value-disagreement ensemble (vds score): extra critics used only for scoring levels,
+    # with their own optimizer so they never touch the PPO update
+    n_ens = cfg.levels.n_value_ens
+    ens = nn.ModuleList([_mlp(agent.c_in, 1, out_std=1.0) for _ in range(n_ens)]) if n_ens else None
+    ens_opt = optim.Adam(ens.parameters(), lr=cfg.lr, eps=1e-5) if n_ens else None
 
     params = np.zeros((K, len(bounds)))
     state = None
@@ -71,6 +76,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     t_ep = np.zeros(K, dtype=int)
     ep_r = [[] for _ in range(K)]
     ep_v = [[] for _ in range(K)]
+    ep_ent = [[] for _ in range(K)]           # policy entropy per step (entropy score)
+    ep_dis = [[] for _ in range(K)]           # ensemble value std per step (vds score)
     ep_train = np.ones(K, dtype=bool)         # PLR-perp: does this episode's data train the agent?
     ep_s0 = [None] * K
     streak = np.zeros(K, dtype=int)           # consecutive upright steps ("balance" goal)
@@ -85,7 +92,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         ep_s0[k] = s.copy()
         streak[k] = 0
         t_ep[k] = 0
-        ep_r[k], ep_v[k] = [], []
+        ep_r[k], ep_v[k], ep_ent[k], ep_dis[k] = [], [], [], []
         ep_train[k] = not (cfg.levels.robust and m == NEW)
         return s
 
@@ -113,6 +120,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                 logp_all = torch.log_softmax(logits, dim=1)
                 a = torch.multinomial(logp_all.exp(), 1).squeeze(1)
                 v = agent.critic(torch.as_tensor(cobs)).squeeze(1)
+                ent_t = (-(logp_all.exp() * logp_all).sum(1)).numpy()
+                dis_t = (torch.stack([m(torch.as_tensor(cobs)).squeeze(1) for m in ens]).std(0).numpy()
+                         if ens is not None else None)
             a_np = a.numpy()
             b_obs[t], b_cobs[t], b_act[t] = obs, cobs, a_np
             b_logp[t] = logp_all.gather(1, a[:, None]).squeeze(1).numpy()
@@ -132,6 +142,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
             for k in range(K):
                 ep_r[k].append(float(rew[k]))
                 ep_v[k].append(float(b_val[t, k]))
+                ep_ent[k].append(float(ent_t[k]))
+                if dis_t is not None:
+                    ep_dis[k].append(float(dis_t[k]))
                 if done[k]:
                     if term[k]:
                         nv = 0.0
@@ -144,7 +157,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     else:
                         success = bool(term[k]) if env.GOAL == "reach" else not term[k]
                     ret = float(sum(ep_r[k]))
-                    sc = levels.score(ep_r[k], ep_v[k], nv, cfg.gamma, cfg.lam, success, slot[k])
+                    sc = levels.score(ep_r[k], ep_v[k], nv, cfg.gamma, cfg.lam, success, slot[k],
+                                      entropy=float(np.mean(ep_ent[k])),
+                                      disagreement=float(np.mean(ep_dis[k])) if ep_dis[k] else None)
                     levels.report(params[k].copy(), slot[k], mode[k], sc, ret, success, ep_s0[k])
                     stats["episodes"] += 1
                     stats["replays"] += int(mode[k] == REPLAY)
@@ -185,6 +200,14 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     loss.backward()
                     nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
                     opt.step()
+                    if ens is not None:
+                        # each member on its own random half of the minibatch, for diversity
+                        halves = torch.as_tensor(shuffle_rng.random((len(ens), len(i))) < 0.5)
+                        el = sum(0.5 * (((m(oc[i]).squeeze(1) - rt[i]) ** 2) * h).sum() / h.sum().clamp(min=1)
+                                 for m, h in zip(ens, halves))
+                        ens_opt.zero_grad()
+                        el.backward()
+                        ens_opt.step()
 
         if cfg.levels.sfl and it % cfg.levels.sfl_every == 0:
             levels.set_sfl(sfl_select(env, agent, levels, cfg.levels, env_rng))
