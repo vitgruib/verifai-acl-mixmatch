@@ -282,3 +282,13 @@ p = 0.005)**, random final +0.092 (p = 0.09); pvl_resid +0.100 (p = 0.11); entro
 training episodes) against `DR` on CartPole, 100 fresh seeds (101-200; DR's from
 confirmation 1). Metrics: `fin_r`, `auc_r`, `fin_v`, `auc_v`, `fin_rc`, `fin_vc`; Holm
 over these 6.
+
+**Result (confirmation 3): not confirmed.** `sipacl_learn` vs DR, 100 seeds, Holm over 6:
+VerifAI final +0.033 (Holm p = 0.72), VerifAI curve +0.024 (0.52), random final +0.023
+(0.72), random curve -0.001, continuous finals +0.017 / +0.034 (n.s.). The 24-seed lead
+(+0.145) was the winner's curse again.
+
+Across the three PVL-form confirmations on CartPole, VerifAI final lands at +0.020,
++0.061 and +0.033: always positive, never significant. A small real effect (~+0.04, a
+third of SFL's confirmed +0.105) is consistent with these; 24-seed screens cannot
+separate it from noise, and picking each round's best screen selects the luckiest.
