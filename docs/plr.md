@@ -85,3 +85,16 @@ variant, to avoid the winner's curse) against `DR`, 100 fresh seeds each (101-20
 fast harness. Metrics: final and curve success on the random and VerifAI suites
 (`fin_r`, `auc_r`, `fin_v`, `auc_v`); 2 configs x 4 metrics = 8 Welch tests,
 Holm-corrected together.
+
+**Result.** SFL lifts CartPole's VerifAI suite: final success 0.313 -> 0.418 (+0.105,
+Holm p = 0.002), curve +0.046 (Holm p = 0.008); random suite unchanged (-0.03, n.s.).
+The paper defaults do nothing (+0.02, all Holm p = 1): their screening lead was the
+winner's curse. So classic PVL-ranked PLR does not work here at any setting tried, and
+its successor SFL, which ranks the replayed levels by learnability p(1 - p), does, on
+the one environment where choosing training tasks can matter at all (the oracle).
+
+## Cross-environment check (declared before running)
+
+`sfl` against `DR` on Acrobot and MountainCar, 100 fresh seeds each (101-200), the same
+four metrics, Holm over 4 per environment: does the CartPole setting help or harm
+elsewhere?
