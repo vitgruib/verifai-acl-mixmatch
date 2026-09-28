@@ -214,3 +214,14 @@ equal-budget. To do: an SFL variant whose scouting counts against the budget.
   gymnasium already exposes (gravity, wind power, turbulence). Its physics cannot use
   the batched grader, so its exam would be graded one episode at a time (much slower);
   worth it if Pendulum's results need a second continuous-reward check.
+
+**Result (confirmation 2): not confirmed.** `sipacl_st` vs DR, 100 seeds, Holm over 6:
+random final +0.030 (Holm p = 0.64), random curve +0.006 (0.70), VerifAI final +0.061
+(raw p = 0.029, Holm 0.18), VerifAI curve +0.021 (0.58), continuous finals +0.014 (0.64)
+and +0.049 (0.26). The screen's random-suite gain (+0.127 at 24 seeds) was mostly the
+winner's curse. A VerifAI lean of about +0.06 remains, about half of SFL's confirmed
++0.10; it would take several hundred seeds per arm to settle.
+
+Pendulum budget: 2,457,600 steps (2,400 rollouts), from 8 DR runs to 4.9M
+(`results/pendulum/plr/calibration_long.csv`): fast learning to ~2M (pass 0.67,
+return -415), then a slow creep to 0.85 / -257.
