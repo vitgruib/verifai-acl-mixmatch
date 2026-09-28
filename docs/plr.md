@@ -250,3 +250,24 @@ networks; exact-scene replay; lower and higher replay rates. On four environment
 fail and continuous: no confirmed gain; the best lead (exact-scene replay, CartPole
 VerifAI +0.06) failed confirmation; on Pendulum it hurts. The one method that confirmed,
 SFL, drops the value-based score for a measured pass rate (and uses extra simulation).
+
+## Round 10: from the literature, aimed at PVL's easiness bias (8 seeds)
+
+New: PVL gated to the frontier (`pvl_learn`: PVL x 4p(1-p), p = the level's running pass
+rate from training episodes only, no extra simulation; `sipacl_learn` with SIPACL's
+settings); PVL minus its running linear prediction from the return (`pvl_resid`); the PLR
+paper's policy-entropy score (`entropy`); value disagreement across 5 extra critics
+(`vds`, Zhang et al. 2020); ACCEL level edits at replay 0.8 with PVL, MaxMC or gated PVL
+(`accel*`); staleness 0.3 (`paper_rho03`).
+
+- CartPole (VerifAI final vs DR 0.304): **sipacl_learn +0.16 (p = 0.053)**, the largest
+  PVL-form lead so far; pvl_resid +0.09, entropy +0.09, rho 0.3 +0.09, accel +0.05;
+  pvl_learn -0.05, vds -0.08. Random final: most +0.07 to +0.11.
+- Pendulum (final return vs DR -418): every variant hurts. ACCEL is worst (-537 to -808;
+  pass rate 0.68 -> 0.11-0.25): its edits drift into the heavy, weak-torque corner.
+  PVL forms -100 to -200; entropy -71 and vds -96 (n.s.) least bad.
+
+Caveat: Pendulum's only exam so far is its random suite, the very distribution DR trains
+on, so any shift away from uniform costs there; PLR's claimed benefit is on hard levels,
+which CartPole's VerifAI suite measures and Pendulum does not yet. Next: Pendulum's
+reference agents (study pipeline) and VerifAI suite; CartPole leaders to 24 seeds.
