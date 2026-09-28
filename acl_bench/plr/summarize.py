@@ -47,6 +47,8 @@ def main():
     ap.add_argument("csv")
     ap.add_argument("--base", default="DR")
     ap.add_argument("--configs", nargs="*")
+    ap.add_argument("--holm", nargs="*", metavar="METRIC",
+                    help="confirmatory: Holm-correct these metrics over every non-base config")
     args = ap.parse_args()
     df = pd.read_csv(args.csv)
     if args.configs:
@@ -54,6 +56,14 @@ def main():
     s = summarize(df, args.base)
     show = ["n", "fin_r", "d_fin_r", "p_fin_r", "d_auc_r", "p_auc_r", "fin_v", "d_fin_v", "p_fin_v", "d_auc_v", "p_auc_v"]
     pd.set_option("display.width", 250)
+    if args.holm:
+        from acl_bench.study.compare import holm
+        ps = {f"{c}|{m}": s.loc[c, f"p_{m}"] for c in s.index if c != args.base for m in args.holm}
+        adj = holm(ps)
+        rows = [{"config": k.split("|")[0], "metric": k.split("|")[1], "diff": s.loc[k.split("|")[0], f"d_{k.split('|')[1]}"],
+                 "p": ps[k], "p_holm": adj[k]} for k in ps]
+        print(pd.DataFrame(rows).to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+        return
     print(s[[c for c in show if c in s]].sort_values("d_auc_v", na_position="first").to_string(float_format=lambda x: f"{x:.3f}"))
 
 
