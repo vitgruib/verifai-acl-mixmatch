@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from acl_bench.plr.levels import NEW, REPLAY, LevelConfig, LevelSampler
-from acl_bench.ppo import Agent
+from acl_bench.ppo import Agent, _mlp
 
 REWARD = {"cartpole": (1.0, 1.0), "acrobot": (-1.0, 0.0), "mountaincar": (-1.0, -1.0)}   # (step, terminal step)
 
@@ -36,6 +36,11 @@ class FastConfig:
     vf: float = 0.5
     max_grad_norm: float = 0.5
     seed: int = 1
+    # Task-aware networks (the policy and critic otherwise see only the physical state):
+    # critic_params gives the critic the task parameters (asymmetric actor-critic; the
+    # policy stays blind), obs_params gives them to both.
+    critic_params: bool = False
+    obs_params: bool = False
     levels: LevelConfig = field(default_factory=LevelConfig)
 
 
@@ -54,7 +59,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         levels.set_sfl(load_sets(envs.exam_dir(env_name), names=[cfg.levels.oracle])[cfg.levels.oracle].params)
 
     K, T = cfg.n_envs, 1024 // cfg.n_envs
-    agent = Agent(env.OBS_DIM, env.ACTION_DIM)
+    agent = make_agent(env, bounds, cfg)
+    xa, xc = agent.inputs
     opt = optim.Adam(agent.parameters(), lr=cfg.lr, eps=1e-5)
 
     params = np.zeros((K, len(bounds)))
@@ -65,11 +71,16 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     ep_r = [[] for _ in range(K)]
     ep_v = [[] for _ in range(K)]
     ep_train = np.ones(K, dtype=bool)         # PLR-perp: does this episode's data train the agent?
+    ep_s0 = [None] * K
 
     def start(k):
         p, i, m = levels.pick()
         params[k], slot[k], mode[k] = p, i, m
-        s = env.sample_starts(p, 1, env_rng)[0]
+        if m == REPLAY and cfg.levels.replay_start and i >= 0:
+            s = levels.starts[i].copy()
+        else:
+            s = env.sample_starts(p, 1, env_rng)[0]
+        ep_s0[k] = s.copy()
         t_ep[k] = 0
         ep_r[k], ep_v[k] = [], []
         ep_train[k] = not (cfg.levels.robust and m == NEW)
@@ -83,7 +94,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
 
     n_iter = cfg.steps // (K * T)
     for it in range(n_iter):
-        b_obs = np.zeros((T, K, env.OBS_DIM), dtype=np.float32)
+        b_obs = np.zeros((T, K, agent.a_in), dtype=np.float32)
+        b_cobs = np.zeros((T, K, agent.c_in), dtype=np.float32)
         b_act = np.zeros((T, K), dtype=np.int64)
         b_logp = np.zeros((T, K), dtype=np.float32)
         b_val = np.zeros((T, K), dtype=np.float32)
@@ -91,15 +103,15 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         b_done = np.zeros((T, K), dtype=np.float32)
         b_mask = np.zeros((T, K), dtype=np.float32)
         for t in range(T):
-            obs = env.observe(state).astype(np.float32)
+            raw = env.observe(state).astype(np.float32)
+            obs, cobs = xa(raw, params), xc(raw, params)
             with torch.no_grad():
-                x = torch.as_tensor(obs)
-                logits = agent.actor(x)
+                logits = agent.actor(torch.as_tensor(obs))
                 logp_all = torch.log_softmax(logits, dim=1)
                 a = torch.multinomial(logp_all.exp(), 1).squeeze(1)
-                v = agent.critic(x).squeeze(1)
+                v = agent.critic(torch.as_tensor(cobs)).squeeze(1)
             a_np = a.numpy()
-            b_obs[t], b_act[t] = obs, a_np
+            b_obs[t], b_cobs[t], b_act[t] = obs, cobs, a_np
             b_logp[t] = logp_all.gather(1, a[:, None]).squeeze(1).numpy()
             b_val[t] = v.numpy()
             b_mask[t] = ep_train
@@ -119,17 +131,18 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         nv = 0.0
                     else:
                         with torch.no_grad():
-                            nv = float(agent.critic(torch.as_tensor(env.observe(state[k:k + 1]).astype(np.float32))))
+                            c = xc(env.observe(state[k:k + 1]).astype(np.float32), params[k:k + 1])
+                            nv = float(agent.critic(torch.as_tensor(c)))
                     success = bool(term[k]) if env.GOAL == "reach" else not term[k]
                     ret = float(sum(ep_r[k]))
                     sc = levels.score(ep_r[k], ep_v[k], nv, cfg.gamma, cfg.lam, success, slot[k])
-                    levels.report(params[k].copy(), slot[k], mode[k], sc, ret, success)
+                    levels.report(params[k].copy(), slot[k], mode[k], sc, ret, success, ep_s0[k])
                     stats["episodes"] += 1
                     stats["replays"] += int(mode[k] == REPLAY)
                     state[k] = start(k)
 
         with torch.no_grad():
-            nv = agent.critic(torch.as_tensor(env.observe(state).astype(np.float32))).squeeze(1).numpy()
+            nv = agent.critic(torch.as_tensor(xc(env.observe(state).astype(np.float32), params))).squeeze(1).numpy()
         adv = np.zeros((T, K), dtype=np.float32)
         last = np.zeros(K, dtype=np.float32)
         for t in reversed(range(T)):
@@ -141,7 +154,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         ret_ = adv + b_val
 
         f = lambda x: torch.as_tensor(x.reshape(T * K, *x.shape[2:]))
-        o, ac, lp, ad, rt, mk = map(f, (b_obs, b_act, b_logp, adv, ret_, b_mask))
+        o, oc, ac, lp, ad, rt, mk = map(f, (b_obs, b_cobs, b_act, b_logp, adv, ret_, b_mask))
         keep = np.flatnonzero(mk.numpy() > 0)
         if len(keep) >= 64:
             mb = max(1, len(keep) // cfg.minibatches)
@@ -157,7 +170,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     a_ = ad[i]
                     a_ = (a_ - a_.mean()) / (a_.std() + 1e-8)
                     pg = torch.max(-a_ * ratio, -a_ * torch.clamp(ratio, 1 - cfg.clip, 1 + cfg.clip)).mean()
-                    vl = 0.5 * ((agent.critic(o[i]).squeeze(1) - rt[i]) ** 2).mean()
+                    vl = 0.5 * ((agent.critic(oc[i]).squeeze(1) - rt[i]) ** 2).mean()
                     loss = pg - cfg.ent * ent + cfg.vf * vl
                     opt.zero_grad()
                     loss.backward()
@@ -183,7 +196,7 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     alive = np.ones(len(params), dtype=bool)
     ended = np.zeros(len(params), dtype=bool)
     for _ in range(env.MAX_EPISODE_STEPS):
-        logits = agent.actor(torch.as_tensor(env.observe(state).astype(np.float32)))
+        logits = agent.actor(torch.as_tensor(agent.inputs[0](env.observe(state).astype(np.float32), params)))
         a = torch.multinomial(torch.softmax(logits, dim=1), 1).squeeze(1).numpy()
         state = np.where(alive[:, None], env.step(state, a, params), state)
         e = alive & env.terminated(state)
@@ -196,3 +209,57 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     learn = p * (1 - p)
     top = np.argsort(-learn, kind="stable")[:lc.sfl_top]
     return cand[top]
+
+
+def make_agent(env, bounds: np.ndarray, cfg: FastConfig) -> Agent:
+    """The study's Agent, with the task parameters (scaled to [-1, 1]) appended to the
+    critic's and/or the actor's input. `agent.inputs` = (actor input fn, critic input fn),
+    each (raw obs (N, OBS_DIM), params (N, P)) -> network input."""
+    n_p = len(bounds)
+    a_in = env.OBS_DIM + (n_p if cfg.obs_params else 0)
+    c_in = env.OBS_DIM + (n_p if cfg.obs_params or cfg.critic_params else 0)
+    agent = Agent(a_in, env.ACTION_DIM)
+    if c_in != a_in:
+        agent.critic = _mlp(c_in, 1, out_std=1.0)
+    lo, span = bounds[:, 0], bounds[:, 1] - bounds[:, 0]
+
+    def with_params(raw, params):
+        return np.concatenate([raw, ((params - lo) / span * 2 - 1).astype(np.float32)], axis=1)
+
+    def plain(raw, params):
+        return raw
+
+    agent.inputs = (with_params if cfg.obs_params else plain,
+                    with_params if (cfg.obs_params or cfg.critic_params) else plain)
+    agent.a_in, agent.c_in = a_in, c_in
+    return agent
+
+
+class _TaskActor:
+    """What the grader calls as `agent.actor(obs)`, for a policy that also reads the task:
+    appends the questions' own parameters (set per section) to each observation."""
+
+    def __init__(self, agent):
+        self.agent, self.params = agent, None
+
+    def __call__(self, obs):
+        x = self.agent.inputs[0](obs.numpy(), self.params)
+        return self.agent.actor(torch.as_tensor(x))
+
+
+class _Graded:
+    def __init__(self, actor):
+        self.actor = actor
+
+
+def evaluate(env, agent, sets) -> dict:
+    """evaluate_sets, passing each question's parameters to a task-aware policy."""
+    from acl_bench.exam.sets import evaluate_sets
+    if agent.a_in == env.OBS_DIM:
+        return evaluate_sets(env, agent, sets)
+    shim = _Graded(_TaskActor(agent))
+    out = {}
+    for name, ps in sets.items():
+        shim.actor.params = ps.params
+        out.update(evaluate_sets(env, shim, {name: ps}))
+    return out

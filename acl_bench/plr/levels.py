@@ -27,6 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 NEW, REPLAY = 0, 1
+_UNSEEN = 1e9          # lp score of a level not yet revisited (as SIPACL's 1e10 placeholder)
 
 
 @dataclass
@@ -38,7 +39,7 @@ class LevelConfig:
     buffer: int = 1000
     admit: str = "min"             # "min": a full buffer evicts its lowest score if beaten; "fifo"
     min_fill: int = 0              # replay only once this many levels are stored (0 = buffer // 10)
-    score: str = "pvl"             # pvl | l1 | nvl | maxmc | learn (p(1-p)) | neg_return
+    score: str = "pvl"             # pvl | l1 | nvl | maxmc | lp | learn (p(1-p)) | neg_return
     robust: bool = False           # PLR-perp: no gradient from episodes on new levels
     prior: float = 0.5             # learnability: p's prior mean (one pseudo-observation)
     # SFL (Rutherford et al. 2024): every `sfl_every` updates, roll out `sfl_n` random levels
@@ -52,6 +53,7 @@ class LevelConfig:
     # diagnostic only: replays draw uniformly from this exam section's tasks (test leakage;
     # an upper bound on what choosing training tasks can do, not a method)
     oracle: str = ""
+    replay_start: bool = False     # a replay also repeats the episode's starting state
 
 
 class LevelSampler:
@@ -64,6 +66,8 @@ class LevelSampler:
         self.best = np.full(n, -np.inf)      # best return seen (MaxMC)
         self.wins = np.zeros(n)
         self.tries = np.zeros(n)
+        self.last_ret = np.zeros(n)          # return at the last visit (lp score)
+        self.starts = None                   # starting state per slot (replay_start)
         self.size = 0
         self.fifo = 0
         self.clock = 0
@@ -112,6 +116,11 @@ class LevelSampler:
             return p * (1 - p)
         if kind == "neg_return":
             return -float(np.sum(rewards))
+        if kind == "lp":
+            # surprise against the level's own history instead of the task-blind critic:
+            # |return now - return at the last visit| (absolute learning progress, Portelas
+            # et al. 2019). A new level has no history, so it ranks first until revisited.
+            return abs(float(np.sum(rewards)) - self.last_ret[slot]) if slot >= 0 else _UNSEEN
         if kind == "maxmc":
             ret = float(np.sum(rewards))
             best = max(ret, self.best[slot]) if slot >= 0 else ret
@@ -126,7 +135,7 @@ class LevelSampler:
             return float(np.mean(np.clip(-adv, 0.0, None)))
         raise ValueError(kind)
 
-    def report(self, params, slot: int, mode: int, score: float, ret: float, success: bool) -> None:
+    def report(self, params, slot: int, mode: int, score: float, ret: float, success: bool, s0=None) -> None:
         self.clock += 1
         if self.cfg.sfl or self.cfg.oracle:
             return
@@ -135,6 +144,7 @@ class LevelSampler:
             self.scores[slot] = (1 - a) * self.scores[slot] + a * score
             self.last[slot] = self.clock
             self.best[slot] = max(self.best[slot], ret)
+            self.last_ret[slot] = ret
             self.wins[slot] += success
             self.tries[slot] += 1
             return
@@ -151,7 +161,12 @@ class LevelSampler:
             if score <= self.scores[i]:
                 return
         self.params[i], self.scores[i], self.last[i] = params, score, self.clock
+        if s0 is not None:
+            if self.starts is None:
+                self.starts = np.zeros((self.cfg.buffer, len(s0)))
+            self.starts[i] = s0
         self.best[i], self.wins[i], self.tries[i] = ret, float(success), 1.0
+        self.last_ret[i] = ret
 
 
 def gae(rewards, values, next_value, gamma, lam) -> np.ndarray:
