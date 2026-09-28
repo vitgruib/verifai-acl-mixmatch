@@ -147,3 +147,17 @@ the screens: more replay (0.9, PLR-perp, a small buffer) was worse, and L1 value
 MaxMC, which also compare against the same task-blind critic, did no better. SFL escapes
 it because it never consults the critic: p(1 - p) from repeated rollouts peaks at levels
 passed about half the time.
+
+## Round 7: surprise in either direction (CartPole, 24 seeds)
+
+Which episodes each score ranks highest (one run, top 10%): on CartPole L1 (|advantage|)
+picks only failed episodes (pass rate 0.00; PVL's top: 0.23), so it does aim at hard
+scenes; on Acrobot L1 and PVL pick the same episodes, all passed, because reaching the
+goal early is the big surprise and a 500-step failure is predictable.
+
+VerifAI final vs DR at 24 seeds: L1 +0.067 (p = 0.22); L1 averaged over visits (EMA 0.3)
++0.073 (p = 0.19), random final +0.099 (p = 0.054); negative surprise only +0.031
+(p = 0.59); for reference PVL +0.085, SFL +0.110 (p = 0.026). Counting surprise in both
+directions does not help. Averaging over visits helps a little, consistent with
+single-episode noise (a failure often reflects the start state, which a replay redraws).
+PVL's +0.09 at 24 seeds fell to +0.02 at 100, so none of these leans is evidence yet.

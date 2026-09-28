@@ -62,6 +62,10 @@ register("sfl_p09_top20", {"replay_prob": 0.9, "sfl_top": 20}, base=SFL)
 register("sfl_top50", {"sfl_top": 50}, base=SFL)
 register("paper_maxmc_buf200", {"score": "maxmc", "buffer": 200})
 
+# ---- round 7: surprise in either direction (L1), averaged over visits, and negative only
+register("l1_avg", {"score": "l1", "score_ema": 0.3})
+register("nvl", {"score": "nvl"})
+
 
 def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)

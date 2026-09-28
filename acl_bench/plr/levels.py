@@ -38,7 +38,7 @@ class LevelConfig:
     buffer: int = 1000
     admit: str = "min"             # "min": a full buffer evicts its lowest score if beaten; "fifo"
     min_fill: int = 0              # replay only once this many levels are stored (0 = buffer // 10)
-    score: str = "pvl"             # pvl | l1 | maxmc | learn (p(1-p)) | neg_return
+    score: str = "pvl"             # pvl | l1 | nvl | maxmc | learn (p(1-p)) | neg_return
     robust: bool = False           # PLR-perp: no gradient from episodes on new levels
     prior: float = 0.5             # learnability: p's prior mean (one pseudo-observation)
     # SFL (Rutherford et al. 2024): every `sfl_every` updates, roll out `sfl_n` random levels
@@ -122,6 +122,8 @@ class LevelSampler:
             return float(np.mean(np.clip(adv, 0.0, None)))
         if kind == "l1":
             return float(np.mean(np.abs(adv)))
+        if kind == "nvl":
+            return float(np.mean(np.clip(-adv, 0.0, None)))
         raise ValueError(kind)
 
     def report(self, params, slot: int, mode: int, score: float, ret: float, success: bool) -> None:
