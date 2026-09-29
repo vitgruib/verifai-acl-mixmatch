@@ -124,6 +124,11 @@ register("oracle_front50", {"replay_prob": 0.5, "oracle": "frontier"}, base=DR)
 register("lp", {"score": "lp"})
 register("lp_st", {"score": "lp", "replay_start": True})
 
+# ---- the curriculum library (acl_bench.curriculum, docs/library.md): every arm by name
+from acl_bench.curriculum import ARMS as _LIB_ARMS  # noqa: E402
+for _name in _LIB_ARMS:
+    register(_name, {"lib": _name}, base=DR)
+
 
 def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)
