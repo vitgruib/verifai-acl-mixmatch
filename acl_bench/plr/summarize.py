@@ -46,8 +46,8 @@ def per_run(df: pd.DataFrame, env) -> pd.DataFrame:
             continue
         df[f"_{tag}c"] = continuous(df, suite, env)
         aggs[tag] = (f"{suite}/success", f"_{tag}c")
-    steps = sorted(df.step.unique())
-    last3 = df[df.step.isin(steps[-3:])]
+    # each run's own last three check-ins (runs charged for scouting end at other steps)
+    last3 = df.sort_values("step").groupby(["config", "seed"]).tail(3)
     g_all, g_fin = df.groupby(["config", "seed"]), last3.groupby(["config", "seed"])
     out = {}
     for tag, (succ, cont) in aggs.items():

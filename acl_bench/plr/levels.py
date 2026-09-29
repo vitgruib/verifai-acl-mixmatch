@@ -63,6 +63,7 @@ class LevelConfig:
     n_value_ens: int = 0           # > 0: train this many extra critics for the vds score
     # a learnability-steered VerifAI picker for new tasks (acl_bench.plr.picker):
     # "uniform" (none), "ce" or "mab"; picker_uniform = share of new tasks still drawn uniformly
+    charge_scouting: bool = False  # SFL's scouting rollouts count against the training budget
     picker: str = "uniform"
     picker_uniform: float = 0.5
 

@@ -106,6 +106,11 @@ register("vlearn_ce25", {"picker": "ce", "picker_uniform": 0.25}, base=DR)
 register("lbuf", {"score": "learn_bucket"})                 # pooled per parameter bucket
 register("lbuf_level", {"score": "learn"})                  # each level's own visits
 
+# ---- candidate 3: budget-fair SFL (its scouting counts against the budget)
+register("sfl_fair", {"charge_scouting": True}, base=SFL)
+register("sfl_fair_small", {"charge_scouting": True, "sfl_n": 100, "sfl_k": 4, "sfl_every": 20,
+                            "sfl_top": 20}, base=SFL)
+
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
 register("oracle80", {"replay_prob": 0.8, "oracle": "verifai"}, base=DR)
