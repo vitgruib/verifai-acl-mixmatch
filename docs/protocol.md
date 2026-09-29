@@ -57,6 +57,19 @@ standard error of a gain is about 0.073 at 8 seeds and 0.047 at 24 seeds.
 - At most three arms enter stage C at once, and each is registered in `docs/library_log.md`
   before it runs.
 
+### Amendment 1 (2026-09-29, after batch 1's stage B; applies to every later stage B)
+
+Batch 1's stage B showed stage B was underpowered: every stage-A lead shrank or flipped on
+seeds 9-24, and the gains left (+0.05 to +0.07) are about the size this benchmark offers.
+At 24 vs 48 seeds (SE 0.047) a true +0.07 passes p < 0.10 only about 45% of the time. Runs
+are cheap (a CartPole run takes about 26 s of one core), so:
+- the CartPole DR pool grows to **96 seeds** (replicates 1-96);
+- stage B runs **72 CartPole seeds** per arm (SE about 0.030; a true +0.07 passes with
+  probability about 0.75 and a true +0.10 about 0.95; a true 0 about 0.05), same rules otherwise;
+- stage A is unchanged (a cheap futility filter, nothing more).
+Stage C still decides every claim on fresh seeds 1001-1100, so screening more generously
+costs only compute, not false claims.
+
 ## 4. Reporting
 
 Per environment: the pass-rate differences with Welch p-values; at confirmation also
