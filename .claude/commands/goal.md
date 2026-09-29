@@ -33,6 +33,10 @@ An arm counts as a success only if it survives the full protocol in `docs/protoc
 
 - Clean protocol first. **Register every batch in `docs/library_log.md` before running it.**
 - Test many arms; **abandon early** when preliminary results look hopeless.
+- **Prod before long runs.** Before launching any long job (a stage, a batch, a diagnostic
+  over many seeds), run a small, fast probe first: 1-2 seeds, a short budget or few checks,
+  a unit test, or an offline check of the signal. Use it to catch crashes, wrong configs and
+  obviously dead ideas in minutes, and only commit the full compute once the probe looks sane.
 - Be creative, including mathematical modifications of existing techniques (e.g. VarModel
   generalizing p(1-p) to return variance). Diagnose signals offline before paying for training.
 - Record every result and verdict in `docs/library_log.md`; keep `docs/handoff.md` current.
