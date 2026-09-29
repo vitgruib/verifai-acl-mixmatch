@@ -84,5 +84,12 @@ class Curriculum:
         for p in self.proposers.values():
             p.report(k, ep)
 
+    def on_rollout(self, agent, obs, params, act, adv, done, src) -> None:
+        """Model-specific estimators see each rollout (T, K) after its advantages are known."""
+        for e in self.estimators:
+            if hasattr(e, "on_rollout"):
+                e.on_rollout(agent, obs, params, act, adv, done, src)
+
     def stats(self) -> dict:
-        return {f"lib_{n}": c for n, c in self.counts.items()}
+        """One fixed column whatever the mix, so every arm's rows share a CSV."""
+        return {"lib_counts": ";".join(f"{n}={c}" for n, c in self.counts.items())}

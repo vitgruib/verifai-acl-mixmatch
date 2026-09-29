@@ -34,6 +34,11 @@ ARMS: dict[str, dict] = {
     "mutate_post": {"mix": {"uniform": 0.5, "replay": 0.25, "mutate": 0.25}},
     # VerifAI's cross-entropy sampler searching the pass model (4 search steps per task)
     "verifai_surr": {"mix": {"uniform": 0.5, "verifai": 0.5}, "sampler": "ce", "inner": 4},
+    # ---- batch 2 (model-specific): the gradient signal regressed over the task space
+    # variance-optimal unbiased sampling with the measured gradient size (no binary-outcome assumption)
+    "grad_is": {"mix": {"uniform": 0.25, "sir": 0.75}, "signal": "norm", "alpha": 1.0, "is_power": 1.0},
+    # tasks whose update aligns with the uniform tasks' gradient (improves DR's objective)
+    "align": {"mix": {"uniform": 0.5, "sir": 0.5}, "signal": "align", "alpha": 1.0},
 }
 
 
@@ -42,6 +47,11 @@ def build(name: str, env, bounds: np.ndarray, n_slots: int, seed: int) -> Curric
     rng = np.random.default_rng([seed, 11])
     space = TaskSpace(bounds, np.random.default_rng([seed, 12]))
     model = PassModel(space, seed)
+    estimators = [model]
+    if spec.get("signal"):
+        from acl_bench.curriculum.estimators import GradSignal
+        model = GradSignal(space, seed, n_slots, spec["signal"])
+        estimators = [model]
     props = {}
     for p in spec["mix"]:
         if p == "uniform":
@@ -59,7 +69,7 @@ def build(name: str, env, bounds: np.ndarray, n_slots: int, seed: int) -> Curric
             raise ValueError(p)
     if "mutate" in props and "replay" not in spec["mix"]:
         raise ValueError("mutate needs a replay buffer in the mix")
-    return Curriculum(space, props, spec["mix"], [model], rng, is_power=spec.get("is_power", 0.0))
+    return Curriculum(space, props, spec["mix"], estimators, rng, is_power=spec.get("is_power", 0.0))
 
 
 __all__ = ["ARMS", "Curriculum", "Episode", "TaskSpace", "build"]

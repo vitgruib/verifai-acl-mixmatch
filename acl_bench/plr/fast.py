@@ -137,6 +137,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         b_done = np.zeros((T, K), dtype=np.float32)
         b_mask = np.zeros((T, K), dtype=np.float32)
         b_w = np.ones((T, K), dtype=np.float32)
+        b_par = np.zeros((T, K, len(bounds)))
+        b_src = [[""] * K for _ in range(T)]
         for t in range(T):
             raw = env.observe(state).astype(np.float32)
             obs, cobs = xa(raw, params), xc(raw, params)
@@ -154,6 +156,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
             b_val[t] = v.numpy()
             b_mask[t] = ep_train
             b_w[t] = ep_w
+            b_par[t] = params
+            b_src[t] = list(ep_src)
             rew_env = env.reward(state, a_np, params) if has_reward else None
             state = env.step(state, a_np, params)
             term = env.terminated(state)
@@ -216,6 +220,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
             last = delta + cfg.gamma * cfg.lam * nnt * last
             adv[t] = last
         ret_ = adv + b_val
+        if cur is not None:
+            cur.on_rollout(agent, b_obs, b_par, b_act, adv, b_done, b_src)
 
         f = lambda x: torch.as_tensor(x.reshape(T * K, *x.shape[2:]))
         o, oc, ac, lp, ad, rt, mk, wt = map(f, (b_obs, b_cobs, b_act, b_logp, adv, ret_, b_mask, b_w))

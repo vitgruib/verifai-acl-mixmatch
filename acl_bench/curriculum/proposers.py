@@ -53,14 +53,17 @@ class SIR(Proposer):
     resampling `n_candidates` uniform tasks. Z = E_uniform[s^alpha], tracked as a running
     mean of the candidate sets' mean weight (reset whenever the model refits)."""
 
-    def __init__(self, space: TaskSpace, model: PassModel, rng: np.random.Generator, alpha: float = 1.0,
+    def __init__(self, space: TaskSpace, model, rng: np.random.Generator, alpha: float = 1.0,
                  n_candidates: int = 64, floor: float = 0.01, name: str = "sir"):
+        """`model`: a PassModel (score = learnability) or anything with `score(params)`,
+        `ready` and `version` (e.g. GradSignal)."""
         self.space, self.model, self.rng = space, model, rng
         self.alpha, self.n_candidates, self.floor, self.name = alpha, n_candidates, floor, name
         self._z_sum, self._z_n, self._version = 0.0, 0, -1
+        self._score = model.learnability if isinstance(model, PassModel) else model.score
 
     def _weights(self, params: np.ndarray) -> np.ndarray:
-        return (self.model.learnability(params) + self.floor) ** self.alpha
+        return (self._score(params) + self.floor) ** self.alpha
 
     def _z(self) -> float:
         if self._version != self.model.version:

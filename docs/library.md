@@ -1,0 +1,63 @@
+# The curriculum library (`acl_bench/curriculum`)
+
+A wrapper that decides which task each training episode gets, built from parts that can
+be mixed and matched. Protocol: `docs/protocol.md`; every arm tried: `docs/library_log.md`.
+
+## Contract
+
+- **Environment-agnostic.** A component sees the box of task parameters, each episode's
+  task and outcome (pass/fail, return, length), and nothing that names an environment.
+  VerifAI's samplers are reached through the environment's Scenic file, the one place
+  where a task space is declared.
+- **May be model-specific.** A component may read the learner: per-step values of its
+  critic now; gradients and parameters in later batches.
+- **Budget-fair.** Any simulation a component runs to choose tasks is added to
+  `Curriculum.sim_steps` and charged to the training budget. All batch-1 parts use none.
+
+## Parts
+
+| part | kind | what it does |
+|---|---|---|
+| `TaskSpace` | core | the box; uniform draws; normalization |
+| `Episode` | core | what every part learns from |
+| `Curriculum` | core | picks a proposer per task (fixed mixture), reports every episode to all parts, returns an importance weight per episode |
+| `PassModel` | estimator | MLP pass-rate model p(task) over the latest 4,096 training episodes, refit every 256 (the offline screen's best signal) |
+| `Uniform` | proposer | domain randomization |
+| `SIR` | proposer | sampling-importance-resampling: draw 64 uniform tasks, pick one with probability proportional to (p(1-p) + 0.01)^alpha |
+| `Replay` | proposer | PLR-style buffer of visited tasks, replayed in proportion to posterior learnability^alpha |
+| `Mutate` | proposer | ACCEL-style: Gaussian edit (5% of each range) of a task `Replay` would pick |
+| `VerifAISurrogate` | proposer | a VerifAI sampler (ce / mab / sa through Scenic) whose feedback is the pass model's learnability, so it takes several search steps per task at no simulation cost |
+
+Arms are specs in `acl_bench.curriculum.ARMS`; each is also a config of the fast harness
+(`python -m acl_bench.plr.screen --configs <arm>`).
+
+## The maths behind the new parts
+
+**SIR density.** With M uniform candidates and weights s^alpha, the chosen task's density
+tends to q(x) = s(x)^alpha / Z, Z = E_uniform[s^alpha] (relative to uniform), as M grows.
+`SIR.density` estimates Z from 4,096 uniform draws at each model refit
+(`tests/test_curriculum.py` checks the density against the samples).
+
+**Tempered importance correction.** A curriculum q changes the objective PPO optimizes,
+from DR's E_uniform[J(x)] to E_q[J(x)]. Weighting each episode's policy loss by
+w = (1 / q_mix(x))^lambda, q_mix = sum_i m_i q_i, gives:
+- lambda = 1: an unbiased estimate of DR's gradient. The curriculum can then change only
+  the *variance* of the gradient, not what is learned: harm is ruled out to first order.
+- lambda = 0: the plain curriculum (SFL-style bias toward the frontier).
+- in between: a controlled amount of bias.
+Mixing in uniform with share m_u bounds every weight by 1 / m_u.
+
+**Why sqrt(p(1-p)).** For a fixed estimator budget, the proposal minimizing the variance
+of an importance-sampled mean of g(x) is q* ~ uniform(x) ||g(x)|| (the classic optimal
+importance-sampling result). With a pass/fail outcome and a baseline that knows the task,
+the size of a task's policy-gradient contribution scales with the outcome's standard
+deviation, sqrt(p(1-p)). So `sir_is` (alpha = 0.5, lambda = 1) is the variance-optimal way
+to learn DR's objective, if that scaling holds. It does not hold exactly with a critic
+that cannot see the task (its advantages on easy tasks are not zero; `docs/plr.md`), which
+is what the model-specific gradient-norm proposer of a later batch measures directly.
+
+**Posterior learnability.** A buffer task with w wins in n visits and model prediction
+p0 gets Beta(a, b), a = m p0 + w, b = m (1 - p0) + n - w (m = 2 pseudo-visits), and score
+E[p(1-p)] = ab / ((a+b)(a+b+1)). The model settles tasks with few visits; the task's own
+visits take over as they accumulate (hierarchical shrinkage). Visits are discounted by
+0.8 each time, to follow the changing policy.
