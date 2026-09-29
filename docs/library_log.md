@@ -64,3 +64,15 @@ holds, `sir_is` goes to stage C with the random suite as its primary, on all env
 
 Stage B (`results/lib/stageB1.sh`): the three survivors, CartPole seeds 9-24, MountainCar
 and Pendulum seeds 1-8.
+
+## Batch 3 (registered 2026-09-29, before stage B's results): variations on the survivors, stage A
+
+| arm | hypothesis |
+|---|---|
+| `sir_is_a1` | unbiased with a sharper proposal (alpha 1, full correction): the random-suite gain grows past sqrt(p(1-p)) |
+| `sir_is_u50` | unbiased and gentler (alpha 0.5, 50% uniform): smaller weights, same gain with less harm on Acrobot |
+| `rw_a4` | fmodel's emphasis applied as loss weights s^4/Z on uniform tasks: the hard-suite gain without narrowing what the agent sees |
+| `ens_a4` | alpha-4 sampling from a 4-model bootstrap ensemble plus a disagreement bonus: better frontier estimates early |
+| `prog_a4` | alpha-4 sampling by model-based learning progress \|p_now - p_then\| instead of p(1-p) |
+
+Same stage-A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch3.csv`).
