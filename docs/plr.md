@@ -336,3 +336,26 @@ mean fail share 0.82 (`frozen_sets/pendulum/`). DR scores 0.179 pass / -919 retu
 - The best Pendulum result is no PLR at all: the privileged-critic baseline DR_pc, VerifAI
   +0.089 pass / +100 return, random +0.071 / +74 (n.s.). A critic that knows the task
   helps PPO; PLR on top of it (sipacl_pc) gives it back (-0.05 VerifAI vs DR_pc).
+
+## Offline signal screen (docs/wrapper_methodology.md, section 4)
+
+`python -m acl_bench.plr.signals`: study N agents (Pendulum: REF), 6 seeds, at 20%, 50%
+and 80% of training; 2,000 random tasks each; ground truth from 16 stochastic-policy
+rollouts per task; each signal from the episodes training would see. Overlap@10% = share
+of the signal's top 10% of tasks that are in the truly most learnable 10% (random: 0.10).
+Data: `results/signals/<env>.csv`, tables in `<env>.log`.
+
+| signal | CartPole | Acrobot | MountainCar | Pendulum |
+|---|---|---|---|---|
+| PVL, 1 episode | 0.51 early, 0.13-0.21 later | 0.00-0.02 | 0.01 | 0.37 |
+| PVL, 4 episodes | 0.61, then 0.11-0.25 | 0.01 | 0.00 | 0.45 |
+| L1 / entropy / -return, 1 episode | mostly <= 0.16 | 0.01-0.54, erratic | <= 0.10 | <= 0.08 |
+| learnability, 2 episodes | 0.27-0.48 | 0.38-0.44 | 0.39 | 0.32 |
+| learnability, 4 episodes | 0.25-0.55 | 0.57-0.62 | 0.51 | 0.49 |
+
+PVL is worse than random on Acrobot and MountainCar: its top picks are tasks the agent
+passes 99.5% of the time (Spearman with the pass rate +0.52 to +0.76). A pass rate from
+2-4 ordinary episodes is the best signal everywhere except early CartPole, with no critic
+and no scouting; it needs a task, or a region of the task space, to be visited a few
+times. The screen reproduces rounds 1-11's verdict on PVL in minutes, and points the
+search at learnability from training episodes (candidates 1-2 of the methodology).
