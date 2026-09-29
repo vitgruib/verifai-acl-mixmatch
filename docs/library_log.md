@@ -76,3 +76,25 @@ and Pendulum seeds 1-8.
 | `prog_a4` | alpha-4 sampling by model-based learning progress \|p_now - p_then\| instead of p(1-p) |
 
 Same stage-A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch3.csv`).
+
+## Batch 1, stage B results (2026-09-29): all three abandoned
+
+24 CartPole seeds, 8 on MountainCar and Pendulum, against 48-seed DR pools. Guards are the
+random suite.
+
+| arm | CartPole vd | CartPole r | Acrobot r | MountainCar r | Pendulum r | verdict |
+|---|---|---|---|---|---|---|
+| `fmodel` | +0.022 (0.62) | -0.064 | -0.011 | +0.097 | -0.105 | abandon (primary p) |
+| `sir_a4` | +0.055 (0.24) | +0.023 | -0.021 | +0.013 | +0.030 | abandon (primary p) |
+| `sir_is` | +0.073 (0.20) | +0.027 | -0.028 | -0.042 | +0.020 | abandon (primary p) |
+
+On the fresh seeds 9-24 alone: `fmodel` vd -0.019, r -0.111; `sir_a4` vd +0.074, r +0.014;
+`sir_is` vd +0.107, r -0.005. **H-is fails** (fresh-seed random-suite gain -0.005,
+one-sided p = 0.54): stage A's +0.091 was noise. Stage A's leads did not replicate in
+either direction, so its ranking carries little information at this effect size.
+
+This led to protocol Amendment 1 (`docs/protocol.md`): a 96-seed DR pool and 72-seed
+stage B. **Registered re-screen (batch 1R):** `sir_a4` and `sir_is` get stage B under the
+amendment, on seeds 25-72 added to their 24 (their stage-B results above are disclosed
+here; stage C on fresh seeds decides any claim). `fmodel` stays dropped: negative on fresh
+seeds, with a Pendulum guard at -0.105.
