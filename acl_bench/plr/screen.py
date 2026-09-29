@@ -129,6 +129,33 @@ def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)
 
 
+HARD_SUITES = ("verifai",)     # split into dev / test halves (docs/protocol.md, section 1)
+
+
+def split_dev_test(sets: dict) -> dict:
+    """Each hard suite becomes `<name>_dev` (even positions) and `<name>_test` (odd), a fixed
+    split of the frozen section; other sections are kept whole."""
+    from acl_bench.exam.sets import PairSet
+    out = {}
+    for name, ps in sets.items():
+        if name not in HARD_SUITES:
+            out[name] = ps
+            continue
+        for tag, sl in (("dev", slice(0, None, 2)), ("test", slice(1, None, 2))):
+            ref = ps.ref_fail_frac[sl] if ps.ref_fail_frac is not None else None
+            out[f"{name}_{tag}"] = PairSet(f"{name}_{tag}", ps.params[sl], ps.s0[sl], ref)
+    return out
+
+
+def code_commit() -> str:
+    import subprocess
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+    except Exception:
+        return "unknown"
+
+
 def job_fn(job):
     import torch
     torch.set_num_threads(1)
@@ -136,7 +163,7 @@ def job_fn(job):
     from acl_bench.plr.fast import FastConfig, evaluate, train
     env_name, config, replicate, steps, n_checks, snap_dir = (tuple(job) + (None,))[:6]
     env = envs.get(env_name)
-    sets = load_sets(envs.exam_dir(env_name))
+    sets = split_dev_test(load_sets(envs.exam_dir(env_name)))
     lv, fast = CONFIGS[config]
     cfg = FastConfig(steps=steps, seed=run_seed(env_name, config, replicate),
                      levels=dataclasses.replace(LevelConfig(), **lv), **fast)
@@ -153,7 +180,9 @@ def job_fn(job):
     if snap_dir:
         from acl_bench.snapshots import save_run
         save_run(os.path.join(snap_dir, config, f"{replicate}.npz"), snapshots)
-    return [{"config": config, "seed": replicate, **c, **stats, "wall_time_sec": wall} for c in checks]
+    commit = code_commit()
+    return [{"config": config, "seed": replicate, **c, **stats, "wall_time_sec": wall, "commit": commit}
+            for c in checks]
 
 
 def main():

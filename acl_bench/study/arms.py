@@ -32,7 +32,9 @@ BUDGET = {"cartpole": 614_400, "acrobot": 491_520, "mountaincar": 307_200, "pend
           # held-out named mazes stay near 0.05 (6 DR runs to 10.2M on the fast harness), so 5,000
           # rollouts, where the random-maze curve has flattened.
           "maze": 5_120_000,
-          "pointnav": 2_457_600}   # pointnav: provisional, for its calibration runs
+          # pointnav: random-task success 0.38 at 246k, 0.94 at 983k, 0.98 by 1.7M and flat
+          # after (0.99 at 2-4.9M; 6 DR runs to 4.9M on the fast harness), so 1,920 rollouts.
+          "pointnav": 1_966_080}
 N_CHECKINS = 30
 SCORE = "pvl_gae"                     # SIPACL's own score
 
