@@ -22,6 +22,9 @@ be mixed and matched. Protocol: `docs/protocol.md`; every arm tried: `docs/libra
 | `Episode` | core | what every part learns from |
 | `Curriculum` | core | picks a proposer per task (fixed mixture), reports every episode to all parts, returns an importance weight per episode |
 | `PassModel` | estimator | MLP pass-rate model p(task) over the latest 4,096 training episodes, refit every 256 (the offline screen's best signal) |
+| `ProgressModel` | estimator | learning progress \|p_now - p_2-refits-ago\| from the pass model's own history (model-based ALP-GMM), 1,024-episode window |
+| `EnsembleModel` | estimator | 4 pass models on Poisson bootstraps; score = mean p(1-p) + std of p (exploration where models disagree) |
+| `GradSignal` | estimator (model-specific) | per-episode policy-gradient size or alignment through the actor's last layer, regressed over tasks; failed its mechanism check (not predictable from the task, `docs/library_log.md` batch 2) |
 | `Uniform` | proposer | domain randomization |
 | `SIR` | proposer | sampling-importance-resampling: draw 64 uniform tasks, pick one with probability proportional to (p(1-p) + 0.01)^alpha |
 | `Replay` | proposer | PLR-style buffer of visited tasks, replayed in proportion to posterior learnability^alpha |
@@ -61,3 +64,7 @@ p0 gets Beta(a, b), a = m p0 + w, b = m (1 - p0) + n - w (m = 2 pseudo-visits), 
 E[p(1-p)] = ab / ((a+b)(a+b+1)). The model settles tasks with few visits; the task's own
 visits take over as they accumulate (hierarchical shrinkage). Visits are discounted by
 0.8 each time, to follow the changing policy.
+
+**Reweighting instead of resampling.** `reweight_alpha` keeps the proposed tasks and
+weights each episode's policy loss by s(x)^alpha / Z. In expectation this is the gradient
+SIR would give, but the agent still sees every region of the box as often as under DR.

@@ -46,7 +46,15 @@ def build(name: str, env, bounds: np.ndarray, n_slots: int, seed: int) -> Curric
     spec = ARMS[name]
     rng = np.random.default_rng([seed, 11])
     space = TaskSpace(bounds, np.random.default_rng([seed, 12]))
-    model = PassModel(space, seed)
+    kind = spec.get("model", "pass")
+    if kind == "progress":
+        from acl_bench.curriculum.estimators import ProgressModel
+        model = ProgressModel(space, seed)
+    elif kind == "ensemble":
+        from acl_bench.curriculum.estimators import EnsembleModel
+        model = EnsembleModel(space, seed, bonus=spec.get("bonus", 1.0))
+    else:
+        model = PassModel(space, seed)
     estimators = [model]
     if spec.get("signal"):
         from acl_bench.curriculum.estimators import GradSignal
@@ -69,7 +77,9 @@ def build(name: str, env, bounds: np.ndarray, n_slots: int, seed: int) -> Curric
             raise ValueError(p)
     if "mutate" in props and "replay" not in spec["mix"]:
         raise ValueError("mutate needs a replay buffer in the mix")
-    return Curriculum(space, props, spec["mix"], estimators, rng, is_power=spec.get("is_power", 0.0))
+    rw = SIR(space, model, rng, alpha=spec["reweight_alpha"]) if "reweight_alpha" in spec else None
+    return Curriculum(space, props, spec["mix"], estimators, rng, is_power=spec.get("is_power", 0.0),
+                      reweighter=rw)
 
 
 __all__ = ["ARMS", "Curriculum", "Episode", "TaskSpace", "build"]
