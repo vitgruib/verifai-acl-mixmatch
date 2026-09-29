@@ -35,3 +35,32 @@ predicted from the task: single-episode gradients are dominated by noise and epi
 length. **Both abandoned untrained.** Note: batch 1's Acrobot half runs on code that
 initializes the pass model without touching torch's global random stream (CartPole's half
 did touch it): a different random stream, not a different algorithm.
+
+## Batch 1, stage A results (2026-09-29)
+
+8 seeds per arm against the 48-seed DR pool. `vd`: CartPole hard suite, dev half (primary);
+`r`: random suite (guard). Welch p in brackets.
+
+| arm | CartPole vd | CartPole r | Acrobot r | verdict |
+|---|---|---|---|---|
+| `fmodel` | +0.103 (0.16) | +0.029 (0.63) | -0.011 (0.64) | advance to B |
+| `sir_a1` | -0.004 (0.95) | +0.005 (0.94) | -0.013 (0.48) | abandon: primary < 0 |
+| `sir_a4` | +0.018 (0.82) | +0.040 (0.39) | -0.021 (0.35) | advance to B |
+| `sir_is` | +0.007 (0.94) | **+0.091 (0.02)** | -0.028 (0.28) | advance to B |
+| `sir_is05` | -0.042 (0.51) | +0.003 (0.96) | -0.069 (0.08) | abandon: primary < 0 |
+| `replay_post` | -0.155 (0.003) | +0.066 (0.17) | -0.024 (0.23) | abandon: primary < 0 |
+| `mutate_post` | -0.015 (0.80) | +0.023 (0.69) | -0.114 (0.001) | abandon: primary < 0, Acrobot guard |
+| `verifai_surr` | -0.008 (0.91) | +0.020 (0.74) | +0.002 (0.89) | abandon: primary < 0 |
+
+Reading: soft sampling (alpha 1) and the replay buffers do nothing or harm; only the sharp
+picker (`fmodel`, and weakly `sir_a4`) moves the hard suite. `sir_is` is the one result
+matching its own theory: it is built to learn DR's objective faster, and DR's objective is
+the random suite, where it gains +0.091 -- but this was not its declared primary, and it is
+one of 16 guard comparisons (uncorrected).
+
+**Registered before stage B's data (secondary hypothesis H-is):** on CartPole seeds 9-24
+only (fresh), `sir_is` improves the random suite over DR (one-sided Welch, p < 0.05). If it
+holds, `sir_is` goes to stage C with the random suite as its primary, on all envs.
+
+Stage B (`results/lib/stageB1.sh`): the three survivors, CartPole seeds 9-24, MountainCar
+and Pendulum seeds 1-8.
