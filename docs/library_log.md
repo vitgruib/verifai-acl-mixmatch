@@ -151,3 +151,50 @@ gains about +0.19 and scouted SFL about +0.09. Stage A with 8 seeds had no predi
 value: its leads (up to +0.14) did not replicate once. Conclusion: sampling by an
 episode-outcome model of p(1-p), in any form tried, does not find the region the hard
 suite tests. More variants of the same signal are not worth screening.
+
+## Diagnostic (2026-09-29): why the pass model misses the hard suite
+
+`python -m acl_bench.curriculum.diagnose --seeds 1-6 --checks 5`: plain DR on CartPole with a
+passive pass model; at each check-in it is compared with the greedy agent's pass rate from
+4 random starts on the hard suite's dev tasks and 400 uniform tasks. End of training (614k):
+
+| | uniform tasks | hard dev tasks |
+|---|---|---|
+| true pass rate (greedy, random starts) | 0.89 | 0.57 |
+| pass model p | 0.19 | 0.02 |
+| true p(1-p) | 0.05 | 0.17 |
+
+The pass model is wrong in level, not only rank: its 4,096-episode window holds almost the
+whole run (~2,800 episodes), so 79% of its labels are failures, most from early policies,
+and "success" (a full 500-step survival of the *stochastic* policy) is rare. It calls the
+hard suite impossible: the dev tasks sit at the 9th percentile of its frontier score among
+uniform tasks, and its score's rank correlation with true learnability is -0.14.
+
+Candidate estimators fed the same episode stream (mean of 6 seeds, end of training):
+
+| estimator | dev tasks' frontier percentile | top-10% truly frontier (base 0.26) | Spearman vs true p(1-p) |
+|---|---|---|---|
+| pass model, window 4,096 (all batch 1-3 arms) | 0.09 | 0.21 | -0.14 |
+| pass model, window 512 | 0.31 | 0.28 | +0.14 |
+| success variance, window 512 | 0.28 | 0.32 | +0.06 |
+| **return std, window 512** (`VarModel`) | **0.67** | **0.55** | **+0.39** |
+| return std, window 2,048 | 0.21 | 0.30 | +0.03 |
+
+Both parts matter: a continuous outcome (return, which every environment has; for a binary
+outcome its variance is p(1-p)) and a short window (the current policy). Early in training
+(before ~250k steps) no estimator is informative.
+
+## Batch 4 (registered 2026-09-29): outcome-variance learnability, stage A
+
+`VarModel` (`estimators.py`): heteroscedastic Gaussian fit of the standardized return over
+the task space, last 512 episodes, refit every 128; score = predicted std of the return.
+Sampled through the same SIR proposer as batch 1.
+
+| arm | hypothesis |
+|---|---|
+| `var_a2` | sampling in proportion to std^2 (the predicted return variance) moves the hard suite |
+| `var_a4` | sharper (std^4) |
+| `var_a8` | sharper still (close to argmax of 64) |
+| `var_is` | q ~ std (the variance-optimal proposal), full importance correction: DR's objective, faster |
+
+Stage A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch4.csv`).

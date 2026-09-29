@@ -231,3 +231,66 @@ class GradSignal:
         if self.kind == "norm":
             return np.exp(z * self.model.sd)                          # ||G|| relative to its geometric mean
         return np.clip(z, 0.0, None)                                  # aligned beyond average
+
+
+class VarModel:
+    """Outcome-variance learnability for any outcome, not only pass/fail: a heteroscedastic
+    Gaussian fit (mean and log-variance heads, NLL loss) of the episode return (standardized
+    over the window) over the task space. score = the predicted standard deviation of the
+    outcome on the task. For a binary outcome Var = p(1-p), so this generalizes the pass
+    model's learnability to returns; tasks where the same policy sometimes does well and
+    sometimes badly are the frontier. A short window keeps it about the current policy."""
+
+    def __init__(self, space: TaskSpace, seed: int, window: int = 512, refit_every: int = 128,
+                 warmup: int = 256, hidden: int = 32, steps: int = 100, outcome: str = "ret"):
+        self.space, self.window, self.refit_every, self.warmup, self.steps = space, window, refit_every, warmup, steps
+        self.outcome = outcome
+        self.x, self.y, self.seen, self.version = [], [], 0, 0
+        g = torch.Generator().manual_seed(seed)
+        self.body = _mlp(space.dim, hidden, seed)[:-1]
+        self.head = torch.nn.Linear(hidden, 2)
+        with torch.no_grad():
+            self.head.weight.copy_(torch.randn(self.head.weight.shape, generator=g) / np.sqrt(hidden) * 0.1)
+            self.head.bias.zero_()
+        self.opt = torch.optim.Adam(list(self.body.parameters()) + list(self.head.parameters()), lr=1e-2,
+                                    weight_decay=1e-4)
+        self.mu, self.sd = 0.0, 1.0
+
+    @property
+    def ready(self) -> bool:
+        return self.version > 0
+
+    def _z(self, params: np.ndarray) -> torch.Tensor:
+        return torch.as_tensor(self.space.unit(params) * 2 - 1, dtype=torch.float32)
+
+    def update(self, ep: Episode) -> None:
+        self.x.append(np.array(ep.params, dtype=np.float64))
+        self.y.append(float(ep.ret if self.outcome == "ret" else ep.success))
+        del self.x[:-self.window], self.y[:-self.window]
+        self.seen += 1
+        if self.seen >= self.warmup and self.seen % self.refit_every == 0:
+            y = np.array(self.y)
+            self.mu, self.sd = float(y.mean()), float(y.std() + 1e-8)
+            xt, yt = self._z(np.array(self.x)), torch.as_tensor((y - self.mu) / self.sd, dtype=torch.float32)
+            for _ in range(self.steps):
+                out = self.head(self.body(xt))
+                m, lv = out[:, 0], out[:, 1].clamp(-8, 4)
+                loss = (0.5 * (lv + (yt - m) ** 2 / lv.exp())).mean()
+                self.opt.zero_grad()
+                loss.backward()
+                self.opt.step()
+            self.version += 1
+
+    @torch.no_grad()
+    def _out(self, params: np.ndarray) -> np.ndarray:
+        return self.head(self.body(self._z(np.atleast_2d(params)))).numpy().astype(np.float64)
+
+    def mean(self, params: np.ndarray) -> np.ndarray:
+        if not self.ready:
+            return np.zeros(len(np.atleast_2d(params)))
+        return self._out(params)[:, 0]
+
+    def score(self, params: np.ndarray) -> np.ndarray:
+        if not self.ready:
+            return np.ones(len(np.atleast_2d(params)))
+        return np.exp(0.5 * np.clip(self._out(params)[:, 1], -8, 4))
