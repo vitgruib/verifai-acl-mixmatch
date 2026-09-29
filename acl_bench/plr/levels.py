@@ -67,6 +67,7 @@ class LevelConfig:
     picker: str = "uniform"
     picker_uniform: float = 0.5
     picker_candidates: int = 64    # "model" picker: uniform candidates per steered draw
+    lib: str = ""                  # a curriculum-library arm (acl_bench.curriculum.ARMS); replaces the above
 
 
 class LevelSampler:

@@ -81,6 +81,12 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     ep_s0 = [None] * K
     streak = np.zeros(K, dtype=int)           # consecutive upright steps ("balance" goal)
 
+    cur = None
+    ep_src, ep_w = [""] * K, np.ones(K, dtype=np.float32)
+    if cfg.levels.lib:
+        from acl_bench.curriculum import build
+        cur = build(cfg.levels.lib, env, bounds, K, cfg.seed)
+
     picker = None
     if cfg.levels.picker == "model":
         from acl_bench.plr.picker import FrontierModelPicker
@@ -95,6 +101,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         p, i, m = levels.pick()
         if picker is not None and m == NEW:
             p = picker.draw(k)
+        if cur is not None:
+            p, ep_src[k], ep_w[k] = cur.propose(k)
+            i, m = -1, NEW
         params[k], slot[k], mode[k] = p, i, m
         if m == REPLAY and cfg.levels.replay_start and i >= 0:
             s = levels.starts[i].copy()
@@ -127,6 +136,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         b_rew = np.zeros((T, K), dtype=np.float32)
         b_done = np.zeros((T, K), dtype=np.float32)
         b_mask = np.zeros((T, K), dtype=np.float32)
+        b_w = np.ones((T, K), dtype=np.float32)
         for t in range(T):
             raw = env.observe(state).astype(np.float32)
             obs, cobs = xa(raw, params), xc(raw, params)
@@ -143,6 +153,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
             b_logp[t] = logp_all.gather(1, a[:, None]).squeeze(1).numpy()
             b_val[t] = v.numpy()
             b_mask[t] = ep_train
+            b_w[t] = ep_w
             rew_env = env.reward(state, a_np, params) if has_reward else None
             state = env.step(state, a_np, params)
             term = env.terminated(state)
@@ -174,6 +185,10 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     ret = float(sum(ep_r[k]))
                     if picker is not None:
                         picker.report(k, params[k], success)
+                    if cur is not None:
+                        from acl_bench.curriculum import Episode
+                        cur.report(k, Episode(params[k].copy(), success, float(sum(ep_r[k])), int(t_ep[k]),
+                                              ep_src[k], ep_r[k], ep_v[k], nv))
                     if regret:
                         # planner regret: scored in one batch at the end of the rollout
                         pending.append((params[k].copy(), ep_s0[k], int(slot[k]), int(mode[k]), ret, success))
@@ -203,7 +218,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         ret_ = adv + b_val
 
         f = lambda x: torch.as_tensor(x.reshape(T * K, *x.shape[2:]))
-        o, oc, ac, lp, ad, rt, mk = map(f, (b_obs, b_cobs, b_act, b_logp, adv, ret_, b_mask))
+        o, oc, ac, lp, ad, rt, mk, wt = map(f, (b_obs, b_cobs, b_act, b_logp, adv, ret_, b_mask, b_w))
         keep = np.flatnonzero(mk.numpy() > 0)
         if len(keep) >= 64:
             mb = max(1, len(keep) // cfg.minibatches)
@@ -218,7 +233,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     ratio = (newlp - lp[i]).exp()
                     a_ = ad[i]
                     a_ = (a_ - a_.mean()) / (a_.std() + 1e-8)
-                    pg = torch.max(-a_ * ratio, -a_ * torch.clamp(ratio, 1 - cfg.clip, 1 + cfg.clip)).mean()
+                    pg_i = torch.max(-a_ * ratio, -a_ * torch.clamp(ratio, 1 - cfg.clip, 1 + cfg.clip))
+                    w_i = wt[i]                        # importance weights (library arms), else 1
+                    pg = (w_i * pg_i).sum() / w_i.sum()
                     vl = 0.5 * ((agent.critic(oc[i]).squeeze(1) - rt[i]) ** 2).mean()
                     loss = pg - cfg.ent * ent + cfg.vf * vl
                     opt.zero_grad()
@@ -248,7 +265,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                 next_check += every
         if last:
             break
-    stats["scouted_steps"] = scouted
+    stats["scouted_steps"] = scouted + (cur.sim_steps if cur is not None else 0)
+    if cur is not None:
+        stats.update(cur.stats())
     return agent, checks, stats
 
 
