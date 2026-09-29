@@ -352,6 +352,7 @@ Data: `results/signals/<env>.csv`, tables in `<env>.log`.
 | L1 / entropy / -return, 1 episode | mostly <= 0.16 | 0.01-0.54, erratic | <= 0.10 | <= 0.08 |
 | learnability, 2 episodes | 0.27-0.48 | 0.38-0.44 | 0.39 | 0.32 |
 | learnability, 4 episodes | 0.25-0.55 | 0.57-0.62 | 0.51 | 0.49 |
+| pass-rate model, 1 episode per task (candidate 5) | 0.76 early, 0.23 later | 0.68-0.71 | 0.65-0.70 | 0.71-0.86 |
 
 PVL is worse than random on Acrobot and MountainCar: its top picks are tasks the agent
 passes 99.5% of the time (Spearman with the pass rate +0.52 to +0.76). A pass rate from
@@ -359,3 +360,10 @@ passes 99.5% of the time (Spearman with the pass rate +0.52 to +0.76). A pass ra
 and no scouting; it needs a task, or a region of the task space, to be visited a few
 times. The screen reproduces rounds 1-11's verdict on PVL in minutes, and points the
 search at learnability from training episodes (candidates 1-2 of the methodology).
+
+The pass-rate model (`model_1ep`: an MLP pass/fail classifier over task parameters, fit to one
+episode each on 2,000 *other* random tasks, scoring each task by predicted p(1-p)) beats 4-episode learnability on
+overlap everywhere but late CartPole (0.23 vs 0.25-0.26), and has the best rank
+correlation with true learnability in every cell (0.54-0.83; Pendulum at 20% is
+degenerate: no agent passes anything yet). Pooling across nearby tasks buys what repeated
+visits to one task did, without ever visiting the scored task.

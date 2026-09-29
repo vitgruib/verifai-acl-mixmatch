@@ -20,7 +20,8 @@ agents fail; MountainCar has none).
 On the no-harm environments the oracles also cost the random suite (up to -0.30 Acrobot,
 -0.37 MountainCar, -0.64 Pendulum at 80%). On CartPole, **frontier tasks found by VerifAI
 search (not by looking at the exam) work as well as the exam's own tasks**: a wrapper
-needs to find the frontier, not the test. Maze and PointNav: pending calibration.
+needs to find the frontier, not the test. Maze calibrated (budget 5.12M: 6 DR runs to 10.2M, random mazes flatten near 0.70, named
+mazes stay near 0.05); PointNav calibration running (6 DR runs to 4.9M).
 
 ## Offline signal screen (section 4)
 
@@ -52,5 +53,6 @@ The frontier is where the gains are (oracle), a pass-rate signal finds it (offli
 but per-task estimates need many rollouts and per-parameter buckets (VerifAI's samplers)
 are too coarse to pin a frontier that depends on combinations of parameters. Candidate 5:
 a **pass-rate model** over the task space fit to ordinary training episodes (one per task,
-pooled; GoalGAN-style, Florensa et al. 2018), sampling where it predicts p near 0.5. Being
-tested offline first (`model_1ep` in the signal screen).
+pooled; GoalGAN-style, Florensa et al. 2018), sampling where it predicts p near 0.5. Offline,
+it is the best signal in the screen (`model_1ep`, overlap@10% 0.65-0.86 outside late
+CartPole; `docs/plr.md`); next is Stage S on CartPole.
