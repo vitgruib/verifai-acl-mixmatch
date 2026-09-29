@@ -56,9 +56,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     has_reward, balance = hasattr(env, "reward"), env.GOAL == "balance"
     regret, pending = cfg.levels.score == "regret", []
     if cfg.levels.oracle:
-        from acl_bench import envs
-        from acl_bench.exam.sets import load_sets
-        levels.set_sfl(load_sets(envs.exam_dir(env_name), names=[cfg.levels.oracle])[cfg.levels.oracle].params)
+        levels.set_sfl(oracle_tasks(env_name, cfg.levels.oracle))
 
     K, T = cfg.n_envs, 1024 // cfg.n_envs
     agent = make_agent(env, bounds, cfg)
@@ -291,6 +289,20 @@ def _scout_pvl(rew, val, alive, term, v_end, gamma: float = 0.99, lam: float = 0
         adv_pos += np.where(alive[t], np.clip(last, 0.0, None), 0.0)
     length = np.maximum(alive.sum(0), 1)
     return adv_pos / length
+
+
+def oracle_tasks(env_name: str, which: str) -> np.ndarray:
+    """Task parameters for a diagnostic oracle: an exam section's own tasks ("verifai"), or
+    "frontier": the VerifAI search pools' tasks that 30-70% of the reference agents fail."""
+    from acl_bench import envs
+    from acl_bench.exam.sets import load_sets
+    from acl_bench.sampling import ADAPTIVE_SAMPLERS
+    if which != "frontier":
+        return load_sets(envs.exam_dir(env_name), names=[which])[which].params
+    pools = load_sets(envs.search_dir(env_name), names=[f"SEARCH_{s}" for s in ADAPTIVE_SAMPLERS]).values()
+    params = np.concatenate([p.params for p in pools])
+    fail = np.concatenate([p.ref_fail_frac for p in pools])
+    return params[(fail >= 0.3 - 1e-9) & (fail <= 0.7 + 1e-9)]
 
 
 def plan_values(env, params: np.ndarray, s0: np.ndarray, beam: int = 64) -> np.ndarray:

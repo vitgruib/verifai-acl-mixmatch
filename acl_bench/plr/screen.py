@@ -96,6 +96,10 @@ register("sipacl_regret", {"score": "regret", "replay_start": True}, base=SIPACL
 # PLR buffer only ranks levels training happened to draw?
 register("scout_pvl", {"sfl_score": "pvl"}, base=SFL)
 register("scout_pvl_top20", {"sfl_score": "pvl", "sfl_top": 20}, base=SFL)
+# ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
+register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
+register("oracle80", {"replay_prob": 0.8, "oracle": "verifai"}, base=DR)
+register("oracle_front50", {"replay_prob": 0.5, "oracle": "frontier"}, base=DR)
 register("lp", {"score": "lp"})
 register("lp_st", {"score": "lp", "replay_start": True})
 
