@@ -20,7 +20,7 @@ from scipy import stats
 
 from acl_bench import envs
 
-SUITES = {"random": "r", "verifai": "v"}
+SUITES = {"random": "r", "verifai": "v", "heldout": "h"}
 
 
 def env_of(path: str) -> str:
