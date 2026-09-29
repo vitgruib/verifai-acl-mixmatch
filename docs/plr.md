@@ -307,3 +307,32 @@ exact-start replay.
   fixes on levels the planner solves and the agent cannot yet approach. SIPACL settings
   -46 (n.s.), curve -1: the first PLR variant that does not hurt Pendulum's random suite.
 - Acrobot: hurts (curve -0.07 / -0.08), as the oracle predicts.
+
+## Round 12: is it the score or the buffer's reach? (CartPole, 24 seeds)
+
+SFL differs from PLR in two ways: its score (p(1-p) from rollouts) and where its levels
+come from (1,000 fresh random levels scouted every 10 updates, vs a PLR buffer that can
+only rank levels training happened to draw). `scout_pvl` keeps SFL's scouting and ranks
+the scouted levels by PVL (mean over the 8 scouting rollouts; checked against the
+per-episode GAE). VerifAI final vs DR: scout_pvl -0.015, scout_pvl top-20 +0.047;
+SFL (p(1-p)) +0.110, SFL top-20 +0.108. Same candidates, same extra simulation, only the
+score differs: **the score is the problem**, not the buffer's reach. PVL picks the wrong
+levels even when it can see the whole box.
+
+## Pendulum's VerifAI suite, and the re-screen on both suites (8 seeds)
+
+Built as for the other environments: 10 reference agents trained in the study pipeline
+(random-suite pass 0.46-0.89), VerifAI search by ce, mab and sa (3,000 tasks x 5 starts
+each), keeping questions 6+ agents fail that are proven winnable (the certifier now
+handles the balance goal with an energy-shaping planner): 7,309 qualify, 2,000 sampled,
+mean fail share 0.82 (`frozen_sets/pendulum/`). DR scores 0.179 pass / -919 return there.
+
+- **The oracle hurts even the VerifAI suite** (pass 0.179 -> 0.018, p = 0.004; random
+  0.68 -> 0.15): the hard Pendulum questions are too hard to learn from directly at this
+  budget. As on Acrobot, choosing training tasks has no headroom here.
+- Every PVL form hurts VerifAI return (-85 to -143; curve p < 0.01 for paper, scout_pvl,
+  sipacl_learn, sipacl_st, pvl_resid, sipacl). L1 ties DR; SFL -50, entropy -71,
+  planner regret (SIPACL settings) -34, all n.s.
+- The best Pendulum result is no PLR at all: the privileged-critic baseline DR_pc, VerifAI
+  +0.089 pass / +100 return, random +0.071 / +74 (n.s.). A critic that knows the task
+  helps PPO; PLR on top of it (sipacl_pc) gives it back (-0.05 VerifAI vs DR_pc).
