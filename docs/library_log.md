@@ -114,3 +114,17 @@ seeds, with a Pendulum guard at -0.105.
 Loss reweighting (`rw_a4`) harms: weighting without resampling puts heavy weights on few
 episodes and hurts Acrobot. Stage B under Amendment 1 (`results/lib/stageB3.sh`): CartPole
 seeds 9-72, MountainCar and Pendulum seeds 1-8.
+
+## Batch 1R results (2026-09-29): both abandoned
+
+Amended stage B: 72 CartPole seeds against the 96-seed DR pool.
+
+| arm | CartPole vd | CartPole r | verdict |
+|---|---|---|---|
+| `sir_a4` | -0.002 (0.96) | -0.012 | abandon |
+| `sir_is` | +0.039 (0.22) | -0.005 | abandon |
+
+With 72 seeds, sharp SIR sampling does nothing and the unbiased variant's lead shrinks to
++0.039. Batch 1 is closed. (Queueing note: a `pgrep -f` wait on a script name also matches
+any shell whose command line contains that name; later scripts use `pgrep -f "name[.]sh"`
+patterns that cannot match themselves.)
