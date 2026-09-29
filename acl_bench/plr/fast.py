@@ -109,7 +109,11 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     if on_check:
         checks.append({"step": 0, **on_check(0, agent)})
 
+    # With charge_scouting, SFL's scouting rollouts count against the budget: training stops
+    # when training + scouting steps reach it, and check-ins fall on that total.
+    charge = cfg.levels.charge_scouting
     n_iter = cfg.steps // (K * T)
+    scouted, next_check = 0, every
     for it in range(n_iter):
         b_obs = np.zeros((T, K, agent.a_in), dtype=np.float32)
         b_cobs = np.zeros((T, K, agent.c_in), dtype=np.float32)
@@ -227,11 +231,20 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         ens_opt.step()
 
         if cfg.levels.sfl and it % cfg.levels.sfl_every == 0:
-            levels.set_sfl(sfl_select(env, agent, levels, cfg.levels, env_rng))
+            top, sim = sfl_select(env, agent, levels, cfg.levels, env_rng)
+            levels.set_sfl(top)
+            scouted += sim
 
         done_steps = (it + 1) * K * T
-        if on_check and (done_steps % every < K * T or it == n_iter - 1):
-            checks.append({"step": done_steps, **on_check(done_steps, agent)})
+        consumed = done_steps + (scouted if charge else 0)
+        last = it == n_iter - 1 or consumed >= cfg.steps
+        if on_check and (consumed >= next_check or last):
+            checks.append({"step": min(consumed, cfg.steps), **on_check(consumed, agent)})
+            while next_check <= consumed:
+                next_check += every
+        if last:
+            break
+    stats["scouted_steps"] = scouted
     return agent, checks, stats
 
 
@@ -251,7 +264,9 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     rews, vals, alives, terms = [], [], [], []
     r_step, r_term = REWARD.get(env.__name__.rsplit(".", 1)[-1], (0.0, 0.0))
     xa, xc = agent.inputs
+    sim = 0                                        # environment steps simulated here
     for _ in range(env.MAX_EPISODE_STEPS):
+        sim += int(alive.sum())
         raw = env.observe(state).astype(np.float32)
         logits = agent.actor(torch.as_tensor(xa(raw, params)))
         a = torch.multinomial(torch.softmax(logits, dim=1), 1).squeeze(1).numpy()
@@ -283,7 +298,7 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     if pvl:
         score = score.reshape(lc.sfl_n, lc.sfl_k).mean(1)
     top = np.argsort(-score, kind="stable")[:lc.sfl_top]
-    return cand[top]
+    return cand[top], sim
 
 
 def _scout_pvl(rew, val, alive, term, v_end, gamma: float = 0.99, lam: float = 0.95) -> np.ndarray:

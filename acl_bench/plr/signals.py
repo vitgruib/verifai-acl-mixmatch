@@ -92,7 +92,36 @@ def signals_for(env, agent, tasks: np.ndarray, k_truth: int, rng: np.random.Gene
         out[f"learn_{k}"] = q * (1 - q)
     q2 = per["success"][:, :2].mean(1)
     out["pvl_x_learn_2"] = out["pvl_1"] * 4 * q2 * (1 - q2)
+    # a pass-rate model over the task space (GoalGAN-style frontier model), fit on one
+    # episode each of other tasks, as a training stream would see them
+    lo, hi = tasks.min(0), tasks.max(0)
+    other = lo + (hi - lo) * rng.uniform(size=tasks.shape)
+    seen = rollouts(env, agent, other, rng)["success"]
+    p_hat = fit_pass_model(other, seen, lo, hi)(tasks)
+    out["model_1ep"] = p_hat * (1 - p_hat)
     return out
+
+
+def fit_pass_model(x: np.ndarray, y: np.ndarray, lo: np.ndarray, hi: np.ndarray, epochs: int = 300):
+    """A small MLP classifier of pass / fail over normalized task parameters; returns a
+    function params -> predicted pass rate."""
+    torch.manual_seed(0)
+    net = torch.nn.Sequential(torch.nn.Linear(x.shape[1], 32), torch.nn.Tanh(), torch.nn.Linear(32, 32),
+                              torch.nn.Tanh(), torch.nn.Linear(32, 1))
+    opt = torch.optim.Adam(net.parameters(), lr=1e-2, weight_decay=1e-4)
+    xt = torch.as_tensor((x - lo) / (hi - lo) * 2 - 1, dtype=torch.float32)
+    yt = torch.as_tensor(y, dtype=torch.float32)
+    for _ in range(epochs):
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(net(xt).squeeze(1), yt)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+    def predict(q: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            z = torch.as_tensor((q - lo) / (hi - lo) * 2 - 1, dtype=torch.float32)
+            return torch.sigmoid(net(z).squeeze(1)).numpy()
+    return predict
 
 
 def score_signals(df: pd.DataFrame) -> pd.DataFrame:
