@@ -198,3 +198,16 @@ Sampled through the same SIR proposer as batch 1.
 | `var_is` | q ~ std (the variance-optimal proposal), full importance correction: DR's objective, faster |
 
 Stage A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch4.csv`).
+
+## Batch 4, stage A results (2026-09-29)
+
+8 seeds vs the DR pools (96 CartPole, 48 Acrobot).
+
+| arm | CartPole vd | CartPole r | Acrobot r | verdict |
+|---|---|---|---|---|
+| `var_a2` | -0.023 (0.75) | -0.005 | +0.003 | abandon: primary < 0 |
+| `var_a4` | +0.066 (0.28) | +0.035 | -0.030 | advance to B |
+| `var_a8` | -0.021 (0.70) | +0.004 | -0.019 | abandon: primary < 0 |
+| `var_is` | +0.045 (0.56) | -0.045 | +0.005 | advance to B |
+
+No monotone trend in alpha; stage B (`results/lib/stageB4.sh`) decides.
