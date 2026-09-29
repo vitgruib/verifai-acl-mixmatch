@@ -28,7 +28,10 @@ from acl_bench.sampling import ADAPTIVE_SAMPLERS
 # creep to 0.85 / -257 by 4.9M (8 plain runs on the fast harness, acl_bench/plr), so 2,400
 # rollouts, past the fast phase with room left above.
 BUDGET = {"cartpole": 614_400, "acrobot": 491_520, "mountaincar": 307_200, "pendulum": 2_457_600,
-          "maze": 10_240_000,      # maze: provisional, for its calibration runs
+          # maze: random-maze success 0.58 by 1M steps, then a slow creep to ~0.70 by 8-10M; the
+          # held-out named mazes stay near 0.05 (6 DR runs to 10.2M on the fast harness), so 5,000
+          # rollouts, where the random-maze curve has flattened.
+          "maze": 5_120_000,
           "pointnav": 2_457_600}   # pointnav: provisional, for its calibration runs
 N_CHECKINS = 30
 SCORE = "pvl_gae"                     # SIPACL's own score

@@ -26,6 +26,7 @@ PAPER = dict(replay_prob=0.5, beta=0.1, staleness=0.1, score_ema=1.0, buffer=100
 # name -> (LevelConfig overrides, FastConfig overrides)
 CONFIGS: dict[str, tuple[dict, dict]] = {
     "DR": (DR, {}),
+    "REF": (DR, {}),          # reference agents for building an exam: DR on independent seeds
     "sipacl": (SIPACL, {}),
     "paper": (PAPER, {}),
 }
@@ -133,15 +134,25 @@ def job_fn(job):
     torch.set_num_threads(1)
     from acl_bench.exam.sets import load_sets
     from acl_bench.plr.fast import FastConfig, evaluate, train
-    env_name, config, replicate, steps, n_checks = job
+    env_name, config, replicate, steps, n_checks, snap_dir = (tuple(job) + (None,))[:6]
     env = envs.get(env_name)
     sets = load_sets(envs.exam_dir(env_name))
     lv, fast = CONFIGS[config]
     cfg = FastConfig(steps=steps, seed=run_seed(env_name, config, replicate),
                      levels=dataclasses.replace(LevelConfig(), **lv), **fast)
+    snapshots = {}
+
+    def on_check(step, agent):
+        if snap_dir:
+            snapshots[step] = {k: v.detach().cpu().numpy().copy() for k, v in agent.state_dict().items()}
+        return evaluate(env, agent, sets)
+
     t0 = time.time()
-    _, checks, stats = train(env_name, env, cfg, n_checks, lambda s, a: evaluate(env, a, sets))
+    _, checks, stats = train(env_name, env, cfg, n_checks, on_check)
     wall = time.time() - t0
+    if snap_dir:
+        from acl_bench.snapshots import save_run
+        save_run(os.path.join(snap_dir, config, f"{replicate}.npz"), snapshots)
     return [{"config": config, "seed": replicate, **c, **stats, "wall_time_sec": wall} for c in checks]
 
 
@@ -160,6 +171,9 @@ def main():
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--allow-battery", action="store_true")
     ap.add_argument("--min-battery-pct", type=int, default=25)
+    ap.add_argument("--snapshots", action="store_true",
+                    help="save each run's agent at every check-in under results/<env>/snapshots/<config>/<seed>.npz "
+                         "(the study's format, so exam search and regrade read them)")
     args = ap.parse_args()
     unknown = [c for c in args.configs if c not in CONFIGS]
     if unknown:
@@ -170,7 +184,8 @@ def main():
         prior = pd.read_csv(args.out, usecols=["config", "seed", "step"])
         prior = prior[prior.step == prior.groupby(["config", "seed"]).step.transform("max")]
         done = {(c, s) for c, s, st in zip(prior.config, prior.seed, prior.step) if st == steps}
-    jobs = [(args.env, c, s, steps, args.checks) for s in parse_seeds(args.seeds) for c in args.configs
+    snap = os.path.join(envs.results_dir(args.env), "snapshots") if args.snapshots else None
+    jobs = [(args.env, c, s, steps, args.checks, snap) for s in parse_seeds(args.seeds) for c in args.configs
             if (c, s) not in done]
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     watchdog = Watchdog(Limits(require_ac=not args.allow_battery, min_battery_pct=args.min_battery_pct),
