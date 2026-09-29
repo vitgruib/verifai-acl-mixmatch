@@ -8,6 +8,24 @@
     "random": {
       "n": 264,
       "sha256": "78e6484a94f85e1762cb5e71e22c985f5beb048a2a07ac5f135950f8aa00e20e"
+    },
+    "verifai": {
+      "n": 2000,
+      "sha256": "720fb07b17ac30bb61d5f0dd4efe98df180f15b64f0c3f4b28b9516024801f5c"
     }
+  },
+  "verifai": {
+    "mean_fail_frac": 0.8221499999999999,
+    "min_fail_frac": 0.6,
+    "n_candidates": 31292,
+    "n_failed_by_all": 26250,
+    "n_failed_by_all_certified": 2267,
+    "n_proven_winnable": 7309,
+    "sample_seed": 20260924,
+    "samplers": [
+      "ce",
+      "mab",
+      "sa"
+    ]
   }
 }
