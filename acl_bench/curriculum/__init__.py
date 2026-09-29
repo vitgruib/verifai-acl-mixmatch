@@ -39,6 +39,17 @@ ARMS: dict[str, dict] = {
     "grad_is": {"mix": {"uniform": 0.25, "sir": 0.75}, "signal": "norm", "alpha": 1.0, "is_power": 1.0},
     # tasks whose update aligns with the uniform tasks' gradient (improves DR's objective)
     "align": {"mix": {"uniform": 0.5, "sir": 0.5}, "signal": "align", "alpha": 1.0},
+    # ---- batch 3 (docs/library_log.md): variations on the stage-A survivors
+    # unbiased, sharper proposal: does the random-suite gain grow past sqrt(p(1-p))?
+    "sir_is_a1": {"mix": {"uniform": 0.25, "sir": 0.75}, "alpha": 1.0, "is_power": 1.0},
+    # unbiased, gentler: more uniform share, smaller importance weights
+    "sir_is_u50": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 0.5, "is_power": 1.0},
+    # fmodel's emphasis as loss weights over uniform tasks (reweighting, not resampling)
+    "rw_a4": {"mix": {"uniform": 1.0}, "reweight_alpha": 4.0},
+    # sharp sampling from a bootstrap ensemble (+ disagreement bonus)
+    "ens_a4": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "ensemble", "bonus": 1.0},
+    # sharp sampling by model-based learning progress
+    "prog_a4": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "progress"},
 }
 
 
