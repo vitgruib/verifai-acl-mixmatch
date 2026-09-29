@@ -128,3 +128,26 @@ With 72 seeds, sharp SIR sampling does nothing and the unbiased variant's lead s
 +0.039. Batch 1 is closed. (Queueing note: a `pgrep -f` wait on a script name also matches
 any shell whose command line contains that name; later scripts use `pgrep -f "name[.]sh"`
 patterns that cannot match themselves.)
+
+## Batch 3, stage B results (2026-09-29): all abandoned
+
+Amended stage B: 72 CartPole seeds vs the 96-seed DR pool; 8 on MountainCar and Pendulum.
+
+| arm | CartPole vd | CartPole r | Acrobot r | MountainCar r | Pendulum r | verdict |
+|---|---|---|---|---|---|---|
+| `sir_is_u50` | -0.008 (0.81) | -0.001 | +0.002 | -0.008 | -0.026 | abandon |
+| `ens_a4` | +0.016 (0.60) | -0.043 | -0.014 | +0.097 | +0.012 | abandon |
+| `prog_a4` | +0.010 (0.75) | +0.011 | +0.002 | +0.044 | -0.069 | abandon |
+
+Stage A's +0.13 / +0.14 leads fell to about +0.01.
+
+## Where the library stands (2026-09-29)
+
+13 arms tried, none survives stage B. Every pass-model-driven arm (SIR at any sharpness,
+importance-corrected or not, posterior replay, mutation, VerifAI on the model, ensemble,
+learning progress, loss reweighting) lands within about +/-0.04 of DR on CartPole's hard
+suite at 72 seeds, while the oracle (training on the suite's own tasks, `docs/plr.md`)
+gains about +0.19 and scouted SFL about +0.09. Stage A with 8 seeds had no predictive
+value: its leads (up to +0.14) did not replicate once. Conclusion: sampling by an
+episode-outcome model of p(1-p), in any form tried, does not find the region the hard
+suite tests. More variants of the same signal are not worth screening.
