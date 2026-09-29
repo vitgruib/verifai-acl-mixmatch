@@ -11,8 +11,12 @@
     `--max-verifai` qualify, a fixed-seed uniform sample of that many is kept (CartPole's
     suite, 1,782, needed none).
 
+  - `heldout` (environments with named layouts, i.e. the maze): the literature's named
+    held-out levels (`env.held_out_questions()`), kept if proven winnable.
+
     python -m acl_bench.exam.build --env acrobot random
     python -m acl_bench.exam.build --env acrobot verifai
+    python -m acl_bench.exam.build --env maze heldout
 
 CartPole's suites were built by the same rules, with its impossibility proofs
 (acl_bench.exam.feasibility) reported alongside; they are locked and not rebuilt.
@@ -65,7 +69,7 @@ def verifai_suite(env, search_dir: str, min_fail_frac: float, max_n: int, seed: 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", required=True, choices=envs.NAMES)
-    parser.add_argument("suite", choices=("random", "verifai"))
+    parser.add_argument("suite", choices=("random", "verifai", "heldout"))
     parser.add_argument("--n", type=int, default=300, help="random suite: tasks drawn")
     parser.add_argument("--seed", type=int, default=20260924, help="random suite and verifai sample: seed")
     parser.add_argument("--min-fail-frac", type=float, default=0.6)
@@ -75,9 +79,15 @@ def main():
 
     if args.suite == "random":
         suite, info = random_suite(env, args.n, args.seed)
+    elif args.suite == "heldout":
+        params, s0, labels = env.held_out_questions()
+        ok = certify(env, params, s0)
+        suite = PairSet("heldout", params[ok], s0[ok])
+        info = {"n_listed": len(s0), "n_not_certified": int((~ok).sum()),
+                "questions": [lab for lab, k in zip(labels, ok) if k]}
     else:
         suite, info = verifai_suite(env, envs.search_dir(args.env), args.min_fail_frac, args.max_verifai, args.seed)
-        remove_sets([n for n in load_sets(exam) if n != "random"], exam)
+        remove_sets([n for n in load_sets(exam) if n not in ("random", "heldout")], exam)
     save_sets({suite.name: suite}, exam, extra={suite.name: info})
     print(f"{info}\n{suite.name}: {len(suite)} questions -> {exam}")
 

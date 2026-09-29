@@ -16,7 +16,7 @@ from __future__ import annotations
 import importlib
 import os
 
-NAMES = ("cartpole", "acrobot", "mountaincar", "pendulum")
+NAMES = ("cartpole", "acrobot", "mountaincar", "pendulum", "maze")
 
 
 def get(name: str):

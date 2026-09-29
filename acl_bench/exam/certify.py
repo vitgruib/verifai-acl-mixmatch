@@ -115,7 +115,10 @@ def replay_passes(env, params: np.ndarray, s0: np.ndarray, actions: np.ndarray) 
 
 
 def certify(env, params: np.ndarray, s0: np.ndarray, beam: int = 128, chunk: int = 200, seed: int = 0) -> np.ndarray:
-    """True where a replayed certificate proves the question winnable."""
+    """True where a replayed certificate proves the question winnable. An environment with
+    an exact solver (`certify_exact`, e.g. the maze's breadth-first search) uses it instead."""
+    if hasattr(env, "certify_exact"):
+        return env.certify_exact(params, s0)
     rng = np.random.default_rng(seed)
     out = np.zeros(len(params), dtype=bool)
     for start in range(0, len(params), chunk):
