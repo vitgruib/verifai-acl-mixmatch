@@ -60,7 +60,7 @@ class SIR(Proposer):
         self.space, self.model, self.rng = space, model, rng
         self.alpha, self.n_candidates, self.floor, self.name = alpha, n_candidates, floor, name
         self._z_sum, self._z_n, self._version = 0.0, 0, -1
-        self._score = model.learnability if isinstance(model, PassModel) else model.score
+        self._score = model.score if hasattr(model, "score") else model.learnability
 
     def _weights(self, params: np.ndarray) -> np.ndarray:
         return (self._score(params) + self.floor) ** self.alpha
@@ -89,7 +89,7 @@ class SIR(Proposer):
 class Replay(Proposer):
     name = "replay"
 
-    def __init__(self, space: TaskSpace, model: PassModel | None, rng: np.random.Generator, size: int = 1000,
+    def __init__(self, space: TaskSpace, model, rng: np.random.Generator, size: int = 1000,
                  alpha: float = 4.0, prior_strength: float = 2.0, forget: float = 0.8, min_fill: int = 100):
         self.space, self.model, self.rng = space, model, rng
         self.size, self.alpha, self.m, self.forget, self.min_fill = size, alpha, prior_strength, forget, min_fill

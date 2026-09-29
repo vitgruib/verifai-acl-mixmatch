@@ -78,6 +78,63 @@ class PassModel:
         return p * (1 - p)
 
 
+class ProgressModel(PassModel):
+    """Learning progress from the pass model's own history (a model-based ALP-GMM, Portelas
+    et al. 2019): score = |p_now(task) - p_then(task)|, p_then = the model `lag` refits ago.
+    A shorter window (1,024 episodes) keeps p_now current."""
+
+    def __init__(self, space: TaskSpace, seed: int, lag: int = 2, window: int = 1024, **kw):
+        super().__init__(space, seed, window=window, **kw)
+        import copy
+        self._copy, self.lag, self.history = copy.deepcopy, lag, []
+
+    def update(self, ep: Episode) -> None:
+        v = self.version
+        super().update(ep)
+        if self.version != v:
+            self.history.append(self._copy(self.net))
+            del self.history[:-(self.lag + 1)]
+
+    @torch.no_grad()
+    def score(self, params: np.ndarray) -> np.ndarray:
+        params = np.atleast_2d(params)
+        if len(self.history) <= self.lag:
+            return np.zeros(len(params))
+        z = self._z(params)
+        now, then = (torch.sigmoid(n(z).squeeze(1)).numpy() for n in (self.history[-1], self.history[0]))
+        return np.abs(now - then).astype(np.float64)
+
+
+class EnsembleModel:
+    """`n` pass models, each fit on a Poisson(1) bootstrap of the episodes (each episode is
+    given to member i Poisson(1) times). score = mean p(1-p) + bonus * std over members of p:
+    learnability plus an exploration bonus where the models disagree."""
+
+    def __init__(self, space: TaskSpace, seed: int, n: int = 4, bonus: float = 1.0):
+        self.members = [PassModel(space, seed * 31 + i) for i in range(n)]
+        self.rng, self.bonus = np.random.default_rng([seed, 5]), bonus
+
+    @property
+    def version(self) -> int:
+        return min(m.version for m in self.members)
+
+    @property
+    def ready(self) -> bool:
+        return all(m.ready for m in self.members)
+
+    def update(self, ep: Episode) -> None:
+        for m in self.members:
+            for _ in range(self.rng.poisson(1.0)):
+                m.update(ep)
+
+    def p(self, params: np.ndarray) -> np.ndarray:
+        return np.mean([m.p(params) for m in self.members], axis=0)
+
+    def score(self, params: np.ndarray) -> np.ndarray:
+        ps = np.stack([m.p(params) for m in self.members])
+        return (ps * (1 - ps)).mean(0) + self.bonus * ps.std(0)
+
+
 class TaskRegressor:
     """An MLP regression y(task) over the latest `window` (task, y) pairs, refit every
     `refit_every` pairs once `warmup` are in; y is standardized for the fit."""

@@ -57,13 +57,17 @@ class Curriculum:
     "tempered importance correction"). Requires every proposer in the mix to know its density."""
 
     def __init__(self, space: TaskSpace, proposers: dict, weights: dict, estimators: list,
-                 rng: np.random.Generator, is_power: float = 0.0, max_weight: float = 10.0):
+                 rng: np.random.Generator, is_power: float = 0.0, max_weight: float = 10.0, reweighter=None):
         self.space, self.proposers, self.estimators, self.rng = space, proposers, estimators, rng
         names = list(weights)
         self.names = names
         self.mix = np.array([weights[n] for n in names], dtype=np.float64)
         self.mix /= self.mix.sum()
         self.is_power, self.max_weight = is_power, max_weight
+        # reweighting instead of resampling: tasks stay as proposed, each episode's policy
+        # loss is weighted by reweighter.density(task) (e.g. an SIR's s^alpha / Z), which in
+        # expectation equals sampling from that SIR without narrowing coverage
+        self.reweighter = reweighter
         self.sim_steps = 0                 # extra simulation, charged to the budget
         self.counts = {n: 0 for n in names}
 
@@ -76,6 +80,8 @@ class Curriculum:
         if self.is_power > 0:
             q = sum(m * self.proposers[n].density(prop.params) for n, m in zip(self.names, self.mix))
             w = float(min((1.0 / max(q, 1e-12)) ** self.is_power, self.max_weight))
+        if self.reweighter is not None:
+            w = float(min(w * self.reweighter.density(prop.params), self.max_weight))
         return prop.params, prop.source, w
 
     def report(self, k: int, ep: Episode) -> None:
