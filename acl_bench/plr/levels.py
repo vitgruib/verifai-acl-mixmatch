@@ -66,6 +66,7 @@ class LevelConfig:
     charge_scouting: bool = False  # SFL's scouting rollouts count against the training budget
     picker: str = "uniform"
     picker_uniform: float = 0.5
+    picker_candidates: int = 64    # "model" picker: uniform candidates per steered draw
 
 
 class LevelSampler:

@@ -47,6 +47,66 @@ class BucketLearnability:
         return float(np.mean(p * (1 - p)))
 
 
+class FrontierModelPicker:
+    """Candidate 5 (docs/wrapper_log.md): a pass-rate model over the task space, fit to
+    ordinary training episodes (one per task, pooled; GoalGAN-style, Florensa et al. 2018),
+    proposing tasks where it predicts a pass rate near 0.5. No extra simulation.
+
+    Keeps the latest `window` (task, passed) results; refits a small MLP classifier every
+    `refit_every` episodes (warm-started); a steered draw takes the best of `n_candidates`
+    uniform tasks by predicted p(1 - p). Uniform until `warmup` results are in."""
+
+    def __init__(self, env, n_slots: int, uniform_share: float, rng: np.random.Generator, seed: int,
+                 n_candidates: int = 64, window: int = 4096, refit_every: int = 256, warmup: int = 512):
+        import torch
+        self.env, self.rng, self.uniform_share = env, rng, uniform_share
+        self.bounds = np.array([env.PARAM_BOUNDS[k] for k in env.PARAM_ORDER], dtype=np.float64)
+        self.n_candidates, self.window, self.refit_every, self.warmup = n_candidates, window, refit_every, warmup
+        self.x, self.y, self.seen = [], [], 0
+        torch.manual_seed(seed)
+        d = len(self.bounds)
+        self.net = torch.nn.Sequential(torch.nn.Linear(d, 32), torch.nn.Tanh(), torch.nn.Linear(32, 32),
+                                       torch.nn.Tanh(), torch.nn.Linear(32, 1))
+        self.opt = torch.optim.Adam(self.net.parameters(), lr=1e-2, weight_decay=1e-4)
+        self.fitted = False
+
+    def _z(self, p: np.ndarray):
+        import torch
+        lo, hi = self.bounds[:, 0], self.bounds[:, 1]
+        return torch.as_tensor((p - lo) / (hi - lo) * 2 - 1, dtype=torch.float32)
+
+    def _uniform(self, n: int) -> np.ndarray:
+        lo, hi = self.bounds[:, 0], self.bounds[:, 1]
+        return lo + (hi - lo) * self.rng.uniform(size=(n, len(lo)))
+
+    def _fit(self, steps: int = 100) -> None:
+        import torch
+        xt, yt = self._z(np.array(self.x)), torch.as_tensor(np.array(self.y), dtype=torch.float32)
+        for _ in range(steps):
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(self.net(xt).squeeze(1), yt)
+            self.opt.zero_grad()
+            loss.backward()
+            self.opt.step()
+        self.fitted = True
+
+    def draw(self, k: int) -> np.ndarray:
+        import torch
+        if not self.fitted or self.rng.uniform() < self.uniform_share:
+            return self._uniform(1)[0]
+        cand = self._uniform(self.n_candidates)
+        with torch.no_grad():
+            p = torch.sigmoid(self.net(self._z(cand)).squeeze(1)).numpy()
+        return cand[int(np.argmax(p * (1 - p)))]
+
+    def report(self, k: int, params: np.ndarray, success: bool) -> None:
+        self.x.append(np.array(params, dtype=np.float64))
+        self.y.append(float(success))
+        del self.x[:-self.window], self.y[:-self.window]
+        self.seen += 1
+        if self.seen >= self.warmup and self.seen % self.refit_every == 0:
+            self._fit()
+
+
 class LearnabilityPicker:
     def __init__(self, env, sampler_name: str, n_slots: int, uniform_share: float,
                  rng: np.random.Generator, seed: int):

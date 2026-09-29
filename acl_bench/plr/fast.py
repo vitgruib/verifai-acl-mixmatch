@@ -82,7 +82,11 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     streak = np.zeros(K, dtype=int)           # consecutive upright steps ("balance" goal)
 
     picker = None
-    if cfg.levels.picker != "uniform":
+    if cfg.levels.picker == "model":
+        from acl_bench.plr.picker import FrontierModelPicker
+        picker = FrontierModelPicker(env, K, cfg.levels.picker_uniform, np.random.default_rng([cfg.seed, 7]),
+                                     cfg.seed, n_candidates=cfg.levels.picker_candidates)
+    elif cfg.levels.picker != "uniform":
         from acl_bench.plr.picker import LearnabilityPicker
         picker = LearnabilityPicker(env, cfg.levels.picker, K, cfg.levels.picker_uniform,
                                     np.random.default_rng([cfg.seed, 7]), cfg.seed)
