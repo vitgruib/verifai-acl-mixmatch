@@ -59,3 +59,20 @@ def test_replay_posterior_is_beta_expectation():
     rep.report(0, Episode(x, True, 1.0, 10, "uniform"))
     a, b = 2 * 0.25 + 1, 2 * 0.75 + 0
     assert np.isclose(rep.scores()[0], a * b / ((a + b) * (a + b + 1)))
+
+
+def test_var_model_finds_the_high_variance_region():
+    """Returns are noisy only where the first coordinate is high: the predicted std must be
+    larger there, and track the mean elsewhere."""
+    from acl_bench.curriculum.estimators import VarModel
+    space = _space()
+    m = VarModel(space, seed=0, window=512, refit_every=128, warmup=256, steps=300)
+    rng = np.random.default_rng(3)
+    for _ in range(1024):
+        x = space.uniform(1)[0]
+        u = space.unit(x)[0]
+        ret = 10 * u + (5 * rng.normal() if u > 0.5 else 0.1 * rng.normal())
+        m.update(Episode(x, False, ret, 1))
+    lo = m.score(np.array([[0.4, 0.0], [0.2, 0.5]]))
+    hi = m.score(np.array([[1.6, 0.0], [1.8, -0.5]]))
+    assert hi.min() > 3 * lo.max()

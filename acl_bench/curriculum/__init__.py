@@ -50,6 +50,13 @@ ARMS: dict[str, dict] = {
     "ens_a4": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "ensemble", "bonus": 1.0},
     # sharp sampling by model-based learning progress
     "prog_a4": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "progress"},
+    # ---- batch 4: outcome-variance learnability (VarModel: predicted std of the return
+    # under the current policy, 512-episode window) instead of the pass model's p(1-p)
+    "var_a2": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 2.0, "model": "var"},
+    "var_a4": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "var"},
+    "var_a8": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 8.0, "model": "var"},
+    # unbiased: q ~ predicted std (the variance-optimal proposal), full importance correction
+    "var_is": {"mix": {"uniform": 0.25, "sir": 0.75}, "alpha": 1.0, "model": "var", "is_power": 1.0},
 }
 
 
@@ -61,6 +68,9 @@ def build(name: str, env, bounds: np.ndarray, n_slots: int, seed: int) -> Curric
     if kind == "progress":
         from acl_bench.curriculum.estimators import ProgressModel
         model = ProgressModel(space, seed)
+    elif kind == "var":
+        from acl_bench.curriculum.estimators import VarModel
+        model = VarModel(space, seed, window=spec.get("window", 512))
     elif kind == "ensemble":
         from acl_bench.curriculum.estimators import EnsembleModel
         model = EnsembleModel(space, seed, bonus=spec.get("bonus", 1.0))
