@@ -81,8 +81,16 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     ep_s0 = [None] * K
     streak = np.zeros(K, dtype=int)           # consecutive upright steps ("balance" goal)
 
+    picker = None
+    if cfg.levels.picker != "uniform":
+        from acl_bench.plr.picker import LearnabilityPicker
+        picker = LearnabilityPicker(env, cfg.levels.picker, K, cfg.levels.picker_uniform,
+                                    np.random.default_rng([cfg.seed, 7]), cfg.seed)
+
     def start(k):
         p, i, m = levels.pick()
+        if picker is not None and m == NEW:
+            p = picker.draw(k)
         params[k], slot[k], mode[k] = p, i, m
         if m == REPLAY and cfg.levels.replay_start and i >= 0:
             s = levels.starts[i].copy()
@@ -156,6 +164,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     else:
                         success = bool(term[k]) if env.GOAL == "reach" else not term[k]
                     ret = float(sum(ep_r[k]))
+                    if picker is not None:
+                        picker.report(k, params[k], success)
                     if regret:
                         # planner regret: scored in one batch at the end of the rollout
                         pending.append((params[k].copy(), ep_s0[k], int(slot[k]), int(mode[k]), ret, success))
