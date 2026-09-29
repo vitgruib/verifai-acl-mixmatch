@@ -84,6 +84,10 @@ class LevelSampler:
         self.fifo = 0
         self.clock = 0
         self.min_fill = cfg.min_fill or max(1, n // 10)
+        self.tracker = None
+        if cfg.score == "learn_bucket":            # learnability pooled per parameter bucket
+            from acl_bench.plr.picker import BucketLearnability
+            self.tracker = BucketLearnability(bounds)
 
     # ---------------------------------------------------------------- choosing
     def draw_new(self) -> np.ndarray:
@@ -91,6 +95,8 @@ class LevelSampler:
         return lo + (hi - lo) * self.rng.uniform(size=len(lo))
 
     def replay_probs(self) -> np.ndarray:
+        if self.tracker is not None and self.clock % 50 == 0:     # follow the improving policy
+            self.scores[:self.size] = [self.tracker.learnability(p) for p in self.params[:self.size]]
         s = self.scores[:self.size]
         order = np.argsort(-s, kind="stable")
         ranks = np.empty(self.size)
@@ -133,6 +139,8 @@ class LevelSampler:
             return float(entropy)
         if kind == "vds":              # value disagreement (Zhang et al. 2020): ensemble spread
             return float(disagreement)
+        if kind == "learn_bucket":     # set in report(), from the bucket tracker
+            return 0.0
         if kind in ("pvl_learn", "pvl_resid"):
             adv = gae(np.asarray(rewards), np.asarray(values), next_value, gamma, lam)
             pvl = float(np.mean(np.clip(adv, 0.0, None)))
@@ -194,6 +202,9 @@ class LevelSampler:
         self.clock += 1
         if self.cfg.sfl or self.cfg.oracle:
             return
+        if self.tracker is not None:
+            self.tracker.update(params, success)
+            score = self.tracker.learnability(params)
         if mode == REPLAY:
             a = self.cfg.score_ema
             self.scores[slot] = (1 - a) * self.scores[slot] + a * score

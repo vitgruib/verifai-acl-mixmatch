@@ -102,6 +102,10 @@ register("vlearn_ce", {"picker": "ce"}, base=DR)
 register("vlearn_mab", {"picker": "mab"}, base=DR)
 register("vlearn_ce25", {"picker": "ce", "picker_uniform": 0.25}, base=DR)
 
+# ---- candidate 2: a PLR buffer ranked by learnability from training episodes
+register("lbuf", {"score": "learn_bucket"})                 # pooled per parameter bucket
+register("lbuf_level", {"score": "learn"})                  # each level's own visits
+
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
 register("oracle80", {"replay_prob": 0.8, "oracle": "verifai"}, base=DR)
