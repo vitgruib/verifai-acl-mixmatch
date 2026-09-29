@@ -98,3 +98,19 @@ stage B. **Registered re-screen (batch 1R):** `sir_a4` and `sir_is` get stage B 
 amendment, on seeds 25-72 added to their 24 (their stage-B results above are disclosed
 here; stage C on fresh seeds decides any claim). `fmodel` stays dropped: negative on fresh
 seeds, with a Pendulum guard at -0.105.
+
+## Batch 3, stage A results (2026-09-29)
+
+8 seeds, against the 48-seed DR pools (read before the CartPole pool grew to 96).
+
+| arm | CartPole vd | CartPole r | Acrobot r | verdict |
+|---|---|---|---|---|
+| `sir_is_a1` | -0.017 (0.87) | +0.092 | +0.004 | abandon: primary < 0 |
+| `sir_is_u50` | +0.082 (0.45) | +0.065 | +0.002 | advance to B |
+| `rw_a4` | -0.090 (0.29) | +0.054 | -0.154 | abandon: primary < 0, Acrobot guard |
+| `ens_a4` | +0.131 (0.14) | -0.004 | -0.014 | advance to B |
+| `prog_a4` | +0.140 (0.12) | +0.076 | +0.002 | advance to B |
+
+Loss reweighting (`rw_a4`) harms: weighting without resampling puts heavy weights on few
+episodes and hurts Acrobot. Stage B under Amendment 1 (`results/lib/stageB3.sh`): CartPole
+seeds 9-72, MountainCar and Pendulum seeds 1-8.
