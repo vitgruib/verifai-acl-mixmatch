@@ -61,6 +61,10 @@ class LevelConfig:
     accel: bool = False
     mut_sigma: float = 0.05
     n_value_ens: int = 0           # > 0: train this many extra critics for the vds score
+    # a learnability-steered VerifAI picker for new tasks (acl_bench.plr.picker):
+    # "uniform" (none), "ce" or "mab"; picker_uniform = share of new tasks still drawn uniformly
+    picker: str = "uniform"
+    picker_uniform: float = 0.5
 
 
 class LevelSampler:
