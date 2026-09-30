@@ -88,6 +88,17 @@ A CartPole run takes ~26 s of one core; 6 workers.
 - `DR_po` rows have no `lib_counts` column: keep them in separate CSVs (`batch7po.csv`).
 - Standing pattern: 8-seed stage-A leads (+0.11 to +0.14) shrink to +0.00-0.04 at 72+ seeds.
 
+## Status (2026-09-30, Amendment 3 / batch 8)
+
+- The user relaxed the goal again: training inefficiency (extra simulation, compute) is fine as
+  long as the boost is environment-agnostic or model-agnostic. Protocol Amendment 3: scouting
+  is not charged (equal training steps) but `scouted_steps` is reported.
+- This readmits SFL (about 150M scouting steps per CartPole run, about 4 min wall-clock).
+  Batch 8 (`sfl`, `sfl_p25`, CSV `batch8.csv`, script `results/lib/batch8.sh`) stage A is
+  running; stage B and C (seeds 1101-1200) follow for survivors.
+- `massprobe.py` gained a Metropolis sampler diagnostic (MCMC); a 1-seed smoke test showed
+  little extra mass near the hard suite, which is inconclusive and was not pursued.
+
 ## Next ideas
 
 After batch 6 the mass probe shows `var_low` removes *trivial* tasks (41-64% of uniform's
