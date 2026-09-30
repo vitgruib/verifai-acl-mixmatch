@@ -46,7 +46,7 @@ A CartPole run takes ~26 s of one core; 6 workers.
 
 ## Results so far
 
-21 arms tried. **`var_low` (batch 5) passed stage B and failed stage C on guards**; batch 6 (cool-down variants) is in stage A.
+21 arms tried. **`var_low` (batch 5) passed stage B and failed stage C on guards**; batch 6 (cool-down variants) died at stage A.
 - Batch 1 (`sir_a1`, `sir_a4`, `sir_is`, `sir_is05`, `replay_post`, `mutate_post`,
   `verifai_surr`, reference `fmodel`): five died at stage A; `fmodel`, `sir_a4`, `sir_is`
   died at stage B; re-screen at 72 seeds: `sir_a4` -0.002, `sir_is` +0.039 (p = 0.22).
@@ -69,7 +69,7 @@ A CartPole run takes ~26 s of one core; 6 workers.
   -0.031 (-0.044), Pendulum -0.029 (-0.058); MountainCar +0.055 passes. A trade, not free.
 - Batch 6 (`var_low_cool`: tilt, then SIR share -> 0 between 60% and 80% of the budget;
   `var_low_lin`: SIR share 0.5 -> 0 linearly): does ending on DR pay back the guard cost?
-  Stage A: `results/lib/batch6.sh` -> `batch6.csv`; `decide --stage A --arms var_low_cool var_low_lin`.
+  Stage A: both lose the primary (-0.022, -0.019); the gain is forgotten once training ends on DR.
 - Lessons: 8-seed stage A leads (up to +0.14) never replicated; CartPole has headroom
   (oracle +0.19, scouted SFL +0.09); a general frontier sampler finds *a* frontier, not the
   hard suite's corner. Diagnose mass placement with `massprobe` before training.
