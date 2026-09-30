@@ -3,20 +3,25 @@ description: Restate the ACL27 curriculum-library goal and keep iterating toward
 argument-hint: "[optional focus or extra constraint]"
 ---
 
-# Goal: a free, environment-agnostic curriculum library
+# Goal: an environment-agnostic curriculum library
 
 Build a **generalized curriculum library** that mixes and matches VerifAI, PLR and other
-techniques into a wrapper that **boosts any RL agent's performance for about free**.
+techniques into a wrapper that **boosts any RL agent's performance**.
+Training inefficiency is acceptable (2026-09-30): extra simulation or compute is fine as long
+as the boost is agnostic.
 Keep iterating until a PLR-style method is found that, while staying reasonably simple,
 gives broad, environment-agnostic gains.
 
 ## Hard constraints
 
-- **Environment-agnostic.** Nothing may name an environment: no per-env buckets, thresholds,
-  fix-ups or tuned constants. It may be model-specific (it may read the critic, gradients or
-  parameters).
-- **About free.** No large extra simulation budget; anything spent beyond training episodes
-  (e.g. scouting) must be small and reported as a cost.
+- **Agnostic boost.** The method must be environment-agnostic *or* model-agnostic (at least
+  one). Environment-agnostic: nothing names an environment (no per-env buckets, thresholds,
+  fix-ups or tuned constants); it may then read the critic, gradients or parameters.
+  Model-agnostic: it treats the learner as a black box (only episode outcomes).
+- **Inefficiency is acceptable (Amendment 3, 2026-09-30).** Extra simulation beyond training
+  episodes (e.g. scouting rollouts, evaluations) and extra wall-clock need not be small; it is
+  not charged against the training budget (arms compare at equal training steps) but must be
+  reported as a cost.
 - **Simple.** Prefer a method that can be stated in a paragraph and plugged into
   `acl_bench/curriculum/` as a proposer/estimator.
 

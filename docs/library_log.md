@@ -445,3 +445,24 @@ Snippets keep the random suite intact but lose the hard-suite gain (the frontier
 are too short to learn the failures). Task-aware PPO does not rescue the method: the primary
 gain is smaller than with the blind learner and Pendulum loses 0.21. Option (b) and (c) closed
 as run; the stage-A lead of +0.128 is another 8-seed lead that did not replicate.
+
+## Amendment 3 (2026-09-30): training inefficiency acceptable
+
+The user: "modify the goal so that training inefficiencies are acceptable--as long as there
+is environment agnostic (or model agnostic) boost". Scouting simulation is no longer charged
+(docs/protocol.md, Amendment 3); arms compare at equal training steps and report
+`scouted_steps`. This readmits SFL (docs/plr.md: CartPole VerifAI +0.105, Holm p = 0.002;
+MountainCar random +0.059; Acrobot random -0.053, which is within Amendment 2's 20% of DR's
+0.929 = 0.186). SFL is environment-agnostic and model-agnostic (it only rolls the policy out).
+Those results were seen before the amendment, so a claim needs fresh seeds 1101-1200.
+
+### Batch 8 (registered before running)
+
+Arms (plain PPO, no library curriculum; own CSV `batch8.csv`, since their rows have no
+`lib_counts`):
+- `sfl`: literature SFL (1000 random levels x 8 rollouts every 10 updates, top 100 by
+  p(1-p), replay 0.5), scouting uncharged.
+- `sfl_p25`: the same at replay 0.25, aimed at Acrobot's cost.
+Stage A: CartPole + Acrobot seeds 1-8. Stage B for survivors: CartPole 9-72, MountainCar and
+Pendulum 1-8. Stage C: seeds 1101-1200 (`decide --stage C --seeds 1101-1200`). Rules as
+Amendments 2 and 3. Probe first: 1 seed, 2 checks on CartPole.
