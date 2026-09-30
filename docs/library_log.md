@@ -306,3 +306,23 @@ the declared tests (Holm over arms' primary p; one-sided 95% Welch lower bound p
 data counts as failure). On the stage B data the CartPole random-suite guard (-0.014) has a lower
 bound of -0.057; at 100 vs 100 seeds the SE drops only ~10%, so the -0.03 non-inferiority
 test needs a true guard effect of about +0.01 or better. The protocol is not changed mid-run.
+
+## Batch 5, stage C results (2026-09-30)
+
+Seeds 1001-1100, 100 DR vs 100 `var_low` per env; primary on the CartPole hard suite **test half**.
+
+| test | gain | p / 95% lower bound | pass? |
+|---|---|---|---|
+| primary: CartPole hard suite (test) | **+0.055** | Holm p = 0.044 | yes |
+| guard: CartPole random | -0.044 | -0.085 | no |
+| guard: Acrobot random | -0.031 | -0.044 | no |
+| guard: MountainCar random | +0.055 | +0.022 | yes |
+| guard: Pendulum random | -0.029 | -0.058 | no |
+
+**Verdict: FAIL** (guards). The hard-suite gain is real and replicates on fresh seeds and the
+held-out test half: the first confirmed primary gain from any arm. But it is a trade, not a free
+gain: leaning training toward low-return tasks costs ~0.03-0.04 on the random suite of three of
+the four envs (MountainCar gains, from fewer collapsed runs). The stage B guard point estimates
+(-0.014, -0.007, +0.048) were optimistic; stage B's guard test has no power at 8-72 seeds.
+
+Next: keep the tilt's mass shift toward hard tasks while paying back the average-case cost.
