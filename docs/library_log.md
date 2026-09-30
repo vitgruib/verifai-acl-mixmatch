@@ -226,3 +226,39 @@ Batch 4 is closed. The better offline signal (VarModel: dev tasks at the 67th pe
 pass model's 9th) did not translate into gains; the 8-seed stage A leads shrank to zero again,
 as in batches 1 and 3. Next step is a cheap probe of *why*: does SIR on VarModel actually shift
 training mass toward the dev region, and when (the signal is uninformative before ~250k steps)?
+
+## Mass probe: where do the proposers put training mass? (2026-09-29)
+
+`acl_bench/curriculum/massprobe.py`: train DR with passive estimators; at each check-in draw
+1000 proposals from SIR configs and report `near_dev` (share within 2x the median
+nearest-neighbour distance of a hard-suite dev task, unit coordinates) and `learn` (mean true
+p(1-p) of 200 proposals, greedy agent, 4 random starts). CartPole, seeds 1-3, cost ~3 min.
+
+The dev tasks sit in a corner (unit means: length 0.90, masspole 0.69, masscart 0.84,
+force 0.10, init_range 0.84); uniform puts 0.3% of its mass near them. At 614k steps:
+
+| score (SIR) | near_dev | learn |
+|---|---|---|
+| uniform | 0.003 | 0.063 |
+| VarModel std, alpha 4-16, 64 or 4096 cand. | 0.003-0.008 | 0.133-0.145 |
+| PassModel p(1-p) (window 512) | 0.001-0.002 | 0.077-0.081 |
+| exp(-mean) ("low") | 0.004-0.018 | 0.102-0.113 |
+| std*exp(-mean) ("lowstd") | 0.003-0.015 | 0.148-0.176 |
+
+Findings: (1) VarModel SIR does what it should, doubling true learnability of proposals, but
+the frontier it finds is not the hard suite's corner, which explains why batch 4's better
+offline signal gave no primary gain. (2) Tilting toward low predicted return moves mass
+toward the corner (~5x uniform) and raises learnability further; sharper alpha raises
+learnability but not corner mass. No score reaches more than ~2% corner mass.
+
+## Batch 5 (registered 2026-09-29, before running)
+
+`VarModel(tilt=1)`: score = std * exp(-mean_z), mean_z the predicted standardized return
+(clipped to +-4). Env-agnostic: both are in units of the return's own spread.
+
+| arm | hypothesis |
+|---|---|
+| `var_low` | tilted frontier, SIR alpha 4 over 64 candidates, 50% uniform |
+| `var_low16` | the highest-learnability probe config: alpha 16 over 4096 candidates |
+
+Stage A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch5.csv`).
