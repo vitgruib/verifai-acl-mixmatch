@@ -20,7 +20,8 @@ from acl_bench import envs
 from acl_bench.plr.summarize import per_run
 
 DISCOVERY, NO_HARM = ("cartpole",), ("acrobot", "mountaincar", "pendulum")
-STAGE_ENVS = {"A": ("cartpole", "acrobot"), "B": ("cartpole", "acrobot", "mountaincar", "pendulum")}
+STAGE_ENVS = {"A": ("cartpole", "acrobot"), "B": ("cartpole", "acrobot", "mountaincar", "pendulum"),
+              "C": ("cartpole", "acrobot", "mountaincar", "pendulum")}
 
 
 def load(env: str) -> pd.DataFrame | None:
@@ -39,11 +40,38 @@ def compare(runs: pd.DataFrame, arm: str, metric: str, base: str = "DR") -> tupl
     return d, p, len(a)
 
 
+def lower_bound(runs: pd.DataFrame, arm: str, metric: str, base: str = "DR", level: float = 0.95) -> float:
+    """One-sided `level` lower confidence bound on (arm mean - base mean), Welch."""
+    a, b = runs.loc[runs.config == arm, metric], runs.loc[runs.config == base, metric]
+    if len(a) < 2 or len(b) < 2:
+        return np.nan
+    va, vb = a.var() / len(a), b.var() / len(b)
+    se = np.sqrt(va + vb)
+    if se == 0:
+        return a.mean() - b.mean()
+    df = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
+    return a.mean() - b.mean() - stats.t.ppf(level, df) * se
+
+
+def holm(ps: list[float]) -> list[float]:
+    """Holm step-down adjusted p-values."""
+    order, m, adj, run = np.argsort(ps), len(ps), [np.nan] * len(ps), 0.0
+    for k, i in enumerate(order):
+        run = max(run, min(1.0, (m - k) * ps[i]))
+        adj[i] = run
+    return adj
+
+
 def verdict(stage: str, res: dict) -> str:
     prim_d, prim_p, _ = res[("cartpole", "primary")]
     guards = {e: res[(e, "guard")] for e in STAGE_ENVS[stage] if (e, "guard") in res}
     if np.isnan(prim_d):
         return "no data"
+    if stage == "C":
+        if prim_d <= 0 or not res["holm_p"] < 0.05:
+            return f"FAIL (primary {prim_d:+.3f}, Holm p={res['holm_p']:.3f})"
+        bad = [e for e in STAGE_ENVS[stage] if not res.get((e, "lb"), np.nan) >= -0.03]
+        return f"FAIL (guard bound < -0.03: {bad})" if bad else "CONFIRMED"
     if stage == "A":
         if prim_d < 0:
             return "ABANDON (primary < 0)"
@@ -62,10 +90,11 @@ def verdict(stage: str, res: dict) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stage", choices=("A", "B"), required=True)
+    ap.add_argument("--stage", choices=("A", "B", "C"), required=True)
     ap.add_argument("--arms", nargs="+", required=True)
     ap.add_argument("--confirm", action="store_true", help="read the test halves and seeds 1001+")
     args = ap.parse_args()
+    args.confirm = args.confirm or args.stage == "C"
     hard = "fin_vt" if args.confirm else "fin_vd"
     tables = {}
     for e in STAGE_ENVS[args.stage]:
@@ -84,8 +113,15 @@ def main():
                 row["hard_d"], row["hard_p"] = res[(e, "primary")][:2]
             res[(e, "guard")] = compare(runs, arm, "fin_r")
             row[f"{e[:4]}_r_d"] = res[(e, "guard")][0]
+            if args.stage == "C":
+                res[(e, "lb")] = row[f"{e[:4]}_r_lb"] = lower_bound(runs, arm, "fin_r")
+        rows.append((row, res))
+    if args.stage == "C":
+        for (row, res), q in zip(rows, holm([res[("cartpole", "primary")][1] for row, res in rows])):
+            res["holm_p"] = row["holm_p"] = q
+    for row, res in rows:
         row["verdict"] = verdict(args.stage, res)
-        rows.append(row)
+    rows = [row for row, res in rows]
     base_n = {e: int((t.config == "DR").sum()) for e, t in tables.items()}
     print(f"DR pool seeds: {base_n}")
     pd.set_option("display.width", 250)
