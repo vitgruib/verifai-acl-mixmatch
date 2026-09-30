@@ -23,10 +23,15 @@ gives broad, environment-agnostic gains.
 ## Success criterion
 
 An arm counts as a success only if it survives the full protocol in `docs/protocol.md`:
-- Stage A: 8 seeds on CartPole + Acrobot. Abandon if primary (`fin_vd`) < 0 or any guard < -0.10.
+- Stage A: 8 seeds on CartPole + Acrobot. Abandon if primary (`fin_vd`) < 0 or a guard fails.
 - Stage B: 72 CartPole seeds against the DR pool, plus 8 on MountainCar/Pendulum. Advance only
   at primary > 0 with p < 0.10 and guards passing.
 - Stage C: 100 fresh seeds (1001+), test halves, Holm correction.
+- **Guards are relative (Amendment 2, 2026-09-30):** a random-suite cost is acceptable if it is
+  under 20% of the baseline's own random-suite pass rate on that env (stage C: one-sided 95%
+  lower bound >= -0.20 x DR's rate; stage B: point estimate; stage A: with 0.07 extra slack).
+  Claims made under this rule need fresh seeds (1101-1200), since it was adopted after
+  `var_low`'s stage C on 1001-1100.
 - It must then not hurt the held-out envs (Maze, PointNav).
 
 ## Working style

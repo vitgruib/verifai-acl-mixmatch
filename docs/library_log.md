@@ -373,3 +373,31 @@ is trivial tasks, and those are the random suite's typical tasks: with this PPO 
 competence on them depends on continued practice (batch 6: ending on DR restores it and loses
 the hard gain). The stage C trade (+0.055 hard for about -0.035 random) looks inherent to
 moving mass at a fixed budget, not a flaw of the sampler.
+
+## Amendment 2 (2026-09-30): relative guards; `var_low` passes post hoc
+
+The user accepts a random-suite cost under 20% of the baseline's own pass rate (protocol,
+Amendment 2). Re-judged under it, `var_low`'s stage C on seeds 1001-1100 reads **CONFIRMED**
+(every guard's lower bound, worst -0.085 on CartPole, is inside -0.20 x DR's rate). Because the
+rule came after those numbers, this does not count as a confirmation.
+
+## `var_low` re-confirmation (registered 2026-09-30, before running)
+
+Stage C exactly as before (test halves, Holm, all four envs) under Amendment 2's guards, on
+fresh seeds **1101-1200** for both DR and `var_low` (`results/lib/stageC7.sh`;
+`decide --stage C --arms var_low --seeds 1101-1200`). If it confirms, Maze and PointNav
+held-out runs are registered next.
+
+## Batch 7 (registered 2026-09-30, before running): efficiency, and a second learner
+
+Batch 6 showed the random-suite loss comes from typical (trivial) tasks losing practice. Two
+ways around it that do not simply move less mass:
+| arm | hypothesis |
+|---|---|
+| `var_snip8` | (b) `var_low`, but SIR-proposed episodes stop at 1/8 of the env's horizon and bootstrap from the critic (snippets are not reported to the estimators). Frontier practice costs few steps, so uniform tasks keep most of the step budget (probe, Acrobot 20% budget: 552 episodes vs `var_low`'s 367). |
+| `var_snip4` | (b) the same at 1/4 of the horizon |
+| `var_low_po` vs `DR_po` | (c) a second learner: task-aware PPO (policy and critic see the task parameters). If forgetting is a capacity/aliasing effect of a task-blind policy, the trade shrinks. Judged against `DR_po` (`--base DR_po`). |
+
+Stage A (seeds 1-8, CartPole + Acrobot, Amendment 2 guards), `results/lib/batch7.sh`. Only PPO
+exists in the repo; a value-based learner with replay (DQN) is the next step for (c) if the
+task-aware variant is inconclusive.

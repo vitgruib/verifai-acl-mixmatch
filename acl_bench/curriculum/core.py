@@ -58,7 +58,11 @@ class Curriculum:
 
     def __init__(self, space: TaskSpace, proposers: dict, weights: dict, estimators: list,
                  rng: np.random.Generator, is_power: float = 0.0, max_weight: float = 10.0, reweighter=None,
-                 cooldown: tuple[float, float] | None = None):
+                 cooldown: tuple[float, float] | None = None, cap: float | None = None):
+        # cap: episodes from non-uniform proposers stop at this fraction of the environment's
+        # horizon and are bootstrapped from the critic ("snippets": frontier practice that costs
+        # few steps, so typical tasks keep nearly all of the budget)
+        self.cap = cap
         self.space, self.proposers, self.estimators, self.rng = space, proposers, estimators, rng
         names = list(weights)
         self.names = names

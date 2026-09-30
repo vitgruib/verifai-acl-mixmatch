@@ -64,6 +64,9 @@ ARMS: dict[str, dict] = {
                      "cooldown": (0.6, 0.8)},
     "var_low_lin": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "var", "tilt": 1.0,
                     "cooldown": (0.0, 1.0)},
+    # ---- batch 7 (b): var_low's frontier practice as short snippets (1/8, 1/4 of the horizon)
+    "var_snip8": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "var", "tilt": 1.0, "cap": 0.125},
+    "var_snip4": {"mix": {"uniform": 0.5, "sir": 0.5}, "alpha": 4.0, "model": "var", "tilt": 1.0, "cap": 0.25},
     "var_is": {"mix": {"uniform": 0.25, "sir": 0.75}, "alpha": 1.0, "model": "var", "is_power": 1.0},
 }
 
@@ -108,7 +111,7 @@ def build(name: str, env, bounds: np.ndarray, n_slots: int, seed: int) -> Curric
         raise ValueError("mutate needs a replay buffer in the mix")
     rw = SIR(space, model, rng, alpha=spec["reweight_alpha"]) if "reweight_alpha" in spec else None
     return Curriculum(space, props, spec["mix"], estimators, rng, is_power=spec.get("is_power", 0.0),
-                      reweighter=rw, cooldown=spec.get("cooldown"))
+                      reweighter=rw, cooldown=spec.get("cooldown"), cap=spec.get("cap"))
 
 
 __all__ = ["ARMS", "Curriculum", "Episode", "TaskSpace", "build"]

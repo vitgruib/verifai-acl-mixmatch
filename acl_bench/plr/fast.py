@@ -83,6 +83,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
 
     cur = None
     ep_src, ep_w = [""] * K, np.ones(K, dtype=np.float32)
+    ep_max = np.full(K, env.MAX_EPISODE_STEPS)     # per-episode horizon (library `cap` arms)
     if cfg.levels.lib:
         from acl_bench.curriculum import build
         cur = build(cfg.levels.lib, env, bounds, K, cfg.seed)
@@ -104,6 +105,10 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         if cur is not None:
             p, ep_src[k], ep_w[k] = cur.propose(k)
             i, m = -1, NEW
+            if cur.cap is not None and ep_src[k] != "uniform":
+                ep_max[k] = max(1, int(cur.cap * env.MAX_EPISODE_STEPS))
+            else:
+                ep_max[k] = env.MAX_EPISODE_STEPS
         params[k], slot[k], mode[k] = p, i, m
         if m == REPLAY and cfg.levels.replay_start and i >= 0:
             s = levels.starts[i].copy()
@@ -166,7 +171,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
             if balance:
                 streak[:] = np.where(env.upright(state), streak + 1, 0)
             t_ep += 1
-            trunc = t_ep >= env.MAX_EPISODE_STEPS
+            trunc = t_ep >= ep_max
             rew = rew_env if has_reward else np.where(term, r_term, r_step)
             b_rew[t] = rew
             done = term | trunc
@@ -184,6 +189,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         with torch.no_grad():
                             c = xc(env.observe(state[k:k + 1]).astype(np.float32), params[k:k + 1])
                             nv = float(agent.critic(torch.as_tensor(c)))
+                        if ep_max[k] < env.MAX_EPISODE_STEPS:
+                            b_rew[t, k] += cfg.gamma * nv      # capped snippet: bootstrap, not terminal
                     if balance:
                         success = bool(streak[k] >= env.HOLD_STEPS)
                     else:
@@ -191,7 +198,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                     ret = float(sum(ep_r[k]))
                     if picker is not None:
                         picker.report(k, params[k], success)
-                    if cur is not None:
+                    snip = not term[k] and ep_max[k] < env.MAX_EPISODE_STEPS   # outcome unknown
+                    if cur is not None and not snip:
                         from acl_bench.curriculum import Episode
                         cur.report(k, Episode(params[k].copy(), success, float(sum(ep_r[k])), int(t_ep[k]),
                                               ep_src[k], ep_r[k], ep_v[k], nv))
