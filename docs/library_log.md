@@ -341,3 +341,17 @@ budget (environment-agnostic: a fraction of whatever budget the run has).
 - `var_low_lin`: `var_low`, SIR share falls linearly from 0.5 to 0 over the whole run.
 Stage A as usual (`results/lib/batch6.sh`, seeds 1-8, CartPole + Acrobot, `batch6.csv`). Stage A
 cannot resolve a -0.03 guard, so any survivor's stage B also reports the one-sided guard bounds.
+
+### Batch 6, stage A results
+
+| arm | CartPole vd (p) | CartPole r | Acrobot r | verdict |
+|---|---|---|---|---|
+| `var_low_cool` | -0.022 (0.72) | +0.044 | +0.000 | abandon: primary < 0 |
+| `var_low_lin` | -0.019 (0.86) | -0.170 | -0.001 | abandon: primary < 0 |
+
+Both lose the hard-suite gain (`var_low` had +0.073 at the same 8 seeds). Ending on DR does
+not bank the hard-task skill: whatever the tilt teaches is forgotten once training returns to
+typical tasks. `var_low_cool`'s random-suite point estimate recovered (+0.044), in line with
+the hypothesis, but the primary went with it. At 8 seeds this is weak evidence either way; the
+protocol abandons it. Conclusion: with this learner, the hard-suite/random-suite trade is set
+by the task distribution at the end of training, so a schedule cannot escape it.
