@@ -326,3 +326,18 @@ the four envs (MountainCar gains, from fewer collapsed runs). The stage B guard 
 (-0.014, -0.007, +0.048) were optimistic; stage B's guard test has no power at 8-72 seeds.
 
 Next: keep the tilt's mass shift toward hard tasks while paying back the average-case cost.
+
+## Batch 6 (registered 2026-09-30, before running): tilt, then cool down to DR
+
+Diagnosis from the stage C curves (per check-in gain, 100 vs 100 seeds): `var_low`'s random-suite
+cost is not constant. On Pendulum it reaches -0.21 mid-training and is gone by the last check-in
+(+0.013); on Acrobot it appears after 50% of the budget. The random suite is DR's own objective,
+and typical tasks might be relearned quickly once training returns to them, while the hard-task skill
+learned under the tilt may persist. Hypothesis: training that *ends* on plain DR keeps part of the
+hard-suite gain and pays back the average-case cost. New `Curriculum(cooldown=(a, b))`: the
+non-uniform proposers' share falls linearly to 0 between fractions a and b of the training
+budget (environment-agnostic: a fraction of whatever budget the run has).
+- `var_low_cool`: `var_low`, cool-down (0.6, 0.8), so the last three check-ins train pure DR.
+- `var_low_lin`: `var_low`, SIR share falls linearly from 0.5 to 0 over the whole run.
+Stage A as usual (`results/lib/batch6.sh`, seeds 1-8, CartPole + Acrobot, `batch6.csv`). Stage A
+cannot resolve a -0.03 guard, so any survivor's stage B also reports the one-sided guard bounds.

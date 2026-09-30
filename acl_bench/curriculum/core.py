@@ -57,7 +57,8 @@ class Curriculum:
     "tempered importance correction"). Requires every proposer in the mix to know its density."""
 
     def __init__(self, space: TaskSpace, proposers: dict, weights: dict, estimators: list,
-                 rng: np.random.Generator, is_power: float = 0.0, max_weight: float = 10.0, reweighter=None):
+                 rng: np.random.Generator, is_power: float = 0.0, max_weight: float = 10.0, reweighter=None,
+                 cooldown: tuple[float, float] | None = None):
         self.space, self.proposers, self.estimators, self.rng = space, proposers, estimators, rng
         names = list(weights)
         self.names = names
@@ -70,19 +71,32 @@ class Curriculum:
         self.reweighter = reweighter
         self.sim_steps = 0                 # extra simulation, charged to the budget
         self.counts = {n: 0 for n in names}
+        # (start, end) fractions of the training budget: the non-uniform proposers' share
+        # falls linearly to 0 between them, so training ends on plain domain randomization
+        self.cooldown, self.progress = cooldown, 0.0
 
     def propose(self, k: int) -> tuple[np.ndarray, str, float]:
         """(params, source, importance weight) for environment slot k."""
-        name = self.names[int(self.rng.choice(len(self.names), p=self.mix))]
+        mix = self._mix()
+        name = self.names[int(self.rng.choice(len(self.names), p=mix))]
         prop = self.proposers[name].propose(k)
         self.counts[name] += 1
         w = 1.0
         if self.is_power > 0:
-            q = sum(m * self.proposers[n].density(prop.params) for n, m in zip(self.names, self.mix))
+            q = sum(m * self.proposers[n].density(prop.params) for n, m in zip(self.names, mix))
             w = float(min((1.0 / max(q, 1e-12)) ** self.is_power, self.max_weight))
         if self.reweighter is not None:
             w = float(min(w * self.reweighter.density(prop.params), self.max_weight))
         return prop.params, prop.source, w
+
+    def _mix(self) -> np.ndarray:
+        if self.cooldown is None or "uniform" not in self.names:
+            return self.mix
+        a, b = self.cooldown
+        keep = float(np.clip((b - self.progress) / max(b - a, 1e-9), 0.0, 1.0))
+        mix = np.where(np.array(self.names) == "uniform", 0.0, self.mix * keep)
+        mix[self.names.index("uniform")] = 1.0 - mix.sum()
+        return mix
 
     def report(self, k: int, ep: Episode) -> None:
         for e in self.estimators:

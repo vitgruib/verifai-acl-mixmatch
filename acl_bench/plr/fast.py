@@ -128,6 +128,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     n_iter = cfg.steps // (K * T)
     scouted, next_check = 0, every
     for it in range(n_iter):
+        if cur is not None:
+            cur.progress = it / n_iter      # fraction of the training budget used (for schedules)
         b_obs = np.zeros((T, K, agent.a_in), dtype=np.float32)
         b_cobs = np.zeros((T, K, agent.c_in), dtype=np.float32)
         b_act = np.zeros((T, K), dtype=np.int64)
