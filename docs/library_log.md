@@ -401,3 +401,9 @@ ways around it that do not simply move less mass:
 Stage A (seeds 1-8, CartPole + Acrobot, Amendment 2 guards), `results/lib/batch7.sh`. Only PPO
 exists in the repo; a value-based learner with replay (DQN) is the next step for (c) if the
 task-aware variant is inconclusive.
+
+**Batch 7 rerun (operational).** The first pass lost 32 of 64 jobs to a CSV column clash:
+`DR_po` rows (no curriculum) have no `lib_counts` column, and whichever config wrote first
+locked the file. `DR_po` now writes to `batch7po.csv` (the 8 CartPole `DR_po` runs already
+done moved there unchanged); the failed jobs were rerun with `--resume`. No arm, seed or
+budget changed.
