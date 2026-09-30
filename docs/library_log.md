@@ -274,3 +274,29 @@ Stage A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch5.csv`).
 
 `var_low16` is the largest stage A lead so far; earlier leads of this size (+0.14) did not
 replicate. Stage B: `results/lib/stageB5.sh`.
+
+## Batch 5, stage B results (2026-09-29)
+
+72 CartPole seeds vs the 96-seed DR pool; 8 seeds on MountainCar and Pendulum.
+
+| arm | CartPole vd (p) | CartPole r | Acrobot r | MountainCar r | Pendulum r | verdict |
+|---|---|---|---|---|---|---|
+| `var_low` | **+0.082 (0.009)** | -0.014 | -0.007 | +0.097 | +0.048 | **advance to C** |
+| `var_low16` | +0.082 (0.004) | -0.001 | -0.050 | +0.097 | +0.028 | abandon: Acrobot guard < -0.03 |
+
+The first arm in 22 to pass stage B. The stage A lead held up at 72 seeds (+0.073 at 8 seeds, +0.082
+at 72), unlike every earlier batch. MountainCar is effectively binary: runs freeze at the
+"always push right" plateau (0.671) or collapse; DR collapses in 15% of its 48 runs and
+neither arm did in 8, so the +0.097 is real but coarse.
+
+## Batch 5, stage C (registered 2026-09-29, before running)
+
+Frozen configuration: `var_low` exactly as in stage B (VarModel window 512, refit 128, tilt 1;
+50% uniform / 50% SIR alpha 4 over 64 candidates), commit at launch. DR and `var_low` on
+seeds 1001-1100 on CartPole, Acrobot, MountainCar, Pendulum (DR into `runs.csv`, the arm into
+`batch5.csv`); `results/lib/stageC5.sh`, ~1.5 h on 6 workers. Declared tests (protocol section 3):
+- primary: CartPole hard suite, **test half** (`fin_vt`), gain > 0 at Holm-corrected p < 0.05
+  (one arm, so Holm is the raw Welch p);
+- guards: random suite on all four envs, one-sided 95% lower bound of the gain > -0.03;
+- then held-out Maze and PointNav, the frozen configuration reported as is (registered
+  separately once the dev envs pass).
