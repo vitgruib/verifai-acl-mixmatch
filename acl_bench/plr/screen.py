@@ -128,6 +128,8 @@ register("lp_st", {"score": "lp", "replay_start": True})
 from acl_bench.curriculum import ARMS as _LIB_ARMS  # noqa: E402
 for _name in _LIB_ARMS:
     register(_name, {"lib": _name}, base=DR)
+# batch 7 (c): a second learner, task-aware PPO (policy and critic see the task), against DR_po
+register("var_low_po", {"lib": "var_low"}, base=DR, obs_params=True)
 
 
 def run_seed(env_name: str, config: str, replicate: int) -> int:

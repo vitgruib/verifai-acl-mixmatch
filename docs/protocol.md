@@ -70,6 +70,19 @@ are cheap (a CartPole run takes about 26 s of one core), so:
 Stage C still decides every claim on fresh seeds 1001-1100, so screening more generously
 costs only compute, not false claims.
 
+### Amendment 2 (2026-09-30, after `var_low`'s stage C; the user relaxed the guard)
+
+The user accepts a small random-suite cost: **anything under 20%** of the baseline's own
+random-suite pass rate. Every guard is now relative, per environment, with
+tol = 0.20 x (mean random-suite pass rate of the baseline on that environment):
+- stage A: abandon if a guard gain < -(tol + 0.07) (the old -0.10 had 0.07 of slack for 8 seeds);
+- stage B: abandon if a guard gain < -tol;
+- stage C: the one-sided 95% lower bound of every guard gain must be >= -tol.
+The primary rules are unchanged. This rule was adopted after seeing `var_low`'s stage C on
+seeds 1001-1100 (which passes it post hoc), so a claim needs a **fresh confirmation on seeds
+1101-1200** (`decide --stage C --seeds 1101-1200`). A learner variant (e.g. task-aware PPO)
+is judged against its own DR baseline (`--base DR_po`).
+
 ## 4. Reporting
 
 Per environment: the pass-rate differences with Welch p-values; at confirmation also
