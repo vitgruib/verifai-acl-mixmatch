@@ -239,12 +239,15 @@ class VarModel:
     over the window) over the task space. score = the predicted standard deviation of the
     outcome on the task. For a binary outcome Var = p(1-p), so this generalizes the pass
     model's learnability to returns; tasks where the same policy sometimes does well and
-    sometimes badly are the frontier. A short window keeps it about the current policy."""
+    sometimes badly are the frontier. A short window keeps it about the current policy.
+    tilt > 0 multiplies the score by exp(-tilt * predicted standardized return), leaning the
+    frontier toward tasks the policy currently does worst on (a falsification / CVaR tilt)."""
 
     def __init__(self, space: TaskSpace, seed: int, window: int = 512, refit_every: int = 128,
-                 warmup: int = 256, hidden: int = 32, steps: int = 100, outcome: str = "ret"):
+                 warmup: int = 256, hidden: int = 32, steps: int = 100, outcome: str = "ret",
+                 tilt: float = 0.0):
         self.space, self.window, self.refit_every, self.warmup, self.steps = space, window, refit_every, warmup, steps
-        self.outcome = outcome
+        self.outcome, self.tilt = outcome, tilt
         self.x, self.y, self.seen, self.version = [], [], 0, 0
         g = torch.Generator().manual_seed(seed)
         self.body = _mlp(space.dim, hidden, seed)[:-1]
@@ -293,4 +296,5 @@ class VarModel:
     def score(self, params: np.ndarray) -> np.ndarray:
         if not self.ready:
             return np.ones(len(np.atleast_2d(params)))
-        return np.exp(0.5 * np.clip(self._out(params)[:, 1], -8, 4))
+        out = self._out(params)
+        return np.exp(0.5 * np.clip(out[:, 1], -8, 4) - self.tilt * np.clip(out[:, 0], -4, 4))
