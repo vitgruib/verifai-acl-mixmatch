@@ -46,7 +46,7 @@ A CartPole run takes ~26 s of one core; 6 workers.
 
 ## Results so far
 
-13 arms tried; **none survives stage B**.
+17 arms tried in batches 1-4; **none survives stage B**. Batch 5 is in stage A.
 - Batch 1 (`sir_a1`, `sir_a4`, `sir_is`, `sir_is05`, `replay_post`, `mutate_post`,
   `verifai_surr`, reference `fmodel`): five died at stage A; `fmodel`, `sir_a4`, `sir_is`
   died at stage B; re-screen at 72 seeds: `sir_a4` -0.002, `sir_is` +0.039 (p = 0.22).
@@ -54,25 +54,27 @@ A CartPole run takes ~26 s of one core; 6 workers.
   training; the signal is not predictable from the task (cross-validated R^2 below noise).
 - Batch 3 (`sir_is_a1`, `sir_is_u50`, `rw_a4`, `ens_a4`, `prog_a4`): two died at stage A
   (`rw_a4` hurt Acrobot -0.154); the rest at stage B, all within +/-0.02 at 72 seeds.
+- Batch 4 (`VarModel`: predicted std of the standardized return, `var_a2/a4/a8/is`): better
+  offline signal, but `var_a4` +0.008 and `var_is` -0.000 at 72 seeds. Closed.
+- Mass probe (`acl_bench/curriculum/massprobe.py`): the hard suite sits in a corner holding
+  0.3% of uniform mass. VarModel SIR doubles the true learnability of proposals but does not
+  move mass there; tilting toward low predicted return (`std*exp(-mean_z)`) moves ~5x more
+  mass there and raises learnability further, still only ~1-2% of proposals.
+- Batch 5 (`var_low`, `var_low16`: `VarModel(tilt=1)`), stage A running
+  (`results/lib/batch5.sh`, log `batch5.log`).
 - Lessons: 8-seed stage A leads (up to +0.14) never replicated; CartPole has headroom
-  (oracle +0.19, scouted SFL +0.09) but sampling by the pass model's p(1-p), in every form
-  tried, does not find the hard suite's region. That family is closed.
+  (oracle +0.19, scouted SFL +0.09); a general frontier sampler finds *a* frontier, not the
+  hard suite's corner. Diagnose mass placement with `massprobe` before training.
 - Ops lesson: `pgrep -f name.sh` also matches any waiting shell whose command contains the
   name (caused a deadlock); use `pgrep -f "name[.]sh"`.
 
-## Open decision (asked of the user, unanswered)
+## Next ideas
 
-1. **Diagnose** (recommended, cheap, no training): does the pass model rate the hard suite's
-   tasks as frontier? Compare its p(1-p) on hard-suite tasks vs uniform tasks over training.
-   If it calls them easy or impossible, the fix is the signal, not the sampler.
-2. **Budgeted scouting**: spend a small fixed budget (~5%, vs SFL's ~220x) scouting
-   candidates the pass model shortlists; trades "free" for part of SFL's +0.09.
-3. **Retarget**: aim at no-harm variance reduction of DR's own objective (`sir_is` was the
-   only arm still positive at 72 seeds).
-
-Unregistered ideas still on the shelf: recency-weighted pass model, bandit mixer over
-proposers, maze oracle diagnostic (~12 min/run), a PointNav hard suite, a second RL
-algorithm, the standard-tier benchmarks.
+If batch 5 fails: a proposer that can concentrate mass in small regions (cross-entropy /
+GMM on high-score tasks, or local MCMC around them) under the tilted score; budgeted
+scouting (~5%) of a shortlist; retarget to no-harm variance reduction of DR's objective.
+Also on the shelf: bandit mixer over proposers, a second RL algorithm, the standard-tier
+benchmarks.
 
 ## Standing rules
 
