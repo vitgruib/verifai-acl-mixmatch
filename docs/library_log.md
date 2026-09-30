@@ -425,3 +425,23 @@ positive at stage A, which is what snippets were meant to do (typical tasks keep
 `var_snip4`: CartPole seeds 9-72 (against the DR pool), MountainCar and Pendulum seeds 1-8,
 output `batch7.csv`. `var_low_po`: the same seeds, with `DR_po` run alongside as its baseline
 (`batch7po.csv`), verdict `decide --stage B --base DR_po`. Rules as Amendment 2 (stage B).
+
+### var_low re-confirmation (seeds 1101-1200): FAIL
+
+Primary +0.028 on the test half (p = 0.34). Guards would pass Amendment 2 (lower bounds:
+CartPole -0.042, Acrobot -0.048, MountainCar +0.050, Pendulum -0.077). The primary gain does
+not replicate on fresh seeds. For description only (not a registered test): pooled over
+seeds 1001-1200 the primary is +0.042 (p = 0.038), CartPole random -0.025. The effect, if
+real, is about half the stage B estimate (+0.082) and too small to confirm at 100 seeds.
+
+### Batch 7 stage B: both abandoned
+
+| arm | n | primary d | p | cart | acro | mountaincar | pendulum | verdict |
+|---|---|---|---|---|---|---|---|---|
+| var_snip4 | 72 | +0.006 | 0.84 | +0.005 | +0.006 | +0.033 | -0.108 | ABANDON |
+| var_low_po (vs DR_po) | 72 | +0.037 | 0.17 | -0.004 | -0.008 | +0.036 | -0.214 | ABANDON |
+
+Snippets keep the random suite intact but lose the hard-suite gain (the frontier episodes
+are too short to learn the failures). Task-aware PPO does not rescue the method: the primary
+gain is smaller than with the blind learner and Pendulum loses 0.21. Option (b) and (c) closed
+as run; the stage-A lead of +0.128 is another 8-seed lead that did not replicate.

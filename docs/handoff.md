@@ -76,19 +76,17 @@ A CartPole run takes ~26 s of one core; 6 workers.
 - Ops lesson: `pgrep -f name.sh` also matches any waiting shell whose command contains the
   name (caused a deadlock); use `pgrep -f "name[.]sh"`.
 
-## Status (2026-09-30)
+## Status (2026-09-30, end of batch 7)
 
-- **User decision (2026-09-30):** a small random-suite cost is acceptable, below 20% of DR's own
-  random-suite pass rate per env (Amendment 2 in `docs/protocol.md`; `decide.py` uses it);
-  also try options (b) and (c).
-- `var_low` passes stage C under Amendment 2 only post hoc, so it is being re-confirmed on
-  fresh seeds 1101-1200 (`results/lib/stageC7.sh`, log `stageC7.log`; verdict
-  `decide --stage C --arms var_low --seeds 1101-1200`). If it confirms: Maze/PointNav held-out runs.
-- Batch 7 stage A: `var_snip4` (frontier episodes capped at 1/4 horizon, critic-bootstrapped)
-  +0.128 primary and +0.066 CartPole random; `var_low_po` (task-aware PPO) +0.115 vs `DR_po`;
-  `var_snip8` abandoned. Both in stage B (`results/lib/stageB7.sh`, verdicts
-  `decide --stage B --arms var_snip4` and `--arms var_low_po --base DR_po`).
+- **User decision (2026-09-30):** a random-suite cost below 20% of DR's own pass rate is
+  acceptable (Amendment 2 in `docs/protocol.md`, implemented in `decide.py`).
+- `var_low` re-confirmation on fresh seeds 1101-1200: **FAIL**, primary +0.028 (p = 0.34);
+  guards would pass. Pooled 1001-1200 (descriptive only): +0.042, p = 0.038. The real effect
+  is probably ~+0.04, too small to confirm at 100 seeds.
+- Batch 7 stage B: `var_snip4` (snippets) +0.006 and `var_low_po` (task-aware PPO) +0.037
+  (Pendulum -0.21): both abandoned. Options (b) and (c) closed as run.
 - `DR_po` rows have no `lib_counts` column: keep them in separate CSVs (`batch7po.csv`).
+- Standing pattern: 8-seed stage-A leads (+0.11 to +0.14) shrink to +0.00-0.04 at 72+ seeds.
 
 ## Next ideas
 
