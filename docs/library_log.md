@@ -355,3 +355,21 @@ typical tasks. `var_low_cool`'s random-suite point estimate recovered (+0.044), 
 the hypothesis, but the primary went with it. At 8 seeds this is weak evidence either way; the
 protocol abandons it. Conclusion: with this learner, the hard-suite/random-suite trade is set
 by the task distribution at the end of training, so a schedule cannot escape it.
+
+### Diagnosis after batch 6: where does `var_low`'s budget go? (mass probe, 2 CartPole seeds)
+
+Share of proposals the greedy agent never solves (hopeless) / always solves (trivial), 4 random
+starts each, at check-ins 154k / 307k / 461k / 614k:
+
+| proposer | hopeless | trivial | learn p(1-p) |
+|---|---|---|---|
+| uniform | 0.05 / 0.04 / 0.27 / 0.01 | 0.41 / 0.42 / 0.40 / 0.64 | 0.11 / 0.12 / 0.07 / 0.07 |
+| `var_a4` SIR | 0.08 / 0.05 / 0.33 / 0.06 | 0.41 / 0.24 / 0.26 / 0.27 | 0.11 / 0.15 / 0.08 / 0.14 |
+| `var_low` SIR | 0.13 / 0.06 / 0.35 / 0.04 | 0.27 / 0.25 / 0.21 / 0.19 | 0.13 / 0.15 / 0.09 / 0.16 |
+
+(461k: one seed was mid-collapse, hence the hopeless spike in every row.) The tilt wastes little
+on hopeless tasks (+0-8 points over uniform); a feasibility gate would not help. What it removes
+is trivial tasks, and those are the random suite's typical tasks: with this PPO learner,
+competence on them depends on continued practice (batch 6: ending on DR restores it and loses
+the hard gain). The stage C trade (+0.055 hard for about -0.035 random) looks inherent to
+moving mass at a fixed budget, not a flaw of the sampler.

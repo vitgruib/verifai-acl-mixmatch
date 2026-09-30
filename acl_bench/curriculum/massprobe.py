@@ -7,7 +7,8 @@ plain DR with passive estimators and, at each check-in, draws proposals from sev
 (estimator, candidates, alpha) SIR configurations and reports
   near_dev: share of proposals near a hard-suite dev task (uniform's share is `uni:near_dev`),
   learn:    mean true p(1-p) of the proposals (greedy agent, random starts) - the quantity a
-            frontier sampler is meant to maximize, whatever the environment.
+            frontier sampler is meant to maximize, whatever the environment;
+  hopeless / trivial: share of proposals the agent never / always solves (wasted budget).
 
     python -m acl_bench.curriculum.massprobe --env cartpole --seeds 1-2 --checks 4
 """
@@ -75,7 +76,7 @@ def run(env_name: str, seed: int, n_checks: int, n_prop: int, n_starts: int) -> 
         s0 = np.concatenate([env.sample_starts(p, n_starts, rng) for p in params])
         ok, _ = grade(env, agent, np.repeat(params, n_starts, axis=0), s0)
         p = ok.reshape(len(params), n_starts).mean(1)
-        return float((p * (1 - p)).mean())
+        return float((p * (1 - p)).mean()), float((p == 0).mean()), float((p == 1).mean())
 
     def on_check(step, agent):
         if not rows:
@@ -86,7 +87,7 @@ def run(env_name: str, seed: int, n_checks: int, n_prop: int, n_starts: int) -> 
             props[f"{m}_n{n}_a{int(a)}"] = sir_draw(scores[m], space, n, a, n_prop, rng)
         for name, x in props.items():
             row[f"{name}:near_dev"] = float((tree.query(space.unit(x))[0] < rad).mean())
-            row[f"{name}:learn"] = learn(agent, x[:200])
+            row[f"{name}:learn"], row[f"{name}:hopeless"], row[f"{name}:trivial"] = learn(agent, x[:200])
         rows.append(row)
         return {}
 
