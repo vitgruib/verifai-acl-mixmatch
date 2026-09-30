@@ -211,3 +211,18 @@ Stage A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch4.csv`).
 | `var_is` | +0.045 (0.56) | -0.045 | +0.005 | advance to B |
 
 No monotone trend in alpha; stage B (`results/lib/stageB4.sh`) decides.
+
+## Batch 4, stage B results (2026-09-29)
+
+72 CartPole seeds vs the 96-seed DR pool. The guard runs stopped part-way (battery screen:
+MountainCar 4 of 8 seeds, Pendulum none); they are moot because both arms fail the primary.
+
+| arm | CartPole vd (p) | CartPole r | Acrobot r | MountainCar r (4 seeds) | verdict |
+|---|---|---|---|---|---|
+| `var_a4` | +0.008 (0.79) | +0.003 | -0.030 | +0.097 | abandon |
+| `var_is` | -0.000 (0.99) | -0.032 | +0.005 | -0.115 | abandon |
+
+Batch 4 is closed. The better offline signal (VarModel: dev tasks at the 67th percentile vs the
+pass model's 9th) did not translate into gains; the 8-seed stage A leads shrank to zero again,
+as in batches 1 and 3. Next step is a cheap probe of *why*: does SIR on VarModel actually shift
+training mass toward the dev region, and when (the signal is uninformative before ~250k steps)?
