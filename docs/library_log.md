@@ -300,3 +300,9 @@ seeds 1001-1100 on CartPole, Acrobot, MountainCar, Pendulum (DR into `runs.csv`,
 - guards: random suite on all four envs, one-sided 95% lower bound of the gain > -0.03;
 - then held-out Maze and PointNav, the frozen configuration reported as is (registered
   separately once the dev envs pass).
+
+Note added during stage C, before any confirm results were read: `decide --stage C` now implements
+the declared tests (Holm over arms' primary p; one-sided 95% Welch lower bound per guard; missing
+data counts as failure). On the stage B data the CartPole random-suite guard (-0.014) has a lower
+bound of -0.057; at 100 vs 100 seeds the SE drops only ~10%, so the -0.03 non-inferiority
+test needs a true guard effect of about +0.01 or better. The protocol is not changed mid-run.
