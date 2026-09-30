@@ -466,3 +466,13 @@ Arms (plain PPO, no library curriculum; own CSV `batch8.csv`, since their rows h
 Stage A: CartPole + Acrobot seeds 1-8. Stage B for survivors: CartPole 9-72, MountainCar and
 Pendulum 1-8. Stage C: seeds 1101-1200 (`decide --stage C --seeds 1101-1200`). Rules as
 Amendments 2 and 3. Probe first: 1 seed, 2 checks on CartPole.
+
+### Batch 8 stage A: both advance
+
+| arm | n | primary d | p | cart | acro | verdict |
+|---|---|---|---|---|---|---|
+| sfl | 8 | +0.181 | 0.018 | +0.006 | -0.007 | advance to B |
+| sfl_p25 | 8 | +0.016 | 0.84 | -0.026 | -0.012 | advance to B |
+
+Scouting uncharged (about 150M steps per CartPole run). Stage B as registered: CartPole
+seeds 9-72, MountainCar and Pendulum 1-8, `batch8.csv`, script `results/lib/stageB8.sh`.
