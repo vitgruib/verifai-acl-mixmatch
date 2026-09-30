@@ -83,6 +83,17 @@ seeds 1001-1100 (which passes it post hoc), so a claim needs a **fresh confirmat
 1101-1200** (`decide --stage C --seeds 1101-1200`). A learner variant (e.g. task-aware PPO)
 is judged against its own DR baseline (`--base DR_po`).
 
+### Amendment 3 (2026-09-30; the user accepts training inefficiency)
+
+The user: "training inefficiencies are acceptable--as long as there is environment agnostic
+(or model agnostic) boost". Simulation spent outside the training episodes (scouting rollouts,
+evaluations of candidate tasks) is **no longer charged** against the training budget: arms and
+the baseline compare at an equal number of *training* steps. Every such arm reports its extra
+steps (e.g. `scouted_steps`) as a cost. The method must still be environment-agnostic or
+model-agnostic, and all other rules (stages, Amendment 2 guards, fresh seeds 1101-1200 for
+claims adopted after seeing 1001-1100) stand. Old results for uncharged-scouting arms (SFL,
+docs/plr.md) were seen before this rule, so a claim needs fresh seeds (1101-1200).
+
 ## 4. Reporting
 
 Per environment: the pass-rate differences with Welch p-values; at confirmation also

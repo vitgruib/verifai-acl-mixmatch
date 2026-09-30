@@ -116,6 +116,9 @@ register("fmodel_c16", {"picker": "model", "picker_candidates": 16}, base=DR)
 register("sfl_fair", {"charge_scouting": True}, base=SFL)
 register("sfl_fair_small", {"charge_scouting": True, "sfl_n": 100, "sfl_k": 4, "sfl_every": 20,
                             "sfl_top": 20}, base=SFL)
+# ---- library batch 8 (Amendment 3: scouting uncharged): SFL with a smaller replay share,
+# to take less time from the broad distribution (SFL's Acrobot cost)
+register("sfl_p25", {"replay_prob": 0.25}, base=SFL)
 
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
