@@ -19,6 +19,8 @@ import argparse
 import numpy as np
 
 CONFIGS = [(m, n, a) for m in ("var", "low", "lowstd") for n in (64, 4096) for a in (4.0, 16.0)]
+# (score, alpha, Metropolis steps, step size in unit coordinates) after a 64-candidate SIR draw
+MCMC = [("lowstd", a, 20, sd) for a in (4.0, 16.0) for sd in (0.02, 0.1)]
 
 
 def sir_draw(score, space, n_cand: int, alpha: float, n: int, rng) -> np.ndarray:
@@ -34,6 +36,20 @@ def sir_draw(score, space, n_cand: int, alpha: float, n: int, rng) -> np.ndarray
         idx = (w.cumsum(1) < rng.uniform(size=(m, 1))).sum(1).clip(max=n_cand - 1)
         out[s:s + m] = cand.reshape(m, n_cand, -1)[np.arange(m), idx]
     return out
+
+
+def mcmc_draw(score, space, n: int, alpha: float, steps: int, sd: float, rng) -> np.ndarray:
+    """`n` chains targeting uniform * (score + 0.01)^alpha: a 64-candidate SIR start, then
+    `steps` random-walk Metropolis moves (Gaussian, reflected at the box, so symmetric)."""
+    x = space.unit(sir_draw(score, space, 64, alpha, n, rng))
+    lw = alpha * np.log(score(space.lo + space.span * x) + 0.01)
+    for _ in range(steps):
+        y = np.abs(x + rng.normal(0, sd, x.shape))
+        y = 1 - np.abs(1 - y)
+        ly = alpha * np.log(score(space.lo + space.span * y) + 0.01)
+        acc = np.log(rng.uniform(size=n)) < ly - lw
+        x[acc], lw[acc] = y[acc], ly[acc]
+    return space.lo + space.span * x
 
 
 def run(env_name: str, seed: int, n_checks: int, n_prop: int, n_starts: int) -> list[dict]:
@@ -85,6 +101,8 @@ def run(env_name: str, seed: int, n_checks: int, n_prop: int, n_starts: int) -> 
         props = {"uni": space.uniform(n_prop)}
         for m, n, a in CONFIGS:
             props[f"{m}_n{n}_a{int(a)}"] = sir_draw(scores[m], space, n, a, n_prop, rng)
+        for m, a, st, sd in MCMC:
+            props[f"{m}_mh{st}_a{int(a)}_s{sd}"] = mcmc_draw(scores[m], space, n_prop, a, st, sd, rng)
         for name, x in props.items():
             row[f"{name}:near_dev"] = float((tree.query(space.unit(x))[0] < rad).mean())
             row[f"{name}:learn"], row[f"{name}:hopeless"], row[f"{name}:trivial"] = learn(agent, x[:200])
