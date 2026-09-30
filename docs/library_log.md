@@ -407,3 +407,21 @@ task-aware variant is inconclusive.
 locked the file. `DR_po` now writes to `batch7po.csv` (the 8 CartPole `DR_po` runs already
 done moved there unchanged); the failed jobs were rerun with `--resume`. No arm, seed or
 budget changed.
+
+### Batch 7 stage A verdicts
+
+| arm | n | primary d | p | cart guard d | acro guard d | verdict |
+|---|---|---|---|---|---|---|
+| var_snip8 | 8 | -0.022 | 0.81 | +0.043 | +0.006 | ABANDON (primary < 0) |
+| var_snip4 | 8 | +0.128 | 0.21 | +0.066 | +0.006 | advance to B |
+| var_low_po (vs DR_po) | 8 | +0.115 | 0.16 | -0.015 | -0.008 | advance to B |
+
+`var_snip4` is the first arm whose CartPole random-suite point estimate is clearly
+positive at stage A, which is what snippets were meant to do (typical tasks keep the budget).
+1/8 of the horizon is too short to reach the failures the hard suite tests.
+
+### Batch 7 stage B (registered before running)
+
+`var_snip4`: CartPole seeds 9-72 (against the DR pool), MountainCar and Pendulum seeds 1-8,
+output `batch7.csv`. `var_low_po`: the same seeds, with `DR_po` run alongside as its baseline
+(`batch7po.csv`), verdict `decide --stage B --base DR_po`. Rules as Amendment 2 (stage B).
