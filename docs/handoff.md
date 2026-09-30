@@ -78,6 +78,13 @@ A CartPole run takes ~26 s of one core; 6 workers.
 
 ## Next ideas
 
+After batch 6 the mass probe shows `var_low` removes *trivial* tasks (41-64% of uniform's
+proposals, 19-27% of the tilted SIR's), not hopeless ones, and PPO's random-suite competence
+needs that practice. Moving mass at a fixed budget seems to trade hard for random. Options:
+(a) accept a declared trade (a different success criterion, which is the user's call);
+(b) raise the budget's efficiency instead of moving mass (e.g. shorter tilted episodes);
+(c) a second learner, to see whether the forgetting is PPO-specific.
+
 If batch 5 fails: a proposer that can concentrate mass in small regions (cross-entropy /
 GMM on high-score tasks, or local MCMC around them) under the tilted score; budgeted
 scouting (~5%) of a shortlist; retarget to no-harm variance reduction of DR's objective.
