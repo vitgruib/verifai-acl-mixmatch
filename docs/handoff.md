@@ -46,7 +46,7 @@ A CartPole run takes ~26 s of one core; 6 workers.
 
 ## Results so far
 
-17 arms tried in batches 1-4; **none survives stage B**. Batch 5 is in stage A.
+19 arms tried; **`var_low` (batch 5) is the first to pass stage B** and is in stage C.
 - Batch 1 (`sir_a1`, `sir_a4`, `sir_is`, `sir_is05`, `replay_post`, `mutate_post`,
   `verifai_surr`, reference `fmodel`): five died at stage A; `fmodel`, `sir_a4`, `sir_is`
   died at stage B; re-screen at 72 seeds: `sir_a4` -0.002, `sir_is` +0.039 (p = 0.22).
@@ -60,8 +60,12 @@ A CartPole run takes ~26 s of one core; 6 workers.
   0.3% of uniform mass. VarModel SIR doubles the true learnability of proposals but does not
   move mass there; tilting toward low predicted return (`std*exp(-mean_z)`) moves ~5x more
   mass there and raises learnability further, still only ~1-2% of proposals.
-- Batch 5 (`var_low`, `var_low16`: `VarModel(tilt=1)`), stage A running
-  (`results/lib/batch5.sh`, log `batch5.log`).
+- Batch 5 (`VarModel(tilt=1)`: score = std * exp(-predicted standardized return)):
+  `var_low` +0.082 (p = 0.009) at 72 seeds, guards pass -> stage C (`results/lib/stageC5.sh`,
+  seeds 1001-1100 on all four dev envs, DR and the arm, ~1.5 h; verdict
+  `python -m acl_bench.plr.decide --stage C --arms var_low`). `var_low16` failed the Acrobot
+  guard. Risk: the CartPole random-suite guard bound (-0.057 on stage B data) may fail -0.03.
+  If stage C passes, register the held-out Maze / PointNav runs next.
 - Lessons: 8-seed stage A leads (up to +0.14) never replicated; CartPole has headroom
   (oracle +0.19, scouted SFL +0.09); a general frontier sampler finds *a* frontier, not the
   hard suite's corner. Diagnose mass placement with `massprobe` before training.
