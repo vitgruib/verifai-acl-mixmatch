@@ -476,3 +476,18 @@ Amendments 2 and 3. Probe first: 1 seed, 2 checks on CartPole.
 
 Scouting uncharged (about 150M steps per CartPole run). Stage B as registered: CartPole
 seeds 9-72, MountainCar and Pendulum 1-8, `batch8.csv`, script `results/lib/stageB8.sh`.
+
+### Batch 8 stage B: sfl advances, sfl_p25 abandoned
+
+| arm | n | primary d | p | cart | acro | mountaincar | pendulum | verdict |
+|---|---|---|---|---|---|---|---|---|
+| sfl | 72 | +0.080 | 0.005 | -0.029 | -0.007 | -0.070 | -0.053 | ADVANCE to C |
+| sfl_p25 | 72 | +0.029 | 0.35 | -0.011 | -0.012 | +0.097 | +0.019 | ABANDON |
+
+Tolerances (20% of DR's random rate): CartPole 0.179, Acrobot 0.186, MountainCar 0.115,
+Pendulum 0.136. `sfl`'s MountainCar -0.070 (8 seeds) contrasts with the earlier +0.059 at 100
+seeds (docs/plr.md). Halving the replay share keeps the guards but loses the hard-suite gain.
+
+**Stage C (registered before running):** `sfl` on seeds 1101-1200, all four envs, against the
+DR runs already on those seeds; test halves; `decide --stage C --arms sfl --seeds 1101-1200`
+(Holm over the one arm). Script `results/lib/stageC8.sh`.
