@@ -262,3 +262,15 @@ learnability but not corner mass. No score reaches more than ~2% corner mass.
 | `var_low16` | the highest-learnability probe config: alpha 16 over 4096 candidates |
 
 Stage A rules, seeds 1-8, CartPole and Acrobot (`results/<env>/lib/batch5.csv`).
+
+## Batch 5, stage A results (2026-09-29)
+
+8 seeds vs the DR pools (96 CartPole, 48 Acrobot).
+
+| arm | CartPole vd (p) | CartPole r | Acrobot r | verdict |
+|---|---|---|---|---|
+| `var_low` | +0.073 (0.32) | -0.047 | -0.007 | advance to B |
+| `var_low16` | +0.158 (0.04) | +0.061 | -0.050 | advance to B |
+
+`var_low16` is the largest stage A lead so far; earlier leads of this size (+0.14) did not
+replicate. Stage B: `results/lib/stageB5.sh`.
