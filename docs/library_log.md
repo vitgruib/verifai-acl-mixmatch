@@ -646,3 +646,17 @@ existing seeds 1101-1200: hard test half +0.061 (p 0.032), so the tilt itself co
   hard corner, as claimed. Fresh p (0.55) sits above the 1/3 target: the 8-rollout estimate
   is noisy and the top-100 selection favours levels whose estimate came out low (regression
   to the mean), and the policy also improves between scouts.
+- **Batch 11 results (CartPole, seeds 1201-1248, 48 vs 48 per pair):**
+
+  | pair | DR hard test | gain (`fin_vt`) | p | random gain | bound / tol |
+  |---|---|---|---|---|---|
+  | (a) task-aware PPO, `sfl_tilt_po` vs `DR_po` | 0.270 | **+0.167** | < 0.0001 | -0.018 | -0.047 / -0.182 pass |
+  | (b) lr 1e-3, `sfl_tilt_lr1e3` vs `DR_lr1e3` | 0.276 | +0.049 | 0.13 | +0.002 | -0.035 / -0.185 pass |
+  | (c) half budget, `sfl_tilt` vs `DR` | 0.188 | +0.029 | 0.50 | +0.017 | -0.081 / -0.093 pass |
+
+  **Verdict under the declared reading: not "robust".** The gain is positive in all three
+  settings and no guard fails, but only (a) reaches p < 0.05. With a task-aware learner the
+  gain grows (+0.167). At lr 1e-3 it is about half the default's +0.10 and not significant at
+  48 seeds. At half budget it is small: the scouted curriculum needs training time to pay
+  off (the first scout comes only after iteration 0, and at half budget DR itself is
+  still at 0.19 on the hard suite).
