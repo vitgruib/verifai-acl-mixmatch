@@ -596,3 +596,16 @@ Every guard bound is inside Amendment 2's tolerance (-20% of DR's own pass rate)
 interrupted by a reboot at Pendulum 72/100 and resumed with `--resume` (no seed re-drawn).
 Cost (Amendment 3): SFL scouting, about 150M simulated steps per CartPole run, not charged.
 Next: the held-out no-harm step (Maze, PointNav), registered below.
+
+### Held-out no-harm step for `sfl_tilt` (registered before running)
+
+The protocol leaves the held-out seed count open ("reported as is"). Registered here:
+- `sfl_tilt` frozen as confirmed, DR as baseline, seeds 1101-1148 (48 each), full budgets
+  (Maze 5.12M, PointNav as in `BUDGET`), 10 checks. PointNav first, then Maze.
+- **No-harm test:** final random-suite success, arm minus DR; pass if the one-sided 95% lower
+  bound >= -0.20 x DR's own rate (Amendment 2's rule). Both envs must pass.
+- **Reported, not tested:** Maze's 76 named held-out mazes (`heldout/success`), and scouted
+  steps per run.
+- Probe (1 seed, 5% budget): both envs run; scouting about 32M steps (Maze) and 14M
+  (PointNav) at 5%, so about 17 min and 7 min per full `sfl_tilt` run.
+Script `results/lib/heldout10.sh`; CSVs `results/{maze,pointnav}/lib/heldout10.csv`.
