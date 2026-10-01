@@ -65,3 +65,47 @@ only the task box and episode outcomes, so it is model-agnostic too.
 2. **CURROT-style constraint**: only propose tasks with scouted p above a floor. The
    frontier then moves from solved tasks toward the target, rather than jumping to it.
 3. **PACE on the replay buffer**: rank SFL's frontier by realized update norm instead of p(1-p).
+
+## Lineage: who builds on whom, and where SFL sits (2026-10-01)
+
+- **PLR** (Jiang et al. 2021, [2010.03934](https://arxiv.org/abs/2010.03934)) replays levels
+  ranked by a regret proxy (positive value loss). **Robust PLR** ([2110.02439](https://arxiv.org/abs/2110.02439))
+  trains only on replayed levels, which gives a minimax-regret guarantee.
+- **ACCEL** ([2203.01302](https://arxiv.org/abs/2203.01302)) adds small edits to
+  high-regret levels, so the frontier can walk to places uniform sampling misses.
+- **SFL** (Rutherford et al. 2024, [2408.15099](https://arxiv.org/abs/2408.15099)) shows
+  that the regret proxies mostly track success rate, not regret. It replaces them with
+  scouted learnability p(1-p) and beats PLR and ACCEL on JaxNav and XLand-Minigrid.
+- **Users of SFL:**
+  - LILO ([2502.12272](https://arxiv.org/abs/2502.12272)) carries p(1-p) over to LLM
+    reasoning RL.
+  - Kinetix ([2410.23208](https://arxiv.org/abs/2410.23208)) finds SFL the best UED method
+    on its physics tasks.
+- **Extensions of SFL:**
+  - **NCC** ([2505.20659](https://arxiv.org/abs/2505.20659)) turns the hard top-k into an
+    entropy-regularized soft adversary: replay probability is proportional to (a tempered)
+    score. It also generalizes learnability to sigma x N(mu) and beats SFL on XLand-Minigrid.
+  - **TRACED** ([2506.19997](https://arxiv.org/abs/2506.19997)) adds transition-prediction
+    error and "co-learnability" (does training on A help B) to the score, and uses ACCEL edits.
+- **Related scores:**
+  - ProCuRL / ProCuRL-Target ([2304.12877](https://arxiv.org/abs/2304.12877),
+    [2405.02481](https://arxiv.org/abs/2405.02481)) use the ZPD score p(1-p), which is SFL's
+    score, and the Target variant multiplies it by correlation with target tasks. Here the
+    targets are the exam, so the Target variant would be leakage: excluded.
+  - MAGELLAN ([2502.07709](https://arxiv.org/abs/2502.07709)) predicts learning progress
+    with a learned model, rather than scouting.
+  - Dreaming in Code / DiCode ([2602.08194](https://arxiv.org/abs/2602.08194)) has an LLM
+    write new environments.
+- **Ours:** `sfl_tilt` (p(1-p)(1-p), leaning hard) is my own combination of SFL's score with
+  `var_low`'s exp(-mean) tilt. I have not seen it in a paper. Easy-to-hard LLM work
+  ([2506.06632](https://arxiv.org/abs/2506.06632)) weights harder tasks in a related way.
+
+### Batch 12: build on SFL from its follow-ups
+
+- `sfl_tilt_soft` (from NCC): keep every scouted level with score > 0 and replay it with
+  probability proportional to its score, instead of uniformly from the top 100.
+- `sfl_tilt_carry` (persistent frontier, as in PLR's buffer and TRACED): the last buffer is
+  re-scouted among the 1000 candidates, so frontier levels survive until learned.
+- Not ported: TRACED's transition-error score (it needs a world model), co-learnability
+  (it needs pairwise transfer runs), and NCC's sigma x N(mu) (here it reduces to p(1-p) for
+  binary outcomes).

@@ -660,3 +660,18 @@ existing seeds 1101-1200: hard test half +0.061 (p 0.032), so the tilt itself co
   48 seeds. At half budget it is small: the scouted curriculum needs training time to pay
   off (the first scout comes only after iteration 0, and at half budget DR itself is
   still at 0.19 on the hard suite).
+
+## Batch 12 (registered 2026-10-01, before running): build on SFL from its follow-ups
+
+Lineage and sources: `docs/literature.md`, "Lineage". Two arms, each `sfl_tilt` plus one
+change taken from SFL's follow-ups:
+- `sfl_tilt_soft` (NCC, arXiv 2505.20659): replay every scouted level with score > 0, with
+  probability proportional to p(1-p)(1-p). If no level scores above 0, there is no buffer (pure DR).
+- `sfl_tilt_carry` (persistent frontier): the previous buffer of 100 replaces the last 100 of
+  the 1000 uniform candidates at each scout.
+Stage A as in Amendment 4: seeds 1-8 on CartPole, Acrobot and Pendulum, against the DR pool,
+with `sfl_tilt` from batch 10 shown as reference. Abandon if the primary is < 0 or a guard
+fails. Advancing additionally needs primary >= `sfl_tilt`'s stage-A primary, because the
+question is whether the change beats `sfl_tilt`, not DR. Script `results/lib/batch12.sh`,
+CSV `results/<env>/lib/batch12.csv`. Unit tests in `tests/test_sfl.py` (16 pass with the
+curriculum tests). A stored `sfl_tilt` row reproduces bit-exactly with the new code.

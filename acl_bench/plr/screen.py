@@ -134,6 +134,9 @@ register("sfl_mut_tilt", {"sfl_mut": 0.5, "sfl_tilt": 1.0}, base=SFL)
 register("sfl_tilt_po", {"sfl_tilt": 1.0}, base=SFL, obs_params=True)   # vs DR_po
 register("DR_lr1e3", {}, base=DR, lr=1e-3)
 register("sfl_tilt_lr1e3", {"sfl_tilt": 1.0}, base=SFL, lr=1e-3)
+# ---- library batch 12: build on SFL from its follow-ups (docs/literature.md, lineage)
+register("sfl_tilt_soft", {"sfl_tilt": 1.0, "sfl_soft": True}, base=SFL)    # NCC: score-proportional replay
+register("sfl_tilt_carry", {"sfl_tilt": 1.0, "sfl_carry": True}, base=SFL)  # persistent frontier
 
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)

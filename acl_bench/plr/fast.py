@@ -268,8 +268,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         ens_opt.step()
 
         if cfg.levels.sfl and it % cfg.levels.sfl_every == 0:
-            top, sim = sfl_select(env, agent, levels, cfg.levels, env_rng)
-            levels.set_sfl(top)
+            top, sim, w = sfl_select(env, agent, levels, cfg.levels, env_rng)
+            levels.set_sfl(top, w)
             scouted += sim
 
         done_steps = (it + 1) * K * T
@@ -288,17 +288,20 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
 
 
 @torch.no_grad()
-def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random.Generator) -> np.ndarray:
+def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random.Generator):
     """SFL's buffer: the `sfl_top` of `sfl_n` random levels by p(1 - p), p = the share of
     `sfl_k` stochastic-policy rollouts that pass. With `lc.sfl_score == "pvl"` the same
     scouted levels are ranked by PVL instead (mean over the k rollouts of the episode's
-    mean positive GAE advantage under the current critic): SFL's search with PLR's score."""
+    mean positive GAE advantage under the current critic): SFL's search with PLR's score.
+    Returns (levels, simulated steps, replay weights or None for uniform)."""
     cand = np.stack([levels.draw_new() for _ in range(lc.sfl_n)])
     prev = getattr(levels, "sfl_levels", None)
     if lc.sfl_mut > 0 and prev is not None:     # local search around the last frontier (ACCEL)
         n_mut = int(lc.sfl_mut * lc.sfl_n)
         parents = prev[rng.integers(len(prev), size=n_mut)]
         cand[:n_mut] = [levels._mutate(q) for q in parents]
+    if lc.sfl_carry and prev is not None:       # the last buffer competes again with fresh draws
+        cand[-len(prev):] = prev
     params = np.repeat(cand, lc.sfl_k, axis=0)
     state = np.concatenate([env.sample_starts(p, 1, rng) for p in params])
     alive = np.ones(len(params), dtype=bool)
@@ -341,8 +344,13 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
         score = p * (1 - p) * (1 - p) ** lc.sfl_tilt
     if pvl:
         score = score.reshape(lc.sfl_n, lc.sfl_k).mean(1)
+    if lc.sfl_soft:
+        keep = score > 0
+        if keep.any():
+            return cand[keep], sim, score[keep]
+        return None, sim, None                  # nothing learnable scouted: replay nothing
     top = np.argsort(-score, kind="stable")[:lc.sfl_top]
-    return cand[top], sim
+    return cand[top], sim, None
 
 
 def _scout_pvl(rew, val, alive, term, v_end, gamma: float = 0.99, lam: float = 0.95) -> np.ndarray:

@@ -27,10 +27,10 @@ def _coin_env():
     return env
 
 
-def _select(tilt, n=400, k=400, top=20):
+def _select(tilt, n=400, k=400, top=20, **kw):
     env = _coin_env()
     bounds = np.array([[0.0, 1.0]])
-    lc = LevelConfig(sfl=True, sfl_n=n, sfl_k=k, sfl_top=top, sfl_tilt=tilt)
+    lc = LevelConfig(sfl=True, sfl_n=n, sfl_k=k, sfl_top=top, sfl_tilt=tilt, **kw)
     levels = LevelSampler(lc, bounds, np.random.default_rng(1))
     agent = make_agent(env, bounds, FastConfig())
     step = env.step
@@ -44,7 +44,8 @@ def _select(tilt, n=400, k=400, top=20):
 
 @pytest.mark.parametrize("tilt,peak", [(0.0, 0.5), (1.0, 1 / 3)])
 def test_score_keeps_levels_near_its_peak(tilt, peak):
-    (top, sim), lc = _select(tilt)
+    (top, sim, w), lc = _select(tilt)
+    assert w is None
     assert top.shape == (lc.sfl_top, 1)
     assert np.all((top >= 0) & (top <= 1))
     assert abs(np.median(top) - peak) < 0.06     # tilt=0 is plain SFL; tilt=1 moves to p=1/3
@@ -107,3 +108,44 @@ def test_training_never_reads_the_exam(monkeypatch):
     monkeypatch.setattr(sets, "evaluate_sets", boom)
     monkeypatch.setattr(fast, "oracle_tasks", boom)
     _short("sfl_tilt")
+
+
+def test_soft_keeps_every_learnable_level_weighted_by_score():
+    (lv, sim, w), _ = _select(1.0, n=200, k=50, sfl_soft=True)
+    assert len(lv) == len(w) and np.all(w > 0)
+    x = lv[:, 0]
+    p_hat = np.clip(x, 0, 1)                          # pass rate of level x is x
+    near, far = w[np.abs(p_hat - 1 / 3) < 0.1].mean(), w[p_hat > 0.9].mean()
+    assert near > 3 * far                              # weight follows p(1-p)^2
+
+
+def test_soft_pick_follows_weights():
+    s = LevelSampler(LevelConfig(sfl=True, replay_prob=1.0), np.array([[0.0, 1.0]]),
+                     np.random.default_rng(0))
+    s.set_sfl(np.array([[0.1], [0.2]]), np.array([3.0, 1.0]))
+    reps = np.array([s.pick()[0][0] for _ in range(4000)])
+    assert abs((reps == 0.1).mean() - 0.75) < 0.03
+
+
+def test_carry_rescouts_the_last_buffer():
+    env = _coin_env()
+    bounds = np.array([[0.0, 1.0]])
+    lc = LevelConfig(sfl=True, sfl_n=100, sfl_k=200, sfl_top=10, sfl_tilt=1.0, sfl_carry=True)
+    levels = LevelSampler(lc, bounds, np.random.default_rng(1))
+    levels.set_sfl(np.full((10, 1), 1 / 3))           # a buffer of ideal levels
+    step = env.step
+
+    def step_with_params(s, a, p):
+        env._params = p
+        return step(s, a, p)
+    env.step = step_with_params
+    top, _, _ = sfl_select(env, make_agent(env, bounds, FastConfig()), levels, lc, np.random.default_rng(2))
+    assert np.sum(np.isclose(top[:, 0], 1 / 3)) >= 5   # most of the old frontier survives
+
+
+@pytest.mark.parametrize("arm", ["sfl_tilt_soft", "sfl_tilt_carry"])
+def test_batch12_arms_train(arm):
+    checks, stats, _ = _short(arm)
+    assert stats["scouted_steps"] > 0
+    if arm == "sfl_tilt_carry":
+        assert stats["replays"] > 0     # soft keeps no buffer (pure DR) while every score is 0

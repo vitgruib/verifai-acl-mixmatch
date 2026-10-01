@@ -53,6 +53,9 @@ class LevelConfig:
     sfl_score: str = "learn"       # "learn": p(1 - p); "pvl": rank the scouted levels by PVL
     sfl_mut: float = 0.0           # SFL x ACCEL: this share of candidates are mutated buffer levels
     sfl_tilt: float = 0.0          # SFL x var_low: score p(1 - p) * (1 - p)**tilt (leans hard)
+    sfl_carry: bool = False        # re-scout the last buffer among the candidates (frontier persists)
+    sfl_soft: bool = False         # replay every scouted level with probability proportional to its
+                                   # score, not the top `sfl_top` uniformly (NCC, arXiv 2505.20659)
     # diagnostic only: replays draw uniformly from this exam section's tasks (test leakage;
     # an upper bound on what choosing training tasks can do, not a method)
     oracle: str = ""
@@ -114,15 +117,18 @@ class LevelSampler:
             p = (1 - self.cfg.staleness) * p + self.cfg.staleness * pc
         return p
 
-    def set_sfl(self, params: np.ndarray) -> None:
+    def set_sfl(self, params: np.ndarray, weights: np.ndarray | None = None) -> None:
         self.sfl_levels = params
+        self.sfl_weights = None if weights is None else weights / weights.sum()
 
     def pick(self) -> tuple[np.ndarray, int, int]:
         """(params, slot or -1, NEW/REPLAY)."""
         if self.cfg.sfl or self.cfg.oracle:
             levels = getattr(self, "sfl_levels", None)
             if levels is not None and self.rng.uniform() < self.cfg.replay_prob:
-                return levels[self.rng.integers(len(levels))].copy(), -1, REPLAY
+                w = getattr(self, "sfl_weights", None)
+                i = self.rng.integers(len(levels)) if w is None else self.rng.choice(len(levels), p=w)
+                return levels[i].copy(), -1, REPLAY
             return self.draw_new(), -1, NEW
         if self.size >= self.min_fill and self.rng.uniform() < self.cfg.replay_prob:
             i = int(self.rng.choice(self.size, p=self.replay_probs()))
