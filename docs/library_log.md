@@ -580,3 +580,19 @@ CartPole hard suite, Holm p < 0.05; every guard's one-sided 95% lower bound >= -
 (Amendment 2). Order: CartPole, MountainCar, Pendulum, Acrobot. The run stops early if the
 primary verdict is final. Script `results/lib/stageC10.sh`; verdict
 `decide --stage C --arms sfl_tilt --seeds 1101-1200`.
+
+**Batch 10 stage C result (seeds 1101-1200, 100 vs 100): `sfl_tilt` CONFIRMED.** The first
+arm to survive stage C.
+
+| metric | gain vs DR | one-sided 95% bound | 
+|---|---|---|
+| CartPole hard suite, test half (primary) | +0.102 (Holm p < 0.001) | |
+| CartPole random suite | -0.037 | -0.077 |
+| Acrobot random suite | -0.020 | -0.034 |
+| MountainCar random suite | +0.087 | +0.050 |
+| Pendulum random suite | -0.015 | -0.042 |
+
+Every guard bound is inside Amendment 2's tolerance (-20% of DR's own pass rate). The run was
+interrupted by a reboot at Pendulum 72/100 and resumed with `--resume` (no seed re-drawn).
+Cost (Amendment 3): SFL scouting, about 150M simulated steps per CartPole run, not charged.
+Next: the held-out no-harm step (Maze, PointNav), registered below.
