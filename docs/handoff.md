@@ -94,8 +94,10 @@ A CartPole run takes ~26 s of one core; 6 workers.
   long as the boost is environment-agnostic or model-agnostic. Protocol Amendment 3: scouting
   is not charged (equal training steps) but `scouted_steps` is reported.
 - This readmits SFL (about 150M scouting steps per CartPole run, about 4 min wall-clock).
-  Batch 8 (`sfl`, `sfl_p25`, CSV `batch8.csv`, script `results/lib/batch8.sh`) stage A is
-  running; stage B and C (seeds 1101-1200) follow for survivors.
+  Batch 8 (`sfl`, `sfl_p25`, CSV `batch8.csv`): `sfl_p25` abandoned at stage B; `sfl`
+  passed stage B (+0.080, p 0.005) but FAILED stage C on seeds 1101-1200 (CartPole test
+  +0.042, Holm p 0.149; guards fine). Stage C was stopped once the primary was final
+  (Pendulum 18/100 seeds, Acrobot 0). No arm has yet survived stage C under Amendments 2-3.
 - `massprobe.py` gained a Metropolis sampler diagnostic (MCMC); a 1-seed smoke test showed
   little extra mass near the hard suite, which is inconclusive and was not pursued.
 
