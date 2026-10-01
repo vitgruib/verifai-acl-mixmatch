@@ -130,6 +130,10 @@ register("sfl_n8k", {"sfl_n": 8000, "sfl_k": 4}, base=SFL)
 register("sfl_mut", {"sfl_mut": 0.5}, base=SFL)
 register("sfl_tilt", {"sfl_tilt": 1.0}, base=SFL)
 register("sfl_mut_tilt", {"sfl_mut": 0.5, "sfl_tilt": 1.0}, base=SFL)
+# robustness check of the confirmed arm (batch 11): other learners, each against its own DR
+register("sfl_tilt_po", {"sfl_tilt": 1.0}, base=SFL, obs_params=True)   # vs DR_po
+register("DR_lr1e3", {}, base=DR, lr=1e-3)
+register("sfl_tilt_lr1e3", {"sfl_tilt": 1.0}, base=SFL, lr=1e-3)
 
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
