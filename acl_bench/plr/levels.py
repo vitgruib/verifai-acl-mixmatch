@@ -51,6 +51,8 @@ class LevelConfig:
     sfl_top: int = 100
     sfl_every: int = 10
     sfl_score: str = "learn"       # "learn": p(1 - p); "pvl": rank the scouted levels by PVL
+    sfl_mut: float = 0.0           # SFL x ACCEL: this share of candidates are mutated buffer levels
+    sfl_tilt: float = 0.0          # SFL x var_low: score p(1 - p) * (1 - p)**tilt (leans hard)
     # diagnostic only: replays draw uniformly from this exam section's tasks (test leakage;
     # an upper bound on what choosing training tasks can do, not a method)
     oracle: str = ""
