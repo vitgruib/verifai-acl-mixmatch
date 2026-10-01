@@ -538,3 +538,15 @@ Stage A: CartPole, Acrobot, Pendulum seeds 1-8; stage B: CartPole 9-72, Mountain
 Pendulum 1-8; stage C: 1101-1200. Rules as Amendments 2-4.
 
 **Batch 9 stopped (2026-09-30, the user's call):** stopped during stage A on CartPole (the first env) in favour of batch 10's mix-and-match arms. No verdict was reached; it can be resumed with `results/lib/batch9.sh` (`--resume`).
+
+**Batch 10 stage A** (seeds 1-8; DR pool 96 CartPole, 48 elsewhere):
+
+| arm | hard gain | p | CartPole r | Acrobot r | Pendulum r | verdict |
+|---|---|---|---|---|---|---|
+| sfl_mut | +0.044 | 0.55 | -0.118 | -0.030 | -0.088 | advance |
+| sfl_tilt | +0.021 | 0.80 | -0.144 | -0.033 | +0.052 | advance |
+| sfl_mut_tilt | +0.191 | 0.06 | -0.068 | -0.107 | -0.151 | advance |
+
+Each part alone adds little, while the combination leads (the largest stage A lead so far;
+earlier leads of this size shrank at stage B). All three run stage B (`results/lib/batch10B.sh`);
+`sfl_mut_tilt` goes first.
