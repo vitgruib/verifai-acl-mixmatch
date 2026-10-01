@@ -536,3 +536,5 @@ Probe (1 CartPole seed, 10% budget): runs, scouting about 5.2M steps, mutation p
 CSV `batch10.csv`; script `results/lib/batch10.sh` (starts when batch 9 stage A finishes).
 Stage A: CartPole, Acrobot, Pendulum seeds 1-8; stage B: CartPole 9-72, MountainCar and
 Pendulum 1-8; stage C: 1101-1200. Rules as Amendments 2-4.
+
+**Batch 9 stopped (2026-09-30, the user's call):** stopped during stage A on CartPole (the first env) in favour of batch 10's mix-and-match arms. No verdict was reached; it can be resumed with `results/lib/batch9.sh` (`--resume`).
