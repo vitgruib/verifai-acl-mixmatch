@@ -621,3 +621,19 @@ Script `results/lib/heldout10.sh`; CSVs `results/{maze,pointnav}/lib/heldout10.c
   (fresh seeds 1101-1200, Amendment 2 guards) and no harm on Maze and PointNav. Cost: a
   full Maze `sfl_tilt` run took about 15-20 min of one core; the held-out job took 376 min
   for Maze's 96 runs on 6 workers.
+
+## Batch 11 (registered 2026-10-01, before running): robustness of `sfl_tilt`
+
+Does the confirmed arm's CartPole gain survive changes to the learner and the budget it was
+never tuned on? Fresh seeds **1201-1248**, 48 vs 48 per pair, CartPole, each arm against its
+own DR:
+- (a) task-aware PPO: `sfl_tilt_po` vs `DR_po` (policy and critic see the task parameters);
+- (b) learning rate 1e-3 (default 3e-4): `sfl_tilt_lr1e3` vs `DR_lr1e3`;
+- (c) half the training budget (`--frac 0.5`): `sfl_tilt` vs `DR`.
+Declared reading: per pair, hard test-half gain (`fin_vt`) with Welch p and the random-suite
+gain with its one-sided 95% bound against -20% of that DR's rate. "Robust" if all three
+gains are > 0 at p < 0.05 with guards passing; otherwise report which settings it fails in.
+Descriptive check, not a new claim (no Holm across pairs). Script `results/lib/robust11.sh`,
+CSV `results/cartpole/lib/robust11{po,lr,half}.csv`.
+Also, alongside: unit tests `tests/test_sfl.py` (7 pass); `sfl_tilt` vs plain `sfl` on the
+existing seeds 1101-1200: hard test half +0.061 (p 0.032), so the tilt itself contributes.
