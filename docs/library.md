@@ -68,3 +68,26 @@ visits take over as they accumulate (hierarchical shrinkage). Visits are discoun
 **Reweighting instead of resampling.** `reweight_alpha` keeps the proposed tasks and
 weights each episode's policy loss by s(x)^alpha / Z. In expectation this is the gradient
 SIR would give, but the agent still sees every region of the box as often as under DR.
+
+## The confirmed method: `sfl_tilt` (batch 10, stage C 2026-10-01)
+
+**In one paragraph.** Every 10 PPO updates, draw 1,000 levels from the environment's own
+level distribution and roll each out 8 times with the current stochastic policy (batched,
+outside the training budget). Estimate each level's success rate p from the environment's
+own success test, score it p(1-p)(1-p) (SFL's learnability, tilted toward harder levels by an
+extra factor (1-p), i.e. a Bernoulli variance weighted by the failure rate), and keep the top
+100. Each training episode then plays one of these 100 levels with probability 0.5 and a fresh
+random level otherwise. Nothing names an environment: the only interface is "sample a level"
+and "did the episode succeed", so it is environment-agnostic and model-agnostic (episode
+outcomes only; no critic, gradients or parameters).
+
+- Code: `acl_bench/plr/fast.py` (`_scout`, score line `p * (1 - p) * (1 - p) ** lc.sfl_tilt`),
+  config `LevelConfig(sfl=True, sfl_tilt=1.0, replay_prob=0.5)` in `acl_bench/plr/levels.py`;
+  arm `sfl_tilt` in `acl_bench/plr/screen.py`. It is not yet ported into `acl_bench/curriculum/`.
+- Evidence: stage C on seeds 1101-1200, CartPole hard suite test half +0.102 (Holm p < 0.001),
+  every random-suite guard inside -20% of DR (`docs/library_log.md`, batch 10).
+- Why the tilt helps: plain SFL's p(1-p) is symmetric, so it practises easy-but-unreliable
+  levels as much as hard-but-learnable ones; the extra (1-p) moves mass toward the failure
+  side where the hard suite lives, while the 50% random share keeps random-suite competence
+  (var_low's tilt without that anchor cost guards).
+- Cost: about 115-150M scouted steps per run (CartPole, PointNav), reported, not charged.
