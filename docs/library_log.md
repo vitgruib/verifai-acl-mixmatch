@@ -550,3 +550,20 @@ Pendulum 1-8; stage C: 1101-1200. Rules as Amendments 2-4.
 Each part alone adds little, while the combination leads (the largest stage A lead so far;
 earlier leads of this size shrank at stage B). All three run stage B (`results/lib/batch10B.sh`);
 `sfl_mut_tilt` goes first.
+
+**Batch 10 stage B** (CartPole 9-72 + stage A seeds; MountainCar and Pendulum 1-8):
+
+| arm | n | hard gain | p | CartPole r | Acrobot r | MountainCar r | Pendulum r | verdict |
+|---|---|---|---|---|---|---|---|---|
+| sfl_mut_tilt | 72 | +0.090 | 0.008 | -0.099 | -0.107 | +0.097 | -0.151 | ABANDON (Pendulum guard, tol 0.136) |
+| sfl_mut | 23 | -0.001 | 0.98 | -0.122 | -0.030 | +0.097 | -0.088 | ABANDON early (stopped at 23 seeds) |
+| sfl_tilt | 23 (running) | +0.061 | 0.23 | -0.061 | -0.033 | +0.097 | +0.052 | continues (`batch10B2.sh`) |
+
+- `sfl_mut_tilt` held the largest primary gain of any arm at 72 seeds (+0.090, p 0.008, vs
+  `sfl` +0.080). It failed the guard on the continuous-reward env: Pendulum's point estimate
+  was -0.151 against a limit of -0.136, from 8 seeds. By the registered rule it is abandoned.
+  The pattern matches var_low's: the hard tilt costs random-suite competence.
+- MountainCar's identical +0.097 is real: SFL-family runs all reach the env's 0.671 ceiling.
+- Lead for a next combination (question 3 in docs/literature.md, grounding): keep the
+  mut+tilt frontier but protect the random suite, e.g. a CURROT/DRED-style anchor to the
+  target distribution. It must be registered as a new arm and run from stage A, not rescued.
