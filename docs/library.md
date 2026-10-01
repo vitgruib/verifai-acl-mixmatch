@@ -81,7 +81,7 @@ random level otherwise. Nothing names an environment: the only interface is "sam
 and "did the episode succeed", so it is environment-agnostic and model-agnostic (episode
 outcomes only; no critic, gradients or parameters).
 
-- Code: `acl_bench/plr/fast.py` (`_scout`, score line `p * (1 - p) * (1 - p) ** lc.sfl_tilt`),
+- Code: `acl_bench/plr/fast.py` (`sfl_select`, score line `p * (1 - p) * (1 - p) ** lc.sfl_tilt`),
   config `LevelConfig(sfl=True, sfl_tilt=1.0, replay_prob=0.5)` in `acl_bench/plr/levels.py`;
   arm `sfl_tilt` in `acl_bench/plr/screen.py`. It is not yet ported into `acl_bench/curriculum/`.
 - Evidence: stage C on seeds 1101-1200, CartPole hard suite test half +0.102 (Holm p < 0.001),

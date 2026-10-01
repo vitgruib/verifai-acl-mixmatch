@@ -637,3 +637,12 @@ Descriptive check, not a new claim (no Holm across pairs). Script `results/lib/r
 CSV `results/cartpole/lib/robust11{po,lr,half}.csv`.
 Also, alongside: unit tests `tests/test_sfl.py` (7 pass); `sfl_tilt` vs plain `sfl` on the
 existing seeds 1101-1200: hard test half +0.061 (p 0.032), so the tilt itself contributes.
+- Mechanism check (3 CartPole `sfl_tilt` runs, seeds 1101-1103, full budget; fresh p from
+  16 new stochastic rollouts at every 8th scout). Once learning starts, 95-99% of the kept
+  buffer sits on the frontier (0 < p < 1), against 33-72% of uniform levels. Late in training
+  the buffer's p is about 0.55 while uniform levels pass at 0.84-0.90. The buffer's median
+  distance (unit box) to the nearest hard-suite task falls from 0.59 to 0.36; uniform's stays
+  at about 0.59. So the scout keeps the agent on not-yet-solved levels and drifts toward the
+  hard corner, as claimed. Fresh p (0.55) sits above the 1/3 target: the 8-rollout estimate
+  is noisy and the top-100 selection favours levels whose estimate came out low (regression
+  to the mean), and the policy also improves between scouts.
