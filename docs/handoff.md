@@ -128,6 +128,10 @@ A CartPole run takes ~26 s of one core; 6 workers.
   - Across dev envs the hard-suite boost is CartPole-specific: Acrobot is slightly worse,
     Pendulum is flat, and MountainCar gains only on its random suite.
   - So: a real, mechanism-backed but modest effect, not a universal boost.
+- **Batch 12 (2026-10-01, running):** SFL extensions from its follow-ups (lineage in
+  `docs/literature.md`): `sfl_tilt_soft` (NCC score-proportional replay) and
+  `sfl_tilt_carry` (persistent frontier). Stage A via `results/lib/batch12.sh` (log
+  `results/lib/batch12.log`); verdict with `decide --stage A`, compared against `sfl_tilt`.
 - Lead: `sfl_mut_tilt` plus a grounding anchor (CURROT/DRED style) to fix its Pendulum guard.
 - Next in line if batch 10 fails: a bandit mixer over proposers, a CURROT-style
   success floor, and PACE scoring on the frontier (`docs/literature.md`, end).
