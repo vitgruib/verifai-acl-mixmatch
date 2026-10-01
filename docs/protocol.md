@@ -94,6 +94,14 @@ model-agnostic, and all other rules (stages, Amendment 2 guards, fresh seeds 110
 claims adopted after seeing 1001-1100) stand. Old results for uncharged-scouting arms (SFL,
 docs/plr.md) were seen before this rule, so a claim needs fresh seeds (1101-1200).
 
+### Amendment 4 (2026-09-30; the user: a continuous environment at each stage)
+
+Every action space here is discrete, so "continuous" means continuous reward: Pendulum (the
+dev env scored by its return) and PointNav (held out). Stages B and C already include
+Pendulum; **stage A now runs 8 Pendulum seeds too** (guard as in Amendment 2, with the 0.07
+slack), so no arm advances without a continuous-reward check. `decide --stage A` reads
+CartPole, Acrobot and Pendulum. Earlier stage A verdicts stand (no stage is re-run).
+
 ## 4. Reporting
 
 Per environment: the pass-rate differences with Welch p-values; at confirmation also

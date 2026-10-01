@@ -28,7 +28,7 @@ gives broad, environment-agnostic gains.
 ## Success criterion
 
 An arm counts as a success only if it survives the full protocol in `docs/protocol.md`:
-- Stage A: 8 seeds on CartPole + Acrobot. Abandon if primary (`fin_vd`) < 0 or a guard fails.
+- Stage A: 8 seeds on CartPole + Acrobot + Pendulum (Amendment 4: a continuous-reward env at every stage). Abandon if primary (`fin_vd`) < 0 or a guard fails.
 - Stage B: 72 CartPole seeds against the DR pool, plus 8 on MountainCar/Pendulum. Advance only
   at primary > 0 with p < 0.10 and guards passing.
 - Stage C: 100 fresh seeds (1001+), test halves, Holm correction.

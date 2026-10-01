@@ -119,6 +119,10 @@ register("sfl_fair_small", {"charge_scouting": True, "sfl_n": 100, "sfl_k": 4, "
 # ---- library batch 8 (Amendment 3: scouting uncharged): SFL with a smaller replay share,
 # to take less time from the broad distribution (SFL's Acrobot cost)
 register("sfl_p25", {"replay_prob": 0.25}, base=SFL)
+# ---- library batch 9 (Amendment 3): scouting is free, so search a wider pool -- the hard
+# suite's corner holds ~0.3% of uniform mass, so 1000 candidates see ~3 of its tasks
+register("sfl_n4k", {"sfl_n": 4000, "sfl_k": 4}, base=SFL)
+register("sfl_n8k", {"sfl_n": 8000, "sfl_k": 4}, base=SFL)
 
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)

@@ -20,7 +20,7 @@ from acl_bench import envs
 from acl_bench.plr.summarize import per_run
 
 DISCOVERY, NO_HARM = ("cartpole",), ("acrobot", "mountaincar", "pendulum")
-STAGE_ENVS = {"A": ("cartpole", "acrobot"), "B": ("cartpole", "acrobot", "mountaincar", "pendulum"),
+STAGE_ENVS = {"A": ("cartpole", "acrobot", "pendulum"), "B": ("cartpole", "acrobot", "mountaincar", "pendulum"),
               "C": ("cartpole", "acrobot", "mountaincar", "pendulum")}
 
 
