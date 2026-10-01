@@ -567,3 +567,16 @@ earlier leads of this size shrank at stage B). All three run stage B (`results/l
 - Lead for a next combination (question 3 in docs/literature.md, grounding): keep the
   mut+tilt frontier but protect the random suite, e.g. a CURROT/DRED-style anchor to the
   target distribution. It must be registered as a new arm and run from stage A, not rescued.
+
+**`sfl_tilt` stage B (72 CartPole seeds): ADVANCE.** Hard gain +0.091 (p 0.005); guards
+CartPole -0.029, Acrobot -0.033, MountainCar +0.097, Pendulum +0.052 (all inside the tolerances).
+This is the largest stage B gain with passing guards so far (`sfl` +0.080, `var_low` +0.082).
+
+### Batch 10 stage C (registered before running)
+
+`sfl_tilt` (SFL ranking scouted levels by p(1-p)(1-p), frozen as registered) on fresh seeds
+1101-1200, all four dev envs, against the DR runs already on those seeds. Test half of the
+CartPole hard suite, Holm p < 0.05; every guard's one-sided 95% lower bound >= -tol
+(Amendment 2). Order: CartPole, MountainCar, Pendulum, Acrobot. The run stops early if the
+primary verdict is final. Script `results/lib/stageC10.sh`; verdict
+`decide --stage C --arms sfl_tilt --seeds 1101-1200`.
