@@ -101,7 +101,7 @@ A CartPole run takes ~26 s of one core; 6 workers.
 - `massprobe.py` gained a Metropolis sampler diagnostic (MCMC); a 1-seed smoke test showed
   little extra mass near the hard suite, which is inconclusive and was not pursued.
 
-## Status (2026-09-30, Amendment 4 / batches 9-10)
+## Status (2026-10-01, Amendment 4 / batches 9-10)
 
 - Amendment 4: Pendulum (continuous reward) joins stage A; `decide --stage A` reads it.
 - Batch 9 (`sfl_n4k`, `sfl_n8k`: wider scouting) was stopped in favour of batch 10.
@@ -110,9 +110,13 @@ A CartPole run takes ~26 s of one core; 6 workers.
   ACCEL edits (`sfl_mut`), var_low's hard tilt (`sfl_tilt`) and both (`sfl_mut_tilt`).
 - Batch 10 stage B: `sfl_mut_tilt` +0.090 (p 0.008) but fails the Pendulum guard (-0.151);
   `sfl_mut` abandoned early (about 0); **`sfl_tilt` advances: +0.091 (p 0.005), all guards pass.**
-- **Running: `sfl_tilt` stage C on fresh seeds 1101-1200** (`results/lib/stageC10.sh`, log
-  `results/lib/stageC10.log`, into `results/*/lib/batch10.csv`). Verdict:
-  `decide --stage C --arms sfl_tilt --seeds 1101-1200`. If it passes: Maze/PointNav no-harm.
+- **`sfl_tilt` stage C on fresh seeds 1101-1200: CONFIRMED** (first arm ever): CartPole hard
+  test half +0.102 (Holm p < 0.001); guard bounds CartPole -0.077, Acrobot -0.034,
+  MountainCar +0.050, Pendulum -0.042, all inside -20% of DR.
+- **Running: held-out no-harm step** (`results/lib/heldout10.sh`, log `heldout10.log`,
+  CSVs `results/{pointnav,maze}/lib/heldout10.csv`; 48 seeds DR vs `sfl_tilt`, PointNav then
+  Maze, ~3.5 h; `--resume` if interrupted). Rule registered in `docs/library_log.md`. `decide.py`
+  does not read these envs; compute the final random-suite gain and its lower bound directly.
 - Lead: `sfl_mut_tilt` plus a grounding anchor (CURROT/DRED style) to fix its Pendulum guard.
 - Next in line if batch 10 fails: a bandit mixer over proposers, a CURROT-style
   success floor, and PACE scoring on the frontier (`docs/literature.md`, end).
