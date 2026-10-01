@@ -505,3 +505,19 @@ positive). Scouting cost per run: CartPole about 145M steps, MountainCar 31M, Pe
 The pattern repeats: SFL's +0.105 (docs/plr.md, seeds 1001-1100) and +0.080 at stage B shrink
 to +0.042 on fresh seeds. The gain is probably real but small (about +0.04), below what 100
 seeds confirm at p < 0.05. `results/lib/stageC8.sh` can finish the rest with `--resume`.
+
+## Amendment 4 (2026-09-30)
+
+The user: a continuous environment at each stage. Pendulum (continuous reward) joins stage A
+(8 seeds, guard with 0.07 slack); stages B and C already had it. No earlier stage is re-run.
+
+### Batch 9 (registered before running)
+
+Scouting is uncharged (Amendment 3), so search a wider pool. The hard suite's corner holds
+~0.3% of uniform mass (massprobe), so SFL's 1000 candidates see ~3 of its tasks per scout;
+more candidates make the top-100 frontier reach it more often. Nothing env-specific is added.
+- `sfl_n4k`: SFL with 4000 candidates x 4 rollouts (2x SFL's scouting).
+- `sfl_n8k`: 8000 x 4 (4x).
+CSV `batch9.csv` (plain PPO rows). Stage A (Amendment 4): CartPole, Acrobot, Pendulum seeds
+1-8; stage B: CartPole 9-72, MountainCar and Pendulum 1-8 (Pendulum's stage A seeds count);
+stage C: seeds 1101-1200. Rules as Amendments 2-4. Probe first: 1 seed, 2 checks, CartPole.
