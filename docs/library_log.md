@@ -491,3 +491,17 @@ seeds (docs/plr.md). Halving the replay share keeps the guards but loses the har
 **Stage C (registered before running):** `sfl` on seeds 1101-1200, all four envs, against the
 DR runs already on those seeds; test halves; `decide --stage C --arms sfl --seeds 1101-1200`
 (Holm over the one arm). Script `results/lib/stageC8.sh`.
+
+### Batch 8 stage C: sfl FAILS (fresh seeds 1101-1200)
+
+| arm | n | primary d (test) | Holm p | cart | cart lb | mountaincar | mcar lb | pendulum* | pend lb* | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| sfl | 100 | +0.042 | 0.149 | -0.024 | -0.061 | +0.093 | +0.059 | +0.062 | +0.007 | FAIL |
+
+The primary (CartPole test half) was final once CartPole and MountainCar were done, so the
+run was stopped early (abandon rule): *Pendulum had 18 of 100 seeds, Acrobot none; they could
+only change the guards, not the verdict. Guards that ran pass with room (MountainCar is even
+positive). Scouting cost per run: CartPole about 145M steps, MountainCar 31M, Pendulum 384M.
+The pattern repeats: SFL's +0.105 (docs/plr.md, seeds 1001-1100) and +0.080 at stage B shrink
+to +0.042 on fresh seeds. The gain is probably real but small (about +0.04), below what 100
+seeds confirm at p < 0.05. `results/lib/stageC8.sh` can finish the rest with `--resume`.
