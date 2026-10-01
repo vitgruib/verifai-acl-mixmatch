@@ -609,3 +609,6 @@ The protocol leaves the held-out seed count open ("reported as is"). Registered 
 - Probe (1 seed, 5% budget): both envs run; scouting about 32M steps (Maze) and 14M
   (PointNav) at 5%, so about 17 min and 7 min per full `sfl_tilt` run.
 Script `results/lib/heldout10.sh`; CSVs `results/{maze,pointnav}/lib/heldout10.csv`.
+- Held-out run note: a full PointNav `sfl_tilt` run scouts about 115-120M steps and takes
+  about 20 min of one core (the 5% probe underestimated it by about 3x). The job runs
+  under `nohup` (it outlasts the agent's 2 h background limit) and resumes with `--resume`.
