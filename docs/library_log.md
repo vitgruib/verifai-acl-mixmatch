@@ -521,3 +521,18 @@ more candidates make the top-100 frontier reach it more often. Nothing env-speci
 CSV `batch9.csv` (plain PPO rows). Stage A (Amendment 4): CartPole, Acrobot, Pendulum seeds
 1-8; stage B: CartPole 9-72, MountainCar and Pendulum 1-8 (Pendulum's stage A seeds count);
 stage C: seeds 1101-1200. Rules as Amendments 2-4. Probe first: 1 seed, 2 checks, CartPole.
+
+### Batch 10: mix and match (registered before running)
+
+The user asked whether we were just bashing our heads against the problem, and they were
+right: batches 4-9 tuned the same two ideas. docs/literature.md maps the field. These arms
+combine SFL's scouted frontier (the score that works here) with a part borrowed from each
+of two other methods. All are environment- and model-agnostic.
+- `sfl_mut` (SFL x ACCEL): 50% of each scout's 1000 candidates are Gaussian edits (sigma 0.05
+  x range) of the previous frontier, so the frontier can hill-climb into small regions.
+- `sfl_tilt` (SFL x var_low): rank by p(1-p)(1-p), leaning the frontier toward hard tasks.
+- `sfl_mut_tilt`: both.
+Probe (1 CartPole seed, 10% budget): runs, scouting about 5.2M steps, mutation path exercised.
+CSV `batch10.csv`; script `results/lib/batch10.sh` (starts when batch 9 stage A finishes).
+Stage A: CartPole, Acrobot, Pendulum seeds 1-8; stage B: CartPole 9-72, MountainCar and
+Pendulum 1-8; stage C: 1101-1200. Rules as Amendments 2-4.

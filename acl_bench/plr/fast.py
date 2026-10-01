@@ -294,6 +294,11 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     scouted levels are ranked by PVL instead (mean over the k rollouts of the episode's
     mean positive GAE advantage under the current critic): SFL's search with PLR's score."""
     cand = np.stack([levels.draw_new() for _ in range(lc.sfl_n)])
+    prev = getattr(levels, "sfl_levels", None)
+    if lc.sfl_mut > 0 and prev is not None:     # local search around the last frontier (ACCEL)
+        n_mut = int(lc.sfl_mut * lc.sfl_n)
+        parents = prev[rng.integers(len(prev), size=n_mut)]
+        cand[:n_mut] = [levels._mutate(q) for q in parents]
     params = np.repeat(cand, lc.sfl_k, axis=0)
     state = np.concatenate([env.sample_starts(p, 1, rng) for p in params])
     alive = np.ones(len(params), dtype=bool)
@@ -333,7 +338,7 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
         else:
             success = ended if env.GOAL == "reach" else ~ended
         p = success.reshape(lc.sfl_n, lc.sfl_k).mean(1)
-        score = p * (1 - p)
+        score = p * (1 - p) * (1 - p) ** lc.sfl_tilt
     if pvl:
         score = score.reshape(lc.sfl_n, lc.sfl_k).mean(1)
     top = np.argsort(-score, kind="stable")[:lc.sfl_top]

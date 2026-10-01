@@ -124,6 +124,13 @@ register("sfl_p25", {"replay_prob": 0.25}, base=SFL)
 register("sfl_n4k", {"sfl_n": 4000, "sfl_k": 4}, base=SFL)
 register("sfl_n8k", {"sfl_n": 8000, "sfl_k": 4}, base=SFL)
 
+# ---- library batch 10: mix and match (docs/literature.md). SFL's scouted frontier combined
+# with ACCEL's local edits (reach small regions by hill-climbing from the last frontier) and
+# with var_low's tilt toward hard tasks (here on the scouted pass rate, not a model)
+register("sfl_mut", {"sfl_mut": 0.5}, base=SFL)
+register("sfl_tilt", {"sfl_tilt": 1.0}, base=SFL)
+register("sfl_mut_tilt", {"sfl_mut": 0.5, "sfl_tilt": 1.0}, base=SFL)
+
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
 register("oracle80", {"replay_prob": 0.8, "oracle": "verifai"}, base=DR)
