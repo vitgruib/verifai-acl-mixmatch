@@ -615,3 +615,9 @@ Script `results/lib/heldout10.sh`; CSVs `results/{maze,pointnav}/lib/heldout10.c
 - **PointNav (48 vs 48): pass.** Random suite +0.007 (p 0.001; DR 0.982, near ceiling),
   lower bound +0.004 against a tolerance of -0.196. Maze running (interim, 6 seeds: random
   +0.006, named held-out mazes +0.068; not a verdict).
+- **Maze (48 vs 48): pass.** Random suite -0.022 (p < 0.001; DR 0.659), lower bound -0.033
+  against a tolerance of -0.132. Named held-out mazes +0.036 (p < 0.001; reported, not tested).
+- **HELD-OUT NO-HARM: PASS.** `sfl_tilt` has now survived the full protocol: stages A, B, C
+  (fresh seeds 1101-1200, Amendment 2 guards) and no harm on Maze and PointNav. Cost: a
+  full Maze `sfl_tilt` run took about 15-20 min of one core; the held-out job took 376 min
+  for Maze's 96 runs on 6 workers.
