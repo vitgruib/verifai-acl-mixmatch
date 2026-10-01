@@ -113,10 +113,10 @@ A CartPole run takes ~26 s of one core; 6 workers.
 - **`sfl_tilt` stage C on fresh seeds 1101-1200: CONFIRMED** (first arm ever): CartPole hard
   test half +0.102 (Holm p < 0.001); guard bounds CartPole -0.077, Acrobot -0.034,
   MountainCar +0.050, Pendulum -0.042, all inside -20% of DR.
-- **Running: held-out no-harm step** (`results/lib/heldout10.sh`, log `heldout10.log`,
-  CSVs `results/{pointnav,maze}/lib/heldout10.csv`; 48 seeds DR vs `sfl_tilt`, PointNav then
-  Maze, likely 8-12 h; launched with `nohup`; `--resume` if interrupted; verdict `python -m acl_bench.plr.heldout --arm sfl_tilt`). Rule registered in `docs/library_log.md`. `decide.py`
-  does not read these envs; compute the final random-suite gain and its lower bound directly.
+- **Held-out no-harm: PASS** (`python -m acl_bench.plr.heldout --arm sfl_tilt`, 48 vs 48
+  seeds 1101-1148): PointNav random +0.007 (bound +0.004, tol -0.196); Maze random -0.022
+  (bound -0.033, tol -0.132), named held-out mazes +0.036 (p < 0.001). **`sfl_tilt` meets
+  the success criterion.** Next: port it into `acl_bench/curriculum/` as a proposer.
 - Lead: `sfl_mut_tilt` plus a grounding anchor (CURROT/DRED style) to fix its Pendulum guard.
 - Next in line if batch 10 fails: a bandit mixer over proposers, a CURROT-style
   success floor, and PACE scoring on the frontier (`docs/literature.md`, end).
