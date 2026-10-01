@@ -115,7 +115,7 @@ A CartPole run takes ~26 s of one core; 6 workers.
   MountainCar +0.050, Pendulum -0.042, all inside -20% of DR.
 - **Running: held-out no-harm step** (`results/lib/heldout10.sh`, log `heldout10.log`,
   CSVs `results/{pointnav,maze}/lib/heldout10.csv`; 48 seeds DR vs `sfl_tilt`, PointNav then
-  Maze, ~3.5 h; `--resume` if interrupted). Rule registered in `docs/library_log.md`. `decide.py`
+  Maze, likely 8-12 h; launched with `nohup`; `--resume` if interrupted; verdict `python -m acl_bench.plr.heldout --arm sfl_tilt`). Rule registered in `docs/library_log.md`. `decide.py`
   does not read these envs; compute the final random-suite gain and its lower bound directly.
 - Lead: `sfl_mut_tilt` plus a grounding anchor (CURROT/DRED style) to fix its Pendulum guard.
 - Next in line if batch 10 fails: a bandit mixer over proposers, a CURROT-style
