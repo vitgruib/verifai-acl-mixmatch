@@ -101,6 +101,18 @@ A CartPole run takes ~26 s of one core; 6 workers.
 - `massprobe.py` gained a Metropolis sampler diagnostic (MCMC); a 1-seed smoke test showed
   little extra mass near the hard suite, which is inconclusive and was not pursued.
 
+## Status (2026-09-30, Amendment 4 / batches 9-10)
+
+- Amendment 4: Pendulum (continuous reward) joins stage A; `decide --stage A` reads it.
+- Batch 9 (`sfl_n4k`, `sfl_n8k`: wider scouting) stage A running (`results/lib/batch9.sh`).
+- The user pushed back on incremental knob tweaks. `docs/literature.md` maps the field
+  (proposer / score / grounding) and records what has been tried. Batch 10 combines SFL with
+  ACCEL edits (`sfl_mut`), var_low's hard tilt (`sfl_tilt`) and both (`sfl_mut_tilt`).
+  `results/lib/batch10.sh` waits for batch 9, then runs stage A into `batch10.csv`.
+  Verdict: `decide --stage A --arms sfl_mut sfl_tilt sfl_mut_tilt`.
+- Next in line if batch 10 fails: a bandit mixer over proposers, a CURROT-style
+  success floor, and PACE scoring on the frontier (`docs/literature.md`, end).
+
 ## Next ideas
 
 After batch 6 the mass probe shows `var_low` removes *trivial* tasks (41-64% of uniform's
