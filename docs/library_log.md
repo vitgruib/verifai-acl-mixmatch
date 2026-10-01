@@ -612,3 +612,6 @@ Script `results/lib/heldout10.sh`; CSVs `results/{maze,pointnav}/lib/heldout10.c
 - Held-out run note: a full PointNav `sfl_tilt` run scouts about 115-120M steps and takes
   about 20 min of one core (the 5% probe underestimated it by about 3x). The job runs
   under `nohup` (it outlasts the agent's 2 h background limit) and resumes with `--resume`.
+- **PointNav (48 vs 48): pass.** Random suite +0.007 (p 0.001; DR 0.982, near ceiling),
+  lower bound +0.004 against a tolerance of -0.196. Maze running (interim, 6 seeds: random
+  +0.006, named held-out mazes +0.068; not a verdict).
