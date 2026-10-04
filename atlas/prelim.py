@@ -12,7 +12,8 @@ per algo, against random search at the same budget:
 The headline score is `modes` relative to random, since the atlas wants many kinds of failure, not
 the same failure resampled. A sampler that raises cex_rate without raising modes is exploiting
 one failure. Also tests H2 (the PLR buffer under-covers failures) by comparing buf_score_pct and
-dr_knn for counterexamples vs non-counterexamples.
+dr_knn for counterexamples vs non-counterexamples, and prints which level features separate
+failing from passing levels (random sampler only, so the comparison is not shaped by a sampler).
 
   python -m atlas.prelim runs/maze_prelim --csv results/atlas/prelim_maze.csv
 """
@@ -64,6 +65,7 @@ def main():
 
     stats = defaultdict(list)          # (algo, space, sampler) -> [run_stats]
     h2 = defaultdict(lambda: ([], []))  # (algo, key) -> (cex values, ok values)
+    desc = defaultdict(lambda: ([], []))  # (space, key) -> (cex values, ok values), random only
     for d in sorted(glob.glob(os.path.join(a.root, "*", "s*", "*_r*"))):
         if not os.path.exists(os.path.join(d, "summary.json")):
             continue
@@ -72,6 +74,11 @@ def main():
         stats[key].append(run_stats(rows, header["budget"]))
         for k, v, is_cex in h2_rows(rows):
             h2[(header["algo"], k)][0 if is_cex else 1].append(v)
+        if header["falsifier"]["name"] == "random":
+            for r in rows:
+                if r["valid"]:
+                    for k, v in r["desc"].items():
+                        desc[(header["space"]["name"], k)][0 if r["cex"] else 1].append(v)
 
     metrics = ("cex_rate", "modes", "first_i", "invalid", "min_rho")
     table = []
@@ -110,6 +117,11 @@ def main():
     for (algo, k), (c, o) in sorted(h2.items()):
         if c and o:
             print(f"  {algo:>6} {k:>14}: cex {np.mean(c):8.3f} (n={len(c)})  ok {np.mean(o):8.3f} (n={len(o)})")
+
+    print("\nlevel features, cex vs ok (random sampler, pooled over algos):")
+    for (sp, k), (c, o) in sorted(desc.items()):
+        if c and o and np.mean(o):
+            print(f"  {sp:>4} {k:>14}: cex {np.mean(c):6.1f}  ok {np.mean(o):6.1f}  x{np.mean(c) / np.mean(o):.2f}")
 
     if a.csv:
         os.makedirs(os.path.dirname(a.csv) or ".", exist_ok=True)

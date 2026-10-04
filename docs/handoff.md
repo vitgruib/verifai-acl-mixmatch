@@ -25,6 +25,12 @@ running in `queue16.sh`; the verdict is still to be recorded.
 
 **Stage C 14 done 2026-10-04:** `sfl_tilt_carry` (Z +0.058, Holm p 0.51) and `sfl_spread_carry` (Z +0.115, Holm p 0.37) both FAIL on seeds 1101-1200; old library goal closed with no confirmed arm (details in `library_log.md`). The machine is now free for batch 19.
 
+**Maze falsifier prelim done 2026-10-04:** 240 runs on the batch-19 checkpoints (`docs/ued_atlas.md`
+section 4b). Samplers chosen: `random ce mab` (ce best on failure modes and rate in both spaces).
+Failing levels force detours (walls 1.6-1.7x, path 1.8x, Manhattan only 1.3x). PLR/Robust PLR failures
+are out of distribution (far from DR levels and the buffer); H2 (seen but scored low) not supported at
+10% budget. Next: run the cluster parts in `cluster/README.md`, then repeat on full-budget checkpoints.
+
 **Status 2026-10-04:** decided (user): train with the papers' own code, scoped budgets. Env x method
 matrix and measured reproduction feasibility are in `docs/ued_atlas.md` section 2b (JaxUED maze runs
 locally; DCD Bipedal needs py3.11 patches and the cluster for real budgets; DCD CarRacing is
