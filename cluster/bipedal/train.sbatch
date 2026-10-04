@@ -2,7 +2,7 @@
 # Part 3: DCD BipedalWalker (ACCEL paper). Paper budget is 2B env steps per run
 # (~63 h at the 8.8k steps/s we measured), so expect requeues; DCD resumes from its
 # checkpoint because make_cmd sets --checkpoint=True.
-#   bash cluster/dcd_cmds.sh bipedal 0 bipedal_dr bipedal_minimax bipedal_paired bipedal_robust_plr bipedal_accel > runs/bip_cmds.txt
+#   bash cluster/dcd_cmds.sh bipedal 0 bipedal_dr bipedal_minimax bipedal_paired bipedal_plr bipedal_robust_plr bipedal_accel > runs/bip_cmds.txt
 #   sbatch --array=0-$(( $(wc -l < runs/bip_cmds.txt) - 1 )) cluster/bipedal/train.sbatch runs/bip_cmds.txt
 #SBATCH --job-name=atlas-bip
 #SBATCH --gres=gpu:1

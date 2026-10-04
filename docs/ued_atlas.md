@@ -79,6 +79,25 @@ re-implementations. Our suite (section 2) stays as the falsification/diagnosis h
 
 CarRacing is a single-paper benchmark (Robust PLR). The maze is the only environment shared by all.
 
+**Uniform matrix (decided 2026-10-04, user):** every method is tested on every environment
+(Maze, CarRacing, BipedalWalker, JaxNav), not only where its paper ran it. Paper code still
+trains each cell where any paper's code can. Where none can, the cell is a port.
+
+| | Maze | CarRacing | BipedalWalker | JaxNav |
+|---|---|---|---|---|
+| DR | JaxUED | DCD | DCD | SFL repo |
+| minimax | JaxUED + `--minimax` patch | DCD, derived config | DCD | **port** |
+| PAIRED | JaxUED | DCD | DCD | **port** |
+| PLR | JaxUED | DCD | DCD, derived config | SFL repo |
+| Robust PLR | JaxUED | DCD | DCD | SFL repo |
+| ACCEL | JaxUED | **port** | DCD | SFL repo |
+| SFL | SFL repo (`minigrid_sfl`, JaxUED Maze env) | **port** | **port** | SFL repo |
+
+Covered cells: 23 of 28. Their cluster jobs are in `cluster/README.md`. The five port cells
+would need our own code: SFL's sampler inside DCD's PyTorch runner (CarRacing, Bipedal); a
+Bezier-track mutator for ACCEL; an adversary generator for JaxNav. They are deferred until
+decided. Maze caveat: SFL's own maze settings (60 walls, its PPO) differ from JaxUED's (25 walls).
+
 **Small-scale reproduction feasibility (measured on this Mac):**
 - *JaxUED maze:* runs unmodified (one wandb gif patch), headless. About 1.9 s/update contended:
   10% budget (3000 updates) is 1-2 h/run. Feasible locally (batch 19).

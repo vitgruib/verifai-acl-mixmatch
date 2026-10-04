@@ -25,16 +25,31 @@ from maze_plr import ActorCritic, evaluate_rnn  # noqa: E402
 
 class Policy:
     def __init__(self, ckpt_dir: str, step: int = -1):
-        """ckpt_dir = checkpoints/<run_name>/<seed> as written by JaxUED's training scripts."""
+        """ckpt_dir = checkpoints/<run_name>/<seed> as written by JaxUED's training scripts, or
+        an SFL-repo run dir holding model.safetensors (minigrid_sfl / minigrid_plr: the same
+        ActorCritic and Maze env, final params only, no buffer; SFL minigrid defaults
+        AGENT_VIEW_SIZE 5, N_WALLS 60, overridden by an optional config.json beside it)."""
         self.ckpt_dir = os.path.abspath(ckpt_dir)
-        with open(os.path.join(self.ckpt_dir, "config.json")) as f:
-            self.config = json.load(f)
-        mgr = ocp.CheckpointManager(os.path.join(self.ckpt_dir, "models"),
-                                    item_handlers=ocp.StandardCheckpointHandler())
-        self.step = mgr.latest_step() if step == -1 else step
-        ckpt = mgr.restore(self.step)
-        self.params = ckpt["params"]
-        self.buffer = _buffer(ckpt.get("sampler"))
+        sft = os.path.join(self.ckpt_dir, "model.safetensors")
+        if os.path.exists(sft):
+            from flax.traverse_util import unflatten_dict
+            from safetensors.flax import load_file
+            self.config = {"agent_view_size": 5, "n_walls": 60, "format": "sfl_safetensors"}
+            meta = os.path.join(self.ckpt_dir, "config.json")   # written by cluster/sfl/train.sbatch
+            if os.path.exists(meta):
+                with open(meta) as f:
+                    self.config.update(json.load(f))
+            self.step, self.buffer = -1, None
+            self.params = unflatten_dict(load_file(sft), sep=",")   # sfl train_utils.load_params
+        else:
+            with open(os.path.join(self.ckpt_dir, "config.json")) as f:
+                self.config = json.load(f)
+            mgr = ocp.CheckpointManager(os.path.join(self.ckpt_dir, "models"),
+                                        item_handlers=ocp.StandardCheckpointHandler())
+            self.step = mgr.latest_step() if step == -1 else step
+            ckpt = mgr.restore(self.step)
+            self.params = ckpt["params"]
+            self.buffer = _buffer(ckpt.get("sampler"))
         self.env = Maze(max_height=13, max_width=13, agent_view_size=self.config["agent_view_size"],
                         normalize_obs=True)
         self.env_params = self.env.default_params

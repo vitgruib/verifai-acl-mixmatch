@@ -1,0 +1,19 @@
+--- a/examples/maze_paired.py
++++ b/examples/maze_paired.py
+@@ -557,6 +557,8 @@
+ 
+         # Adversary Rewards
+         est_regret = ant_max_returns - pro_mean_returns
++        if config["minimax"]:  # atlas patch: minimax adversary (Wang et al. / Dennis et al. 2020 baseline)
++            est_regret = -pro_mean_returns
+         obs, actions, dones, log_probs, values, targets, advantages = adv_rollout
+         rewards = jnp.zeros_like(values).at[-1].set(est_regret)
+         advantages, targets = compute_gae(config["adv_gamma"], config["adv_gae_lambda"], last_value, values, rewards, dones)
+@@ -691,6 +693,7 @@
+     # === CHECKPOINTING ===
+     parser.add_argument("--checkpoint_save_interval", type=int, default=2)
+     parser.add_argument("--max_number_of_checkpoints", type=int, default=60)
++    parser.add_argument("--minimax", action=argparse.BooleanOptionalAction, default=False)  # atlas patch
+     # === EVAL ===
+     parser.add_argument("--eval_freq", type=int, default=250)
+     parser.add_argument("--eval_num_attempts", type=int, default=10)

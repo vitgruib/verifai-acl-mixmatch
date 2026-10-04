@@ -12,7 +12,10 @@ get jaxued "$JAXUED_REPO" "$JAXUED_COMMIT"
 get dcd "$DCD_REPO" "$DCD_COMMIT"
 get sfl "$SFL_REPO" "$SFL_COMMIT"
 get baselines "$BASELINES_REPO" "$BASELINES_COMMIT"
-# Only local change to jaxued: wandb.Video(format="gif") so logging works headless.
-git -C "$TP/jaxued" apply --check "$ATLAS/cluster/patches/jaxued_gif.patch" 2>/dev/null \
-  && git -C "$TP/jaxued" apply "$ATLAS/cluster/patches/jaxued_gif.patch" && echo "jaxued: gif patch applied" \
-  || echo "jaxued: gif patch already applied"
+# Local changes to jaxued: wandb.Video(format="gif") so logging works headless, and a --minimax
+# flag on maze_paired.py (adversary reward = -student return; JaxUED ships no minimax baseline).
+for p in gif minimax; do
+  git -C "$TP/jaxued" apply --check "$ATLAS/cluster/patches/jaxued_$p.patch" 2>/dev/null \
+    && git -C "$TP/jaxued" apply "$ATLAS/cluster/patches/jaxued_$p.patch" && echo "jaxued: $p patch applied" \
+    || echo "jaxued: $p patch already applied"
+done

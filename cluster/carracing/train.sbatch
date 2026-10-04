@@ -1,7 +1,7 @@
 #!/bin/bash
 # Part 2: DCD CarRacing (Robust PLR paper), 5.5M steps per run, rendered under Xvfb.
 # NEVER run on a desktop: it opens pyglet windows without xvfb-run.
-#   bash cluster/dcd_cmds.sh car_racing 1 cr_dr cr_plr cr_robust_plr cr_paired cr_repaired > runs/cr_cmds.txt
+#   bash cluster/dcd_cmds.sh car_racing 1 cr_dr cr_minimax cr_plr cr_robust_plr cr_paired cr_repaired > runs/cr_cmds.txt
 #   sbatch --array=0-$(( $(wc -l < runs/cr_cmds.txt) - 1 )) cluster/carracing/train.sbatch runs/cr_cmds.txt
 #SBATCH --job-name=atlas-cr
 #SBATCH --gres=gpu:1
