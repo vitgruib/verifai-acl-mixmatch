@@ -1,8 +1,11 @@
 #!/bin/bash
 # PART 3 - BipedalWalker: train with DCD BipedalWalker (ACCEL paper). Paper budget is 2B env steps per run
-# (~63 h at the 8.8k steps/s we measured), so expect requeues; DCD resumes from its
-# checkpoint because make_cmd sets --checkpoint=True.
-#   bash cluster/dcd_cmds.sh bipedal 0 bipedal_dr bipedal_minimax bipedal_plr bipedal_robust_plr bipedal_accel > runs/bip_cmds.txt
+# (~63 h at the 8.8k steps/s we measured; bipedal_sfl ~83 h with its level scoring). SLURM does NOT
+# requeue on timeout: resubmit a timed-out task with the same array index and DCD resumes from its
+# checkpoint (make_cmd sets --checkpoint=True; saved every 100 updates):
+#   sbatch --array=<idx> cluster/3_bipedal/train.sbatch runs/bip_cmds.txt
+# or give the whole part more time up front: SBATCH_TIMELIMIT=120:00:00 bash cluster/submit.sh 3
+#   bash cluster/dcd_cmds.sh bipedal 0 bipedal_dr bipedal_minimax bipedal_plr bipedal_robust_plr bipedal_accel bipedal_sfl > runs/bip_cmds.txt
 #   sbatch --array=0-$(( $(wc -l < runs/bip_cmds.txt) - 1 )) cluster/3_bipedal/train.sbatch runs/bip_cmds.txt
 #SBATCH --job-name=atlas-3-bipedal
 #SBATCH --gres=gpu:1

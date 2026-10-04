@@ -19,3 +19,18 @@ for p in gif minimax; do
     && git -C "$TP/jaxued" apply "$ATLAS/cluster/patches/jaxued_$p.patch" && echo "jaxued: $p patch applied" \
     || echo "jaxued: $p patch already applied"
 done
+# ACL27 changes to the other two repos (see cluster/README.md, "Patches"):
+#   dcd_acl27.patch: numpy>=1.24 / torch>=2.6 compat, CarRacing level replay + ACCEL mutation fixes,
+#     the SFL teacher (--ued_algo=sfl), and an optional window-free renderer (ACL27_SOFT_RENDER=1).
+#   sfl_minimax.patch: sfl/train/jaxnav_minimax.py (minimax adversary for single-agent JaxNav).
+apply_once() {  # repo patch
+  if git -C "$TP/$1" apply --check "$ATLAS/cluster/patches/$2" 2>/dev/null; then
+    git -C "$TP/$1" apply "$ATLAS/cluster/patches/$2" && echo "$1: $2 applied"
+  elif git -C "$TP/$1" apply --reverse --check "$ATLAS/cluster/patches/$2" 2>/dev/null; then
+    echo "$1: $2 already applied"
+  else
+    echo "ERROR: $2 neither applies nor is already applied to $TP/$1"; exit 1
+  fi
+}
+apply_once dcd dcd_acl27.patch
+apply_once sfl sfl_minimax.patch

@@ -1,0 +1,431 @@
+diff --git a/sfl/train/config/jaxnav-minimax.yaml b/sfl/train/config/jaxnav-minimax.yaml
+new file mode 100644
+index 0000000..3268e77
+--- /dev/null
++++ b/sfl/train/config/jaxnav-minimax.yaml
+@@ -0,0 +1,31 @@
++# ACL27 addition: minimax adversary for single-agent JaxNav (sfl/train/jaxnav_minimax.py)
++defaults:
++  - env: jaxnav
++  - learning: ippo-jaxnav
++  - _self_
++
++"SEED": 2
++"GROUP_NAME": "jaxnav-minimax"
++"ENTITY": ""
++"PROJECT": "multi_robot_ued"
++"WANDB_MODE" : "disabled"
++"SAVE_PATH": "checkpoints/multi_robot_ued"
++"EVAL_SAMPLED_SET_PATH": "sfl/data/test_sets/sampled_tc_100e_1a.pkl"
++
++env:
++  num_agents: 1
++
++# adversary (level editor); PPO defaults are JaxUED maze_paired.py's
++"ADV":
++  "NUM_WALLS": 48        # 2 + 48 = 50 edit steps; 48 = DR's max fill floor(0.6 * 81)
++  "Z_DIM": 16
++  "HIDDEN": 256
++  "LR": 1.0e-4
++  "GAMMA": 0.995
++  "GAE_LAMBDA": 0.98
++  "UPDATE_EPOCHS": 5
++  "NUM_MINIBATCHES": 1
++  "CLIP_EPS": 0.2
++  "ENT_COEF": 1.0e-3
++  "VF_COEF": 0.5
++  "MAX_GRAD_NORM": 0.5
+diff --git a/sfl/train/jaxnav_minimax.py b/sfl/train/jaxnav_minimax.py
+new file mode 100644
+index 0000000..3aef0b9
+--- /dev/null
++++ b/sfl/train/jaxnav_minimax.py
+@@ -0,0 +1,388 @@
++"""ACL27 addition: minimax adversary (Dennis et al., 2020's minimax baseline) for single-agent JaxNav.
++
++The protagonist, its PPO update, the evaluation runners and checkpointing are those of
++jaxnav_plr.py (imported from it). The level generator is a learned adversary in the style of
++PAIRED's (JaxUED maze_paired.py defaults) that edits the 9x9 interior of the 11x11 grid:
++  step 0: goal cell; step 1: robot start cell (the goal cell is masked out);
++  steps 2 .. 1+ADV.NUM_WALLS: one wall cell each (a wall on the goal or start cell is a no-op).
++Positions are cell centres, theta ~ U(-pi, pi), as in the env's own grid sampler. With
++NUM_WALLS=48 the adversary takes 50 steps (JaxUED's adv_num_steps) and can reach the DR
++generator's maximum fill (floor(0.6 * 81) = 48 cells).
++The adversary is a feed-forward actor-critic (its observation, the partial level + one-hot
++timestep + a per-level random z, is Markov), trained with PPO on the terminal reward
++    -(mean protagonist episodic return on the level)        (minimax: maximise the agent's loss)
++i.e. the jaxued_minimax.patch objective with no antagonist. Unsolvable levels are allowed:
++that is the known minimax failure mode the atlas measures (logged as adv/frac_solvable,
++4-connected grid reachability from start cell to goal cell).
++"""
++import functools
++import os
++import pickle
++import time
++from typing import NamedTuple
++
++import chex
++import distrax
++import flax.linen as nn
++import hydra
++import jax
++import jax.numpy as jnp
++import numpy as np
++import optax
++import wandb
++from flax.linen.initializers import constant, orthogonal
++from flax.training.train_state import TrainState
++from omegaconf import OmegaConf
++
++from jaxmarl.environments.jaxnav import JaxNav
++from sfl.runners import EvalSingletonsRunner, EvalSampledRunner
++from sfl.train.jaxnav_plr import (
++    ActorCriticRNN, ScannedRNN, batchify, sample_trajectories_rnn, update_actor_critic_rnn,
++)
++from sfl.train.train_utils import save_params
++
++
++# ---------------------------------------------------------------- adversary (level editor)
++class AdvActorCritic(nn.Module):
++    n_cells: int
++    hidden: int = 256
++
++    @nn.compact
++    def __call__(self, x, avail):
++        a = nn.relu(nn.Dense(self.hidden, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0))(x))
++        a = nn.relu(nn.Dense(self.hidden, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0))(a))
++        logits = nn.Dense(self.n_cells, kernel_init=orthogonal(0.01), bias_init=constant(0.0))(a)
++        logits = jnp.where(avail, logits, -1e9)
++        c = nn.relu(nn.Dense(self.hidden, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0))(x))
++        c = nn.relu(nn.Dense(self.hidden, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0))(c))
++        v = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(c)
++        return distrax.Categorical(logits=logits), v.squeeze(-1)
++
++
++class EditorState(NamedTuple):
++    walls: jnp.ndarray  # [w*h] interior wall flags (int32)
++    goal: jnp.ndarray   # [] interior cell index, -1 = unset
++    start: jnp.ndarray  # [] interior cell index, -1 = unset
++    t: jnp.ndarray      # [] edit step
++
++
++class AdvTransition(NamedTuple):
++    obs: jnp.ndarray
++    avail: jnp.ndarray
++    action: jnp.ndarray
++    log_prob: jnp.ndarray
++    value: jnp.ndarray
++    reward: jnp.ndarray
++    done: jnp.ndarray
++
++
++class LevelEditor:
++    """Pure-function editor over the interior (iw x ih) of JaxNav's bordered grid map."""
++
++    def __init__(self, env: JaxNav, num_walls: int, z_dim: int):
++        m = env.map_obj
++        self.env, self.iw, self.ih = env, m.width - 2, m.height - 2
++        self.n = self.iw * self.ih
++        self.num_walls, self.z_dim = num_walls, z_dim
++        self.T = 2 + num_walls
++        self.base = m._gen_base_grid()
++        self.obs_dim = 3 * self.n + self.T + z_dim
++
++    def init(self):
++        return EditorState(jnp.zeros(self.n, jnp.int32), jnp.int32(-1), jnp.int32(-1), jnp.int32(0))
++
++    def avail(self, s: EditorState):
++        cells = jnp.arange(self.n)
++        return jnp.where(s.t == 1, cells != s.goal, True)
++
++    def obs(self, s: EditorState, z):
++        cells = jnp.arange(self.n)
++        return jnp.concatenate([
++            s.walls.astype(jnp.float32),
++            (cells == s.goal).astype(jnp.float32),
++            (cells == s.start).astype(jnp.float32),
++            jax.nn.one_hot(s.t, self.T),
++            z,
++        ])
++
++    def step(self, s: EditorState, c):
++        goal = jnp.where(s.t == 0, c, s.goal)
++        start = jnp.where(s.t == 1, c, s.start)
++        place = (s.t >= 2) & (c != goal) & (c != start)
++        walls = s.walls.at[c].set(jnp.where(place, 1, s.walls[c]))
++        return EditorState(walls, goal, start, s.t + 1)
++
++    def map_data(self, s: EditorState):
++        return self.base.at[1:-1, 1:-1].set(s.walls.reshape(self.ih, self.iw).astype(self.base.dtype))
++
++    def cell_xy(self, c):
++        """Interior cell index -> world (x, y) of the cell centre (map_data[y, x])."""
++        return jnp.stack([c % self.iw, c // self.iw]).astype(jnp.float32) + 1.5
++
++    def to_level(self, rng, s: EditorState):
++        """Final editor state -> JaxNav State (fields/dtypes from the env's own sampler)."""
++        rng_tpl, rng_theta = jax.random.split(rng)
++        tpl = self.env.sample_test_case(rng_tpl)
++        return tpl.replace(
++            pos=self.cell_xy(s.start)[None].astype(tpl.pos.dtype),
++            theta=jax.random.uniform(rng_theta, tpl.theta.shape, tpl.theta.dtype, -jnp.pi, jnp.pi),
++            goal=self.cell_xy(s.goal)[None].astype(tpl.goal.dtype),
++            map_data=self.map_data(s).astype(tpl.map_data.dtype),
++        )
++
++    def solvable(self, s: EditorState):
++        """4-connected reachability from the start cell to the goal cell through free cells."""
++        free = (self.map_data(s) == 0)
++        sx, sy = s.start % self.iw + 1, s.start // self.iw + 1
++        gx, gy = s.goal % self.iw + 1, s.goal // self.iw + 1
++        reach = jnp.zeros_like(free).at[sy, sx].set(True)
++
++        def body(_, r):
++            p = jnp.pad(r, 1)
++            nb = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]
++            return r | (nb & free)
++
++        reach = jax.lax.fori_loop(0, self.n, body, reach)
++        return reach[gy, gx]
++
++
++def mean_episode_returns(global_done, reward):
++    """Per actor: mean return over episodes completed in the rollout ([T, A] inputs).
++    An actor with no completed episode gets its partial return."""
++    def f(carry, x):
++        acc, tot, cnt = carry
++        r, d = x
++        acc = acc + r
++        tot = tot + jnp.where(d, acc, 0.0)
++        cnt = cnt + d
++        return (jnp.where(d, 0.0, acc), tot, cnt), None
++
++    z = jnp.zeros(reward.shape[1])
++    (acc, tot, cnt), _ = jax.lax.scan(f, (z, z, z), (reward, global_done.astype(jnp.float32)))
++    return jnp.where(cnt > 0, tot / jnp.maximum(cnt, 1.0), acc), cnt
++
++
++@hydra.main(version_base=None, config_path="config", config_name="jaxnav-minimax")
++def main(config):
++    config = OmegaConf.to_container(config)
++    t_config = config["learning"]
++    a_config = config["ADV"]
++
++    run = wandb.init(group=config["GROUP_NAME"], entity=config["ENTITY"], project=config["PROJECT"],
++                     tags=["RNN", "ts: " + config["env"]["test_set"], "minimax"],
++                     config=config, mode=config["WANDB_MODE"])
++
++    rng = jax.random.PRNGKey(config["SEED"])
++    env = JaxNav(num_agents=config["env"]["num_agents"], **config["env"]["env_params"])
++    assert env.num_agents == 1, "jaxnav_minimax edits single-agent levels (env.num_agents=1)"
++
++    t_config["NUM_ACTORS"] = env.num_agents * t_config["NUM_ENVS"]
++    t_config["NUM_UPDATES"] = t_config["TOTAL_TIMESTEPS"] // t_config["NUM_STEPS"] // t_config["NUM_ENVS"]
++    t_config["MINIBATCH_SIZE"] = t_config["NUM_ACTORS"] * t_config["NUM_STEPS"] // t_config["NUM_MINIBATCHES"]
++    t_config["CLIP_EPS"] = (t_config["CLIP_EPS"] / env.num_agents if t_config["SCALE_CLIP_EPS"]
++                            else t_config["CLIP_EPS"])
++    n_evals = int(t_config["NUM_UPDATES"] // t_config["EVAL_FREQ"])
++    assert n_evals >= t_config["NUM_CHECKPOINTS"] >= 1, "need NUM_UPDATES >= EVAL_FREQ * NUM_CHECKPOINTS"
++    N = t_config["NUM_ENVS"]
++
++    def linear_schedule(count):
++        count = count // (t_config["NUM_MINIBATCHES"] * t_config["UPDATE_EPOCHS"])
++        return t_config["LR"] * (1.0 - count / t_config["NUM_UPDATES"])
++
++    # ---- protagonist (as jaxnav_plr.py)
++    network = ActorCriticRNN(env.agent_action_space().shape[0], fc_dim_size=t_config["FC_DIM_SIZE"],
++                             hidden_size=t_config["HIDDEN_SIZE"], use_layer_norm=t_config["USE_LAYER_NORM"])
++    rng, _rng = jax.random.split(rng)
++    init_x = (jnp.zeros((1, N, env.lidar_num_beams + 5)), jnp.zeros((1, N)))
++    network_params = network.init(_rng, ScannedRNN.initialize_carry(N, t_config["HIDDEN_SIZE"]), init_x)
++    lr = linear_schedule if t_config["ANNEAL_LR"] else t_config["LR"]
++    pro_state = TrainState.create(
++        apply_fn=network.apply, params=network_params,
++        tx=optax.chain(optax.clip_by_global_norm(t_config["MAX_GRAD_NORM"]), optax.adam(lr, eps=1e-5)))
++
++    # ---- adversary
++    editor = LevelEditor(env, a_config["NUM_WALLS"], a_config["Z_DIM"])
++    adv_net = AdvActorCritic(editor.n, a_config["HIDDEN"])
++    rng, _rng = jax.random.split(rng)
++    adv_params = adv_net.init(_rng, jnp.zeros((1, editor.obs_dim)), jnp.ones((1, editor.n), bool))
++    adv_state = TrainState.create(
++        apply_fn=adv_net.apply, params=adv_params,
++        tx=optax.chain(optax.clip_by_global_norm(a_config["MAX_GRAD_NORM"]), optax.adam(a_config["LR"], eps=1e-5)))
++
++    # ---- evaluation (as jaxnav_plr.py)
++    eval_singleton_runner = EvalSingletonsRunner(
++        config["env"]["test_set"], network, init_carry=ScannedRNN.initialize_carry,
++        hidden_size=t_config["HIDDEN_SIZE"], env_kwargs=config["env"]["env_params"])
++    with open(config["EVAL_SAMPLED_SET_PATH"], "rb") as f:
++        eval_env_instances = pickle.load(f)
++    _, eval_init_states = jax.vmap(env.set_env_instance, in_axes=(0))(eval_env_instances)
++    eval_sampled_runner = EvalSampledRunner(
++        None, env, network, ScannedRNN.initialize_carry, hidden_size=t_config["HIDDEN_SIZE"],
++        greedy=False, env_init_states=eval_init_states, n_episodes=10)
++
++    def _calculate_gae(traj_batch, last_val):
++        def _get_advantages(gae_and_next_value, transition):
++            gae, next_value = gae_and_next_value
++            done, value, reward = transition.global_done, transition.value, transition.reward
++            delta = reward + t_config["GAMMA"] * next_value * (1 - done) - value
++            gae = delta + t_config["GAMMA"] * t_config["GAE_LAMBDA"] * (1 - done) * gae
++            return (gae, value), gae
++
++        _, advantages = jax.lax.scan(_get_advantages, (jnp.zeros_like(last_val), last_val),
++                                     traj_batch, reverse=True, unroll=16)
++        return advantages, advantages + traj_batch.value
++
++    def adversary_rollout(rng, adv_state):
++        rng, rng_z = jax.random.split(rng)
++        z = jax.random.normal(rng_z, (N, editor.z_dim))
++        s0 = jax.vmap(lambda _: editor.init())(jnp.arange(N))
++
++        def _step(carry, _):
++            s, rng = carry
++            rng, _rng = jax.random.split(rng)
++            obs = jax.vmap(editor.obs)(s, z)
++            avail = jax.vmap(editor.avail)(s)
++            pi, value = adv_state.apply_fn(adv_state.params, obs, avail)
++            action = pi.sample(seed=_rng)
++            s_next = jax.vmap(editor.step)(s, action)
++            done = jnp.full((N,), False) | (s_next.t >= editor.T)
++            tr = AdvTransition(obs, avail, action, pi.log_prob(action), value, jnp.zeros(N), done)
++            return (s_next, rng), tr
++
++        (s, rng), traj = jax.lax.scan(_step, (s0, rng), None, editor.T)
++        return rng, s, traj
++
++    def adversary_update(rng, adv_state, traj, terminal_reward):
++        reward = traj.reward.at[-1].set(terminal_reward)
++        traj = traj._replace(reward=reward)
++
++        def _gae(carry, x):
++            gae, next_value = carry
++            done, value, r = x
++            delta = r + a_config["GAMMA"] * next_value * (1 - done) - value
++            gae = delta + a_config["GAMMA"] * a_config["GAE_LAMBDA"] * (1 - done) * gae
++            return (gae, value), gae
++
++        _, adv = jax.lax.scan(_gae, (jnp.zeros(N), jnp.zeros(N)),
++                              (traj.done.astype(jnp.float32), traj.value, traj.reward), reverse=True)
++        targets = adv + traj.value
++        flat = jax.tree_map(lambda x: x.reshape((-1,) + x.shape[2:]), (traj, adv, targets))
++        B = editor.T * N
++
++        def _loss(params, batch):
++            tr, gae, tgt = batch
++            pi, value = adv_state.apply_fn(params, tr.obs, tr.avail)
++            log_prob = pi.log_prob(tr.action)
++            v_clip = tr.value + (value - tr.value).clip(-a_config["CLIP_EPS"], a_config["CLIP_EPS"])
++            v_loss = 0.5 * jnp.maximum(jnp.square(value - tgt), jnp.square(v_clip - tgt)).mean()
++            ratio = jnp.exp(log_prob - tr.log_prob)
++            a_loss = -jnp.minimum(ratio * gae, jnp.clip(ratio, 1 - a_config["CLIP_EPS"], 1 + a_config["CLIP_EPS"]) * gae).mean()
++            ent = pi.entropy().mean()
++            return a_loss + a_config["VF_COEF"] * v_loss - a_config["ENT_COEF"] * ent, (v_loss, a_loss, ent)
++
++        def _epoch(carry, _):
++            st, rng = carry
++            rng, _rng = jax.random.split(rng)
++            perm = jax.random.permutation(_rng, B)
++            mbs = jax.tree_map(lambda x: x[perm].reshape((a_config["NUM_MINIBATCHES"], -1) + x.shape[1:]), flat)
++
++            def _mb(st, mb):
++                (l, aux), grads = jax.value_and_grad(_loss, has_aux=True)(st.params, mb)
++                return st.apply_gradients(grads=grads), (l,) + aux
++
++            st, info = jax.lax.scan(_mb, st, mbs)
++            return (st, rng), info
++
++        (adv_state, rng), info = jax.lax.scan(_epoch, (adv_state, rng), None, a_config["UPDATE_EPOCHS"])
++        return rng, adv_state, jax.tree_map(lambda x: x.mean(), info)
++
++    def train_step(carry, unused):
++        rng, pro_state, adv_state, update_count, _ = carry
++
++        # 1. adversary designs N levels
++        rng, s, adv_traj = adversary_rollout(rng, adv_state)
++        rng, rng_lv = jax.random.split(rng)
++        levels = jax.vmap(editor.to_level)(jax.random.split(rng_lv, N), s)
++        init_obs, init_env_state = jax.vmap(env.set_state)(levels)
++
++        # 2. protagonist trains on them (as jaxnav_plr.py on_new_levels)
++        init_hstate = ScannedRNN.initialize_carry(t_config["NUM_ACTORS"], t_config["HIDDEN_SIZE"])
++        (pro_state, _, _, _, _, last_val, rng), (traj_batch, dormancy) = sample_trajectories_rnn(
++            rng, env, pro_state, init_hstate, init_obs, init_env_state, t_config)
++        advantages, targets = _calculate_gae(traj_batch, last_val)
++        (rng, pro_state), loss_info = update_actor_critic_rnn(
++            rng, pro_state, init_hstate, traj_batch, advantages, targets, t_config, update_grad=True)
++
++        # 3. adversary reward: minus the protagonist's mean episodic return on each level
++        ret, n_eps = mean_episode_returns(traj_batch.global_done, traj_batch.reward)
++        ret_by_level = ret.reshape((env.num_agents, N)).mean(axis=0)
++        rng, adv_state, adv_info = adversary_update(rng, adv_state, adv_traj, -ret_by_level)
++
++        train_info = jax.tree_map(lambda x: x.sum(axis=-1).reshape((t_config["NUM_STEPS"], N)).sum(),
++                                  traj_batch.info)
++        loss_info = jax.tree_map(lambda x: x.mean(), loss_info)
++        update_count = update_count + 1
++        metrics = {
++            "loss/": {"total_loss": loss_info[0], "value_loss": loss_info[1][0], "actor_loss": loss_info[1][1],
++                      "entropy": loss_info[1][2], "approx_kl": loss_info[1][4], "clipfrac": loss_info[1][5]},
++            "terminations": {k: train_info[k] for k in ["NumC", "GoalR", "AgentC", "MapC", "TimeO"]},
++            "adv/": {"total_loss": adv_info[0], "value_loss": adv_info[1], "actor_loss": adv_info[2],
++                     "entropy": adv_info[3],
++                     "mean_pro_return": ret_by_level.mean(),
++                     "frac_levels_no_completed_episode": (n_eps == 0).mean(),
++                     "frac_solvable": jax.vmap(editor.solvable)(s).mean(),
++                     "mean_num_walls": s.walls.sum(axis=1).mean()},
++            "update_count": update_count,
++            "num_env_steps": update_count * t_config["NUM_STEPS"] * N,
++        }
++        jax.experimental.io_callback(lambda m: wandb.log(m, step=int(m["update_count"])), None, metrics)
++        return (rng, pro_state, adv_state, update_count, levels), metrics
++
++    @jax.jit
++    def train_and_eval_step(runner_state, unused):
++        runner_state, metrics = jax.lax.scan(train_step, runner_state, None, t_config["EVAL_FREQ"])
++        rng, pro_state, adv_state, update_count, levels = runner_state
++        rng, eval_singleton_rng, eval_sampled_rng = jax.random.split(rng, 3)
++        test_metrics = {
++            "singleton-test-metrics": eval_singleton_runner.run(eval_singleton_rng, pro_state.params),
++            "sampled-test-metrics": eval_sampled_runner.run(eval_sampled_rng, pro_state.params),
++            "update_count": update_count,
++            "adv_window": jax.tree_map(lambda x: x.mean(), metrics["adv/"]),  # means over this eval window
++        }
++        return (rng, pro_state, adv_state, update_count, levels), test_metrics
++
++    def save(runner_state):
++        if config["SAVE_PATH"] is None:
++            return
++        _, pro_state, adv_state, _, levels = runner_state
++        save_dir = os.path.join(config["SAVE_PATH"], str(run.name))
++        os.makedirs(save_dir, exist_ok=True)
++        save_params(pro_state.params, f"{save_dir}/model.safetensors")
++        save_params(adv_state.params, f"{save_dir}/adversary.safetensors")
++        with open(f"{save_dir}/last_adversary_levels.pkl", "wb") as f:  # last batch, as JaxNav States
++            pickle.dump(jax.device_get(levels), f)
++        print(f"Parameters saved in {save_dir}/model.safetensors (+ adversary, last levels)")
++
++    print("eval step", n_evals)
++    print("num updates", t_config["NUM_UPDATES"])
++    checkpoint_steps = n_evals // t_config["NUM_CHECKPOINTS"]
++    rng, rng_init = jax.random.split(rng)
++    pholder = jax.vmap(env.sample_test_case)(jax.random.split(rng_init, N))
++    runner_state = (rng, pro_state, adv_state, jnp.int32(0), pholder)
++    for eval_step in range(n_evals):
++        start_time = time.time()
++        runner_state, metrics = train_and_eval_step(runner_state, None)
++        metrics["time_delta"] = time.time() - start_time
++        aw = {k: float(v) for k, v in metrics.pop("adv_window").items()}
++        print(f"[minimax] update {int(metrics['update_count'])}: pro_return {aw['mean_pro_return']:.3f} "
++              f"solvable {aw['frac_solvable']:.3f} walls {aw['mean_num_walls']:.1f} adv_entropy {aw['entropy']:.3f}",
++              flush=True)
++        metrics["steps_per_section"] = (t_config["EVAL_FREQ"] * t_config["NUM_STEPS"] * N) / metrics["time_delta"]
++        wandb.log(metrics, step=int(metrics["update_count"]))
++        if eval_step % checkpoint_steps == 0 and eval_step > 0:
++            save(runner_state)
++    save(runner_state)
++
++
++if __name__ == "__main__":
++    main()
