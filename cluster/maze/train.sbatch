@@ -1,6 +1,6 @@
 #!/bin/bash
 # Part 1: JaxUED maze, paper settings (30k updates). One task = one (algo, seed).
-# Default array: 5 algos x 10 seeds = 50 tasks.   sbatch --array=0-49 cluster/maze/train.sbatch
+# Default array: 6 algos x 10 seeds = 60 tasks.   sbatch --array=0-59 cluster/maze/train.sbatch
 #SBATCH --job-name=atlas-maze
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
@@ -9,12 +9,13 @@
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh; source "$JAX_VENV/bin/activate"
-ALGOS=${ALGOS:-"dr plr rplr accel paired"}; NSEEDS=${NSEEDS:-10}; N=${NUM_UPDATES:-30000}
+ALGOS=${ALGOS:-"dr plr rplr accel paired minimax"}; NSEEDS=${NSEEDS:-10}; N=${NUM_UPDATES:-30000}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
 case $algo in
   dr)     f=maze_dr.py;     x="";;
   paired) f=maze_paired.py; x="";;
+  minimax) f=maze_paired.py; x="--minimax";;                # patches/jaxued_minimax.patch
   rplr)   f=maze_plr.py;    x="";;                          # Robust PLR (no grads on new levels)
   plr)    f=maze_plr.py;    x="--exploratory_grad_updates";;
   accel)  f=maze_plr.py;    x="--use_accel";;

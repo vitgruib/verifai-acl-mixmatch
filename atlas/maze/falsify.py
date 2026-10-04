@@ -45,6 +45,13 @@ def make_scenario(space_name: str, sampler: str, seed: int):
     return scenic.scenarioFromString(src, params=params, mode2D=True)
 
 
+def _upstream(policy: Policy) -> dict:
+    if policy.config.get("format") == "sfl_safetensors":
+        return {"repo": "https://github.com/amacrutherford/sampling-for-learnability",
+                "commit": policy.config.get("sfl_commit")}
+    return {"repo": "https://github.com/DramaCow/jaxued", "commit": record.git_commit(JAXUED_DIR)}
+
+
 def run(policy: Policy, ctx: TrainContext, args) -> dict:
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -53,7 +60,7 @@ def run(policy: Policy, ctx: TrainContext, args) -> dict:
         "env": "jaxued_maze", "algo": args.algo, "train_seed": policy.config.get("seed"),
         "checkpoint": policy.ckpt_dir, "checkpoint_step": policy.step,
         "train_config": policy.config,
-        "upstream": {"repo": "https://github.com/DramaCow/jaxued", "commit": record.git_commit(JAXUED_DIR)},
+        "upstream": _upstream(policy),
         "atlas_commit": record.git_commit(os.path.dirname(__file__)),
         "space": {"name": args.space, "bounds": space.SPACES[args.space]},
         "falsifier": {"name": args.sampler, "params": DEFAULT_SAMPLER_PARAMS.get(args.sampler, {}),
@@ -92,9 +99,9 @@ def run(policy: Policy, ctx: TrainContext, args) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--ckpt", required=True, help="checkpoints/<run_name>/<seed>")
+    ap.add_argument("--ckpt", required=True, help="checkpoints/<run_name>/<seed>, or an SFL run dir with model.safetensors")
     ap.add_argument("--step", type=int, default=-1, help="checkpoint step (-1 = latest)")
-    ap.add_argument("--algo", required=True, help="label: dr, plr, rplr, accel, paired")
+    ap.add_argument("--algo", required=True, help="label: dr, plr, rplr, accel, paired, minimax, sfl")
     ap.add_argument("--space", choices=tuple(space.SPACES), default="seg")
     ap.add_argument("--sampler", choices=SAMPLERS, nargs="+", default=["random"])
     ap.add_argument("--budget", type=int, default=2000)
