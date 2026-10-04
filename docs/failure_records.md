@@ -26,6 +26,7 @@ Directory: `<out>/<algo>/s<train_seed>/<space>_<sampler>_r<falsifier_seed>/`
 | `atlas_commit` | commit of this repo that ran the falsifier |
 | `space` | name and bounds of the falsification box (`dr` or `seg` for maze; see `atlas/maze/space.py`) |
 | `falsifier` | `{name, params, via}`: sampler (random, halton, ce, mab, sa), its parameters, and whether it ran through VerifAI's Scenic external-parameter API |
+| `oracle` | the solvability oracle used and its step limit (schema >= 2) |
 | `spec` | the property: `solve_rate >= tau` over `attempts` stochastic rollouts; `rho = solve_rate - tau` |
 | `budget`, `seed` | number of proposals, falsifier seed |
 | `train_context` | what the `train` fields below were measured against (DR reference size, buffer present or not) |
@@ -36,7 +37,8 @@ Directory: `<out>/<algo>/s<train_seed>/<space>_<sampler>_r<falsifier_seed>/`
 |---|---|---|
 | `i`, `t` | proposal index, seconds since start | search speed; `first_cex_i` |
 | `params` | the falsifier's raw point | re-run the exact proposal; see what the sampler converged to |
-| `valid`, `invalid_reason` | hard constraints (goal reachable, agent != goal, ...) | a sampler wasting budget on invalid points |
+| `valid`, `invalid_reason` | hard constraints (agent != goal; oracle says solvable: `oracle_unsolvable`) | a sampler wasting budget on invalid points |
+| `oracle` | `{status, min_steps, cert, max_steps}` from the solvability oracle, on every row (schema >= 2) | proof the failure is the agent's, not the level's |
 | `level` | replayable level encoding (maze: wall string + agent/goal/dir) | reload in the env to watch the failure |
 | `desc` | interpretable features: `n_walls, path_len, manhattan, detour, dead_ends, corridor_cells` | **what kind** of level fails |
 | `returns`, `lengths` | per attempt | timeout vs wandering vs near-miss |
@@ -55,6 +57,26 @@ Directory: `<out>/<algo>/s<train_seed>/<space>_<sampler>_r<falsifier_seed>/`
 - `buf_age`: staleness of those neighbours. High means the curriculum learned it once and stopped
   replaying it (forgetting).
 
+## The solvability oracle
+
+A failure only counts if the level could have been solved in the episode the agent actually
+gets. Every proposal goes through an oracle before the agent sees it, and only levels the oracle
+certifies `solvable` are evaluated, so every counterexample has a witness.
+
+- **Maze** (`atlas/maze/oracle.py`): exact. Breadth-first search over (x, y, heading) with
+  JaxUED's own transition rule (turns cost a step; the goal is entered by moving forward into
+  it), capped at `max_steps_in_episode` (250). `cert` is a shortest action string (`L`/`R`/`F`)
+  and `min_steps` is its length. `tests/test_atlas.py` replays certificates in the real JaxUED
+  env. On 13x13 mazes the shortest solutions are at most ~40 actions, far below 250, so here the
+  oracle agrees with plain cell reachability. Its value is the certificate, and `min_steps` as
+  a difficulty feature: a level solvable in 10 actions where the agent hits the 250-step cap
+  9 times out of 10 is unambiguous.
+- **Status values**: `solvable` (with certificate), `unsolvable` (proven), `unknown` (oracle
+  could not decide; never counted as a counterexample, kept so the analysis can report it).
+  Exact search returns no `unknown`. Continuous envs (CarRacing, Bipedal) will need witness
+  oracles: `solvable` only when a scripted controller completes the level, `unsolvable` only
+  for provable violations (e.g. a gap wider than the walker's maximum jump), `unknown` otherwise.
+
 ## summary.json
 
 `n, n_valid, invalid_rate, n_cex, cex_rate, n_hard, first_cex_i, first_cex_t, min_rho, mean_rho,
@@ -64,7 +86,8 @@ distinct_cex_cells` (counterexamples binned coarsely on `desc`: distinct failure
 
 ## Diagnosing a failure: a checklist
 
-1. **Is it real?** `hard` counterexamples (0/10 solved) are failures; `solve_rate` of 0.4 is
+1. **Is it real?** Check `oracle.status == "solvable"` (the falsifier enforces it) and compare
+   `lengths` with `oracle.min_steps`: the agent had 250 steps for a 10-step solution. Then `hard` counterexamples (0/10 solved) are failures; `solve_rate` of 0.4 is
    a coin-flip near tau. Re-evaluate the `level` with more attempts before writing it up.
 2. **What kind?** Compare `desc_cex` against `desc_ok`. In the maze prelim, failing levels have
    about twice the walls and path length of passing ones. Group counterexamples by coarse

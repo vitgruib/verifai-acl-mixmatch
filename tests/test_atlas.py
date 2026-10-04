@@ -4,7 +4,7 @@ import json
 import numpy as np
 
 from atlas import record
-from atlas.maze import space
+from atlas.maze import oracle, space
 
 
 def point(name, rng):
@@ -58,3 +58,50 @@ def test_recorder_roundtrip(tmp_path):
     assert s["first_cex_i"] == 2 and s["min_rho"] == -0.5
     assert s["train_cex"]["dr_knn"] == 3.0 and s["train_ok"]["dr_knn"] == 1.0
     assert list(np.load(tmp_path / "traces.npz")) == ["i2_pos"]
+
+
+def test_oracle_counts_turns_and_forward_into_goal():
+    walls = np.zeros((space.N, space.N), bool)
+    o = oracle.solve(walls, (0, 0), 0, (3, 0))            # facing right, goal 3 cells right
+    assert o["status"] == oracle.SOLVABLE and o["cert"] == "FFF"
+    o = oracle.solve(walls, (0, 0), 2, (3, 0))            # facing left: two turns first
+    assert o["min_steps"] == 5 and o["cert"].count("F") == 3
+    assert oracle.replay(walls, (0, 0), 2, (3, 0), o["cert"])
+    assert not oracle.replay(walls, (0, 0), 2, (3, 0), o["cert"][:-1])
+
+
+def test_oracle_step_cap_and_unreachable():
+    walls = np.zeros((space.N, space.N), bool)
+    walls[1:, 1] = True
+    o = oracle.solve(walls, (0, 12), 3, (2, 12))
+    assert o["status"] == oracle.SOLVABLE and o["min_steps"] > 26     # 26 moves + turns
+    capped = oracle.solve(walls, (0, 12), 3, (2, 12), max_steps=o["min_steps"] - 1)
+    assert capped["status"] == oracle.UNSOLVABLE and capped["min_steps"] == o["min_steps"]
+    walls[0, 1] = True                                    # close the gap
+    assert oracle.solve(walls, (0, 12), 3, (2, 12))["status"] == oracle.UNSOLVABLE
+
+
+def test_oracle_agrees_with_cell_reachability():
+    rng = np.random.default_rng(2)
+    for name in space.SPACES:
+        for _ in range(150):
+            walls, agent, d, goal, why = space.build(name, point(name, rng))
+            o = oracle.solve(walls, agent, d, goal)
+            assert (o["min_steps"] is not None) == (why is None)
+            if why is None:
+                assert oracle.replay(walls, agent, d, goal, o["cert"])
+                assert o["min_steps"] >= space.shortest_path(walls, agent, goal)
+
+
+def test_oracle_certificate_solves_real_jaxued_env():
+    import pytest
+    jaxued = pytest.importorskip("jaxued.environments")
+    from atlas.maze.policy import replay_actions
+    env = jaxued.Maze(max_height=13, max_width=13, agent_view_size=5, normalize_obs=True)
+    rng = np.random.default_rng(3)
+    for _ in range(20):
+        walls, agent, d, goal, why = space.build("seg", point("seg", rng))
+        if why is None:
+            o = oracle.solve(walls, agent, d, goal, env.default_params.max_steps_in_episode)
+            r, n = replay_actions(env, env.default_params, walls, agent, d, goal, o["cert"])
+            assert r > 0 and n == o["min_steps"]
