@@ -56,6 +56,28 @@ class LevelConfig:
     sfl_carry: bool = False        # re-scout the last buffer among the candidates (frontier persists)
     sfl_soft: bool = False         # replay every scouted level with probability proportional to its
                                    # score, not the top `sfl_top` uniformly (NCC, arXiv 2505.20659)
+    sfl_verify: int = 0            # re-roll the best `sfl_verify` candidates 3 x sfl_k more times and
+                                   # rank on all 4 x sfl_k (a noisy first estimate has a winner's curse)
+    sfl_amort: int = 0             # draw `sfl_amort` x sfl_n uniform levels, predict p by k-NN on the
+                                   # last 3 scouts, and scout the best-predicted half plus half uniform
+    sfl_halving: int = 0           # successive halving: this many rounds, each keeps the best quarter
+                                   # (Beta(1,1) posterior score) and gives it 4x the rollouts
+    sfl_ghost: float = 0.0         # add this x |p - p_old|, p_old from the policy of the last scout
+                                   # (learning progress / forgetting, TSCL / ALP-GMM)
+    sfl_spread: int = 0            # pick `sfl_top` by greedy farthest-point from the best
+                                   # `sfl_spread` x sfl_top (diversity, box-normalized)
+    sfl_bisect: int = 0            # this many solved/failed scouted pairs, bisected 3 times toward
+                                   # the score's peak p* = 1/(2 + tilt); the end points compete too
+    sfl_auto: int = 0              # self-tuned intensity: an epsilon-greedy bandit picks the replay
+                                   # probability from AUTO_ARMS each scout, rewarded by the change in
+                                   # mean + worst-quarter pass rate on this many fixed uniform levels
+    sfl_memory: float = 0.0        # with sfl_carry: a carried level pools its earlier rollouts, each
+                                   # scout discounting the old pass/trial counts by this factor
+    sfl_states: float = 0.0        # start-state SFL: this share of candidates are (level, state) pairs
+                                   # visited in training (an archive), scored and replayed from that
+                                   # state, not the level's own starts (reverse curriculum / Go-Explore)
+    sfl_archive: int = 20000       # archive size (FIFO) for sfl_states
+    sfl_archive_every: int = 8     # archive one in this many visited states per episode
     # diagnostic only: replays draw uniformly from this exam section's tasks (test leakage;
     # an upper bound on what choosing training tasks can do, not a method)
     oracle: str = ""
@@ -117,18 +139,22 @@ class LevelSampler:
             p = (1 - self.cfg.staleness) * p + self.cfg.staleness * pc
         return p
 
-    def set_sfl(self, params: np.ndarray, weights: np.ndarray | None = None) -> None:
+    def set_sfl(self, params: np.ndarray, weights: np.ndarray | None = None, starts=None) -> None:
         self.sfl_levels = params
+        self.sfl_starts = starts             # (states, has-state mask) per level, or None
         self.sfl_weights = None if weights is None else weights / weights.sum()
 
     def pick(self) -> tuple[np.ndarray, int, int]:
         """(params, slot or -1, NEW/REPLAY)."""
         if self.cfg.sfl or self.cfg.oracle:
             levels = getattr(self, "sfl_levels", None)
-            if levels is not None and self.rng.uniform() < self.cfg.replay_prob:
+            if levels is not None and self.rng.uniform() < getattr(self, "sfl_rp", self.cfg.replay_prob):
                 w = getattr(self, "sfl_weights", None)
                 i = self.rng.integers(len(levels)) if w is None else self.rng.choice(len(levels), p=w)
+                st = getattr(self, "sfl_starts", None)
+                self.next_start = st[0][i].copy() if st is not None and st[1][i] else None
                 return levels[i].copy(), -1, REPLAY
+            self.next_start = None
             return self.draw_new(), -1, NEW
         if self.size >= self.min_fill and self.rng.uniform() < self.cfg.replay_prob:
             i = int(self.rng.choice(self.size, p=self.replay_probs()))

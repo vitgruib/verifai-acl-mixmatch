@@ -1,4 +1,59 @@
 {
+  "adv": {
+    "calib_mean_level_pass": 0.8909000000000001,
+    "calib_seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010
+    ],
+    "n_drawn": 1000,
+    "n_kept": 500,
+    "n_winnable": 807,
+    "seed": 20261002,
+    "starts": 4
+  },
+  "calib": {
+    "band": [
+      0.1,
+      0.6
+    ],
+    "calib_seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010
+    ],
+    "mean_pass_frac": 0.34529999999999994,
+    "n_in_band": 2269,
+    "n_pool": 45000,
+    "pass_count_hist": [
+      8320,
+      521,
+      311,
+      192,
+      430,
+      457,
+      358,
+      1455,
+      5819,
+      24592,
+      2545
+    ],
+    "sample_seed": 20261002
+  },
   "random": {
     "how_made": "Filtered once from cartpole_v1: kept only questions the LQR oracle proved winnable (feasible start AND oracle survives 500 steps). Dropped guaranteed one-step failures and questions the oracle could not solve. The oracle was then removed from the repository.",
     "note": "Locked: random questions from fixed seeds, cleaned once by an LQR expert (since removed). All 282 are also certified winnable by acl_bench.exam.feasibility.",
@@ -6,6 +61,14 @@
     "oracle_source_sha256": "912972945ec5d3fc4c344636d111430a449d12993339347d5c992eb0dafef772"
   },
   "sets": {
+    "adv": {
+      "n": 2000,
+      "sha256": "ff832f5bb6a8782dc07577da0ba6c86edf0bc25165bc89985027fb7f78590338"
+    },
+    "calib": {
+      "n": 2000,
+      "sha256": "5d34bbcd655e896c53ef0afc08f1f129d33c4525b5711a004327da974f65009b"
+    },
     "random": {
       "n": 282,
       "n_before_filter": 300,

@@ -137,6 +137,27 @@ register("sfl_tilt_lr1e3", {"sfl_tilt": 1.0}, base=SFL, lr=1e-3)
 # ---- library batch 12: build on SFL from its follow-ups (docs/literature.md, lineage)
 register("sfl_tilt_soft", {"sfl_tilt": 1.0, "sfl_soft": True}, base=SFL)    # NCC: score-proportional replay
 register("sfl_tilt_carry", {"sfl_tilt": 1.0, "sfl_carry": True}, base=SFL)  # persistent frontier
+register("sfl_tilt_verify", {"sfl_tilt": 1.0, "sfl_verify": 200}, base=SFL)  # fresh-rollout shortlist
+register("sfl_tilt_amort", {"sfl_tilt": 1.0, "sfl_amort": 10}, base=SFL)    # k-NN pre-screened scouting
+# batch 14 (docs/library_log.md)
+register("sfl_tilt_sc", {"sfl_tilt": 1.0, "sfl_soft": True, "sfl_carry": True}, base=SFL)   # soft + carry
+register("sfl_halving", {"sfl_tilt": 1.0, "sfl_n": 4000, "sfl_k": 2, "sfl_halving": 2}, base=SFL)  # best-arm id
+register("sfl_ghost", {"sfl_tilt": 1.0, "sfl_ghost": 0.5}, base=SFL)          # + learning progress
+register("sfl_spread", {"sfl_tilt": 1.0, "sfl_spread": 3}, base=SFL)          # diverse frontier
+register("sfl_bisect", {"sfl_tilt": 1.0, "sfl_bisect": 300}, base=SFL)        # boundary bisection
+# batch 15: spare Acrobot by stabilizing / diversifying the frontier, or self-tune the intensity
+register("sfl_spread_carry", {"sfl_tilt": 1.0, "sfl_spread": 3, "sfl_carry": True}, base=SFL)
+register("sfl_spread_verify", {"sfl_tilt": 1.0, "sfl_spread": 3, "sfl_verify": 200}, base=SFL)
+register("sfl_spread0", {"sfl_spread": 3}, base=SFL)                          # no tilt
+register("sfl_auto", {"sfl_tilt": 1.0, "sfl_auto": 500}, base=SFL)            # bandit replay prob
+register("sfl_carry_mem", {"sfl_tilt": 1.0, "sfl_carry": True, "sfl_memory": 0.5}, base=SFL)  # pooled evidence
+register("sfl_carry0", {"sfl_carry": True}, base=SFL)                            # carry, no tilt
+register("sfl_spread_carry0", {"sfl_spread": 3, "sfl_carry": True}, base=SFL)    # spread + carry, no tilt
+register("sfl_carry_mem25", {"sfl_tilt": 1.0, "sfl_carry": True, "sfl_memory": 0.25}, base=SFL)  # weaker memory
+register("sfl_spread2_carry", {"sfl_tilt": 1.0, "sfl_spread": 2, "sfl_carry": True}, base=SFL)  # milder spread
+register("sfl_spread_carry_mem", {"sfl_tilt": 1.0, "sfl_spread": 3, "sfl_carry": True, "sfl_memory": 0.25}, base=SFL)
+register("sfl_states", {"sfl_tilt": 1.0, "sfl_states": 0.5}, base=SFL)   # start-state SFL: half the candidates are visited states
+register("sfl_states_carry", {"sfl_tilt": 1.0, "sfl_states": 0.5, "sfl_carry": True}, base=SFL)
 
 # ---- oracle variants (docs/wrapper_methodology.md, section 3): "unlearnable" or "wrong dose"?
 register("oracle20", {"replay_prob": 0.2, "oracle": "verifai"}, base=DR)
@@ -157,7 +178,7 @@ def run_seed(env_name: str, config: str, replicate: int) -> int:
     return int(hashlib.sha256(f"plr:{config}:{replicate}".encode()).hexdigest()[:8], 16)
 
 
-HARD_SUITES = ("verifai",)     # split into dev / test halves (docs/protocol.md, section 1)
+HARD_SUITES = ("verifai", "calib")     # split into dev / test halves (docs/protocol.md, section 1)
 
 
 def split_dev_test(sets: dict) -> dict:

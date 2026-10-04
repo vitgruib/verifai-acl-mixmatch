@@ -1,10 +1,73 @@
 {
+  "adv": {
+    "calib_mean_level_pass": 0.95065,
+    "calib_seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010
+    ],
+    "n_drawn": 1000,
+    "n_kept": 500,
+    "n_winnable": 965,
+    "seed": 20261002,
+    "starts": 4
+  },
+  "calib": {
+    "band": [
+      0.1,
+      0.6
+    ],
+    "calib_seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010
+    ],
+    "mean_pass_frac": 0.19104999999999983,
+    "n_in_band": 9892,
+    "n_pool": 45000,
+    "pass_count_hist": [
+      20640,
+      5084,
+      2420,
+      1138,
+      635,
+      334,
+      281,
+      435,
+      610,
+      1188,
+      12235
+    ],
+    "sample_seed": 20261002
+  },
   "random": {
     "n_drawn": 300,
     "n_not_certified": 7,
     "seed": 20260924
   },
   "sets": {
+    "adv": {
+      "n": 2000,
+      "sha256": "daae40ab0bd1dc5e3a25d3510faa793d186a6cc0ef8876fd1dfb0838c53ef620"
+    },
+    "calib": {
+      "n": 2000,
+      "sha256": "dc3ff29a9c7ae0695ac05568359b83076619ad265933d7509f2606a3a7fa1f86"
+    },
     "random": {
       "n": 293,
       "sha256": "c46d23ddad187dfb05e0f2c1003a123cb9baea6590456c38a3ff5788d03eb928"

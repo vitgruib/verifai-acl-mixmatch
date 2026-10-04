@@ -16,6 +16,9 @@ import numpy as np
 
 from acl_bench.exam.grader import grade
 
+ADV_STARTS = 4          # the `adv` section's rows come in groups of this many starts per level
+CVAR_ALPHA = 0.1        # `adv/cvar`: mean per-level success over the worst 10% of levels
+
 
 @dataclass
 class PairSet:
@@ -52,6 +55,9 @@ def evaluate_sets(env, agent, sets: dict[str, PairSet]) -> dict[str, float]:
         out[f"{name}/mean_steps"] = float(steps.mean())
         if "return" in extras:
             out[f"{name}/mean_return"] = float(extras["return"].mean())
+        if name == "adv":
+            level = np.sort(ok.reshape(-1, ADV_STARTS).mean(axis=1))
+            out[f"{name}/cvar"] = float(level[:max(1, int(np.ceil(CVAR_ALPHA * len(level))))].mean())
     return out
 
 

@@ -18,7 +18,7 @@ def sets():
 
 
 def test_two_suites_and_counts_match_the_manifest(sets):
-    assert set(sets) == {"random", "verifai"}
+    assert set(sets) == {"random", "verifai", "calib", "adv"}     # calib, adv: Amendment 5
     assert len(sets["random"]) == 282 and len(sets["verifai"]) > 1000
     manifest = json.load(open(os.path.join(DIR, "manifest.json")))
     assert {n: m["n"] for n, m in manifest["sets"].items()} == {n: len(ps) for n, ps in sets.items()}
@@ -26,6 +26,11 @@ def test_two_suites_and_counts_match_the_manifest(sets):
 
 def test_verifai_questions_are_ones_6_or_more_of_10_reference_agents_fail(sets):
     assert (sets["verifai"].ref_fail_frac >= 0.6 - 1e-9).all()
+
+
+def test_calib_questions_are_ones_1_to_6_of_10_calibration_agents_pass(sets):
+    assert len(sets["calib"]) == 2000
+    assert ((1 - sets["calib"].ref_fail_frac >= 0.1 - 1e-9) & (1 - sets["calib"].ref_fail_frac <= 0.6 + 1e-9)).all()
 
 
 def test_all_questions_inside_the_task_box(sets):

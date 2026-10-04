@@ -1,0 +1,39 @@
+diff --git a/examples/maze_dr.py b/examples/maze_dr.py
+index d367205..265ff49 100644
+--- a/examples/maze_dr.py
++++ b/examples/maze_dr.py
+@@ -397,7 +397,7 @@ def main(config=None, project="JAXUED_TEST"):
+         for i, level_name in enumerate(config["eval_levels"]):
+             frames, episode_length = stats["eval_animation"][0][:, i], stats["eval_animation"][1][i]
+             frames = np.array(frames[:episode_length])
+-            log_dict.update({f"animations/{level_name}": wandb.Video(frames, fps=4)})
++            log_dict.update({f"animations/{level_name}": wandb.Video(frames, fps=4, format="gif")})
+         
+         wandb.log(log_dict)
+     
+diff --git a/examples/maze_paired.py b/examples/maze_paired.py
+index 45e2ff5..4da205a 100644
+--- a/examples/maze_paired.py
++++ b/examples/maze_paired.py
+@@ -433,7 +433,7 @@ def main(config=None, project="JAXUED_TEST"):
+         for i, level_name in enumerate(config["eval_levels"]):
+             frames, episode_length = stats["eval_animation"][0][:, i], stats["eval_animation"][1][i]
+             frames = np.array(frames[:episode_length])
+-            log_dict.update({f"animations/{level_name}": wandb.Video(frames, fps=4)})
++            log_dict.update({f"animations/{level_name}": wandb.Video(frames, fps=4, format="gif")})
+         
+         wandb.log(log_dict)
+     
+diff --git a/examples/maze_plr.py b/examples/maze_plr.py
+index a7b6164..358aab9 100644
+--- a/examples/maze_plr.py
++++ b/examples/maze_plr.py
+@@ -448,7 +448,7 @@ def main(config=None, project="JAXUED_TEST"):
+         for i, level_name in enumerate(config["eval_levels"]):
+             frames, episode_length = stats["eval_animation"][0][:, i], stats["eval_animation"][1][i]
+             frames = np.array(frames[:episode_length])
+-            log_dict.update({f"animations/{level_name}": wandb.Video(frames, fps=4)})
++            log_dict.update({f"animations/{level_name}": wandb.Video(frames, fps=4, format="gif")})
+         
+         wandb.log(log_dict)
+     

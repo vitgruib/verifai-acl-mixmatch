@@ -109,3 +109,25 @@ only the task box and episode outcomes, so it is model-agnostic too.
 - Not ported: TRACED's transition-error score (it needs a world model), co-learnability
   (it needs pairwise transfer runs), and NCC's sigma x N(mu) (here it reduces to p(1-p) for
   binary outcomes).
+
+## How these papers innovate, and what each move gives SFL (2026-10-01)
+
+Read the lineage for *moves*, not algorithms. Each paper takes a working method and does one
+of a few things to it:
+
+| Move | Example | What it asks of `sfl_tilt` | Arm |
+|---|---|---|---|
+| 1. Check the proxy against ground truth | SFL measured PLR's regret scores and found they track success rate | Do the scouted levels really sit at p = 1/3? The mechanism check (batch 11) said no: their fresh pass rate is 0.55. An 8-rollout estimate picked as a maximum is biased (winner's curse). | `sfl_tilt_verify` |
+| 2. Generalize the statistic | NCC: p(1-p) becomes sigma x N(mu) | For binary outcomes this is p(1-p) again; the return-variance version is already `var_*`. | none new |
+| 3. Soften a hard choice | NCC: top-k becomes score-proportional replay | | `sfl_tilt_soft` (batch 12) |
+| 4. Replace measurement with prediction | MAGELLAN learns to predict progress | Scouting looks at 1000 uniform draws. The hard corner holds ~0.3% of the box, so few draws land there. A cheap predictor fit to past scouts can screen 10x as many. | `sfl_tilt_amort` |
+| 5. Add an information channel | TRACED: dynamics error, co-learnability | Needs a world model or pairwise transfer runs; not simple. | deferred |
+| 6. Widen what the proposer can reach | ACCEL edits; DiCode generation | Edits tried (`sfl_mut_tilt`: largest CartPole gain, failed the Pendulum guard). Move 4 widens reach without edits. | covered |
+| 7. Remove a part on theoretical grounds | Robust PLR: train only on replayed levels | Tried as `sfl_p09` (replay 0.9). | covered |
+| 8. Carry the method to a new domain | LILO (LLMs), Kinetix (physics) | Our held-out Maze and PointNav are this test. | protocol |
+| 9. Change the evaluation | SFL's adversarial CVaR evaluation exposed PLR's weak spots | Our hard suites floor outside CartPole, so other envs cannot show gains (docs/protocol.md, proposed Amendment 5). | `acl_bench/plr/xenv.py` |
+
+Move 1's measurement on the coin model (level x passes with probability x; 1000 levels, top
+100 of p(1-p)^2): plain 8-rollout ranking misses p = 1/3 by 0.129 on average. Re-rolling a
+200-level shortlist 24 more times and ranking on all 32 rollouts misses by 0.077 (-40%), for
+60% more scouting. Fresh rollouts alone (no pooling) give 0.098.

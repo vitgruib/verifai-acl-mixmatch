@@ -1,4 +1,36 @@
-# ACL x VerifAI on CartPole
+# VerifAI x UED: a failure atlas for curriculum algorithms
+
+**Current goal (2026-10-03):** document the published unsupervised-environment-design
+algorithms (DR, minimax, PAIRED, PLR, Robust PLR, ACCEL, SFL), find where each fails using
+VerifAI falsification on the exact environments of their papers and with the papers' own code,
+explain why with diagnostics, and fix the failures with falsifier + PLR.
+
+| where | what |
+|---|---|
+| [docs/ued_atlas.md](docs/ued_atlas.md) | algorithm registry, paper-exact settings, plan, results |
+| [docs/failure_records.md](docs/failure_records.md) | the failure-record schema and a diagnosis checklist |
+| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (4 parts: maze, CarRacing, Bipedal, SFL) |
+| [docs/handoff.md](docs/handoff.md) | current state, running jobs, next steps |
+| [docs/literature.md](docs/literature.md) | papers and lineage |
+| [docs/library_log.md](docs/library_log.md), [docs/protocol.md](docs/protocol.md) | the previous goal (agnostic curriculum wrapper): batches, verdicts, the staged protocol |
+
+```
+atlas/                     the failure atlas (new)
+  record.py                failure records: run.json, samples.jsonl, traces.npz, summary.json
+  prelim.py                rank falsifiers across runs (vs random; failure modes; H2 check)
+  maze/space.py            falsification spaces over JaxUED maze levels (dr, seg)
+  maze/policy.py           loads a JaxUED checkpoint and rolls it out (JAX)
+  maze/context.py          where a level sits vs training (DR kNN, PLR buffer score/age)
+  maze/falsify.py          VerifAI samplers -> levels -> rollouts -> records
+cluster/                   SLURM suite: env.sh, setup/, maze/, carracing/, bipedal/, sfl/, collect.sh
+acl_bench/                 the earlier classic-control benchmark and curriculum library (below)
+results/atlas/             atlas prelim scripts, logs, tables
+runs/, third_party/        large outputs and upstream clones (gitignored)
+```
+
+Quick check: `source .venv/bin/activate && python -m pytest tests/test_atlas.py`.
+
+## Earlier study: ACL x VerifAI on CartPole
 
 Does **automatic curriculum learning** help an RL agent generalize across task variants,
 and does it help more when paired with a **VerifAI sampler** that picks new tasks by
@@ -13,7 +45,7 @@ questions VerifAI discovered. Feedback for both components is learning-potential
 Details in [docs/ablation.md](docs/ablation.md); interactive report (private until
 shared): https://claude.ai/artifact/TCcHBgEY9kiA8oDq4kdsNm
 
-## What is compared
+### What is compared
 
 | method | picker (new tasks) | review pile (replay) |
 |---|---|---|
@@ -34,7 +66,7 @@ shared): https://claude.ai/artifact/TCcHBgEY9kiA8oDq4kdsNm
   success and mean steps survived, each at the end of training and over the learning
   curve: [docs/exam.md](docs/exam.md).
 
-## Layout
+### Layout
 
 ```
 acl_bench/                 training
@@ -67,7 +99,7 @@ results/snapshots/         saved agents (not committed; ~1 GB)
 docs/                      ablation.md (study + results), exam.md, sipacl.md
 ```
 
-## Running it
+### Running it
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -90,7 +122,7 @@ repository root, so those imports resolve; `python acl_bench/study/run.py` would
 Long runs pause themselves on battery, heat, low memory or low disk; `touch results/STOP`
 stops training cleanly (`results/STOP_REGRADE` for grading).
 
-## Tests
+### Tests
 
 ```bash
 python -m pytest tests                     # everything (~1 min)

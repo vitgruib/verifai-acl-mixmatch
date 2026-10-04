@@ -9,6 +9,7 @@ with results from here; a finding is confirmed in the study pipeline (acl_bench.
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -112,6 +113,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
         params[k], slot[k], mode[k] = p, i, m
         if m == REPLAY and cfg.levels.replay_start and i >= 0:
             s = levels.starts[i].copy()
+        elif m == REPLAY and getattr(levels, "next_start", None) is not None:
+            s = levels.next_start.copy()     # start-state SFL: replay from an archived state
         else:
             s = env.sample_starts(p, 1, env_rng)[0]
         ep_s0[k] = s.copy()
@@ -172,6 +175,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                 streak[:] = np.where(env.upright(state), streak + 1, 0)
             t_ep += 1
             trunc = t_ep >= ep_max
+            if cfg.levels.sfl_states > 0:
+                _archive(levels, cfg.levels, params, state, ~(term | trunc) & (t_ep % cfg.levels.sfl_archive_every == 0))
             rew = rew_env if has_reward else np.where(term, r_term, r_step)
             b_rew[t] = rew
             done = term | trunc
@@ -269,7 +274,7 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
 
         if cfg.levels.sfl and it % cfg.levels.sfl_every == 0:
             top, sim, w = sfl_select(env, agent, levels, cfg.levels, env_rng)
-            levels.set_sfl(top, w)
+            levels.set_sfl(top, w, getattr(levels, "sfl_top_starts", None))
             scouted += sim
 
         done_steps = (it + 1) * K * T
@@ -294,16 +299,36 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     scouted levels are ranked by PVL instead (mean over the k rollouts of the episode's
     mean positive GAE advantage under the current critic): SFL's search with PLR's score.
     Returns (levels, simulated steps, replay weights or None for uniform)."""
+    sim_auto = _auto_intensity(env, agent, levels, lc, rng) if lc.sfl_auto > 0 else 0
     cand = np.stack([levels.draw_new() for _ in range(lc.sfl_n)])
+    hist = getattr(levels, "sfl_hist", [])
+    if lc.sfl_amort > 0 and hist:               # amortized proposer: pre-screen by predicted score
+        cand[:lc.sfl_n // 2] = _prescreen(levels, hist, lc, lc.sfl_n // 2)
     prev = getattr(levels, "sfl_levels", None)
     if lc.sfl_mut > 0 and prev is not None:     # local search around the last frontier (ACCEL)
         n_mut = int(lc.sfl_mut * lc.sfl_n)
         parents = prev[rng.integers(len(prev), size=n_mut)]
         cand[:n_mut] = [levels._mutate(q) for q in parents]
+    st_s, st_has = None, None
+    arch = getattr(levels, "archive", None)
+    if lc.sfl_states > 0 and arch is not None and arch["n"] > 0:
+        n_st = int(lc.sfl_states * lc.sfl_n)     # (level, visited state) candidates
+        j = rng.integers(arch["n"], size=n_st)
+        cand[:n_st] = arch["p"][j]
+        st_s = np.zeros((lc.sfl_n, arch["s"].shape[1]))
+        st_has = np.zeros(lc.sfl_n, dtype=bool)
+        st_s[:n_st], st_has[:n_st] = arch["s"][j], True
+    assert st_s is None or not (lc.sfl_halving or lc.sfl_bisect), "sfl_states with halving/bisect"
     if lc.sfl_carry and prev is not None:       # the last buffer competes again with fresh draws
         cand[-len(prev):] = prev
+        old = getattr(levels, "sfl_starts", None)
+        if st_s is not None and old is not None:
+            st_s[-len(prev):], st_has[-len(prev):] = old
     params = np.repeat(cand, lc.sfl_k, axis=0)
     state = np.concatenate([env.sample_starts(p, 1, rng) for p in params])
+    if st_s is not None:
+        rep = np.repeat(st_has, lc.sfl_k)
+        state[rep] = np.repeat(st_s, lc.sfl_k, axis=0)[rep]
     alive = np.ones(len(params), dtype=bool)
     ended = np.zeros(len(params), dtype=bool)
     streak = np.zeros(len(params), dtype=int)
@@ -341,16 +366,201 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
         else:
             success = ended if env.GOAL == "reach" else ~ended
         p = success.reshape(lc.sfl_n, lc.sfl_k).mean(1)
+        if lc.sfl_memory > 0:                   # pool a carried level's discounted earlier rollouts
+            wins, tries = p * lc.sfl_k, np.full(len(p), float(lc.sfl_k))
+            old = getattr(levels, "sfl_counts", None)
+            if lc.sfl_carry and prev is not None and old is not None:
+                wins[-len(prev):] += lc.sfl_memory * old[0]
+                tries[-len(prev):] += lc.sfl_memory * old[1]
+                p = wins / tries
+        if lc.sfl_amort > 0:
+            levels.sfl_hist = (hist + [(cand, p)])[-3:]
+        if lc.sfl_halving > 0:
+            cand, p, sim2 = _halving(env, agent, cand, p, lc, rng)
+            sim += sim2
+        if lc.sfl_bisect > 0:
+            mid, pm, sim2 = _bisect(env, agent, levels, cand, p, lc, rng)
+            cand, p, sim = np.concatenate([cand, mid]), np.concatenate([p, pm]), sim + sim2
         score = p * (1 - p) * (1 - p) ** lc.sfl_tilt
+        if lc.sfl_ghost > 0:
+            old = getattr(levels, "sfl_ghost_agent", None)
+            if old is not None:
+                p_old, sim2 = _pass_rate(env, old, cand, lc.sfl_k, rng)
+                sim += sim2
+                score = score + lc.sfl_ghost * np.abs(p - p_old)
+            levels.sfl_ghost_agent = copy.deepcopy(agent)
+        if lc.sfl_verify > 0:                   # re-rank the shortlist on 4x the rollouts
+            short = np.argsort(-score, kind="stable")[:lc.sfl_verify]
+            p2, sim2 = _pass_rate(env, agent, cand[short], 3 * lc.sfl_k, rng)
+            sim += sim2
+            q = (p[short] + 3 * p2) / 4
+            score = np.full(len(cand), -1.0)
+            score[short] = q * (1 - q) * (1 - q) ** lc.sfl_tilt
     if pvl:
         score = score.reshape(lc.sfl_n, lc.sfl_k).mean(1)
+    sim += sim_auto
     if lc.sfl_soft:
         keep = score > 0
+        levels.sfl_top_starts = None if st_s is None else (st_s[keep], st_has[keep])
         if keep.any():
             return cand[keep], sim, score[keep]
         return None, sim, None                  # nothing learnable scouted: replay nothing
     top = np.argsort(-score, kind="stable")[:lc.sfl_top]
+    if lc.sfl_spread > 0:
+        pool = np.argsort(-score, kind="stable")[:lc.sfl_spread * lc.sfl_top]
+        top = pool[_farthest(levels, cand[pool], lc.sfl_top)]
+    if lc.sfl_memory > 0 and not pvl:
+        levels.sfl_counts = (wins[top], tries[top])
+    levels.sfl_top_starts = None if st_s is None else (st_s[top], st_has[top])
     return cand[top], sim, None
+
+
+def _archive(levels: LevelSampler, lc: LevelConfig, params: np.ndarray, state: np.ndarray, keep: np.ndarray) -> None:
+    """Push the kept (level, visited state) pairs into a FIFO archive for start-state SFL."""
+    idx = np.flatnonzero(keep)
+    if not len(idx):
+        return
+    a = levels.__dict__.get("archive")
+    if a is None:
+        a = levels.archive = {"p": np.zeros((lc.sfl_archive, params.shape[1])),
+                              "s": np.zeros((lc.sfl_archive, state.shape[1])), "n": 0, "i": 0}
+    pos = (a["i"] + np.arange(len(idx))) % lc.sfl_archive
+    a["p"][pos], a["s"][pos] = params[idx], state[idx]
+    a["i"] = int((a["i"] + len(idx)) % lc.sfl_archive)
+    a["n"] = min(lc.sfl_archive, a["n"] + len(idx))
+
+
+AUTO_ARMS = (0.0, 0.25, 0.5, 0.75)
+
+
+def _auto_intensity(env, agent, levels: LevelSampler, lc: LevelConfig, rng, eps: float = 0.3,
+                    alpha: float = 0.3) -> int:
+    """Pick this interval's replay probability (`levels.sfl_rp`) from AUTO_ARMS. The agent's
+    robustness, mean + worst-quarter pass rate on `lc.sfl_auto` uniform levels drawn once, is
+    measured every scout; its change since the last scout rewards the arm played in between
+    (recency-weighted average `alpha`, for a moving learner). Each arm is tried once, then
+    epsilon-greedy. Returns the simulated steps."""
+    st = levels.__dict__.get("auto")
+    if st is None:
+        st = levels.auto = {"probe": np.stack([levels.draw_new() for _ in range(lc.sfl_auto)]),
+                            "q": np.zeros(len(AUTO_ARMS)), "n": np.zeros(len(AUTO_ARMS), int),
+                            "arm": None, "rob": None, "trace": []}
+    p, sim = _pass_rate(env, agent, st["probe"], lc.sfl_k, rng)
+    rob = p.mean() + np.sort(p)[:max(1, len(p) // 4)].mean()
+    if st["arm"] is not None:
+        a, r = st["arm"], rob - st["rob"]
+        st["q"][a] = r if st["n"][a] == 0 else st["q"][a] + alpha * (r - st["q"][a])
+        st["n"][a] += 1
+    untried = np.flatnonzero(st["n"] == 0)
+    if len(untried):
+        a = int(untried[0])
+    elif rng.uniform() < eps:
+        a = int(rng.integers(len(AUTO_ARMS)))
+    else:
+        a = int(np.argmax(st["q"]))
+    st["arm"], st["rob"] = a, rob
+    st["trace"].append(a)
+    levels.sfl_rp = AUTO_ARMS[a]
+    return sim
+
+
+def _halving(env, agent, cand, p, lc: LevelConfig, rng, eta: int = 4):
+    """Successive halving on the scouted levels: each of `lc.sfl_halving` rounds keeps the
+    best 1/eta (at least `sfl_top`) by the score of the Beta(1,1) posterior mean pass rate,
+    then rolls them out until each has eta x its previous rollouts. Returns the survivors,
+    their pooled pass rates and the steps simulated."""
+    succ, n_roll = p * lc.sfl_k, np.full(len(cand), float(lc.sfl_k))
+    idx, sim = np.arange(len(cand)), 0
+    for r in range(lc.sfl_halving):
+        q = (succ[idx] + 1) / (n_roll[idx] + 2)
+        s = q * (1 - q) * (1 - q) ** lc.sfl_tilt
+        idx = idx[np.argsort(-s, kind="stable")[:max(lc.sfl_top, len(idx) // eta)]]
+        extra = lc.sfl_k * eta ** r * (eta - 1)
+        p2, sim2 = _pass_rate(env, agent, cand[idx], extra, rng)
+        succ[idx] += p2 * extra
+        n_roll[idx] += extra
+        sim += sim2
+    return cand[idx], succ[idx] / n_roll[idx], sim
+
+
+def _bisect(env, agent, levels: LevelSampler, cand, p, lc: LevelConfig, rng, steps: int = 3):
+    """Edge-of-competence search (VerifAI-style boundary sampling): pair `lc.sfl_bisect`
+    random failed levels (p <= 1/8) with their nearest solved one (p >= 7/8) and bisect each
+    segment `steps` times toward the score's peak p* = 1/(2 + tilt). Returns the last
+    midpoints, their pass rates and the steps simulated."""
+    from scipy.spatial import cKDTree
+    lo, span = levels.bounds[:, 0], levels.bounds[:, 1] - levels.bounds[:, 0]
+    solved, failed = cand[p >= 7 / 8], cand[p <= 1 / 8]
+    if not len(solved) or not len(failed):
+        return cand[:0], p[:0], 0
+    f = failed[rng.integers(len(failed), size=lc.sfl_bisect)]
+    _, j = cKDTree((solved - lo) / span).query((f - lo) / span)
+    s, target, sim = solved[j], 1 / (2 + lc.sfl_tilt), 0
+    for _ in range(steps):
+        mid = (s + f) / 2
+        pm, sim2 = _pass_rate(env, agent, mid, lc.sfl_k, rng)
+        sim += sim2
+        easy = (pm > target)[:, None]
+        s, f = np.where(easy, mid, s), np.where(easy, f, mid)
+    return mid, pm, sim
+
+
+def _farthest(levels: LevelSampler, x: np.ndarray, m: int) -> np.ndarray:
+    """Indices of `m` rows of `x` by greedy farthest-point traversal from row 0 (the best),
+    in box-normalized coordinates."""
+    if len(x) <= m:
+        return np.arange(len(x))
+    lo, span = levels.bounds[:, 0], levels.bounds[:, 1] - levels.bounds[:, 0]
+    z = (x - lo) / span
+    chosen, d = [0], np.linalg.norm(z - z[0], axis=1)
+    for _ in range(m - 1):
+        i = int(np.argmax(d))
+        chosen.append(i)
+        d = np.minimum(d, np.linalg.norm(z - z[i], axis=1))
+    return np.array(chosen)
+
+
+def _pass_rate(env, agent, cand: np.ndarray, k: int, rng: np.random.Generator):
+    """Share of `k` stochastic-policy rollouts on each level in `cand` that pass, and the
+    environment steps simulated (the success test of `sfl_select`)."""
+    params = np.repeat(cand, k, axis=0)
+    state = np.concatenate([env.sample_starts(q, 1, rng) for q in params])
+    alive = np.ones(len(params), dtype=bool)
+    ended = np.zeros(len(params), dtype=bool)
+    streak = np.zeros(len(params), dtype=int)
+    xa, _ = agent.inputs
+    sim = 0
+    for _ in range(env.MAX_EPISODE_STEPS):
+        sim += int(alive.sum())
+        logits = agent.actor(torch.as_tensor(xa(env.observe(state).astype(np.float32), params)))
+        a = torch.multinomial(torch.softmax(logits, dim=1), 1).squeeze(1).numpy()
+        state = np.where(alive[:, None], env.step(state, a, params), state)
+        if env.GOAL == "balance":
+            streak = np.where(env.upright(state), streak + 1, 0)
+        e = alive & env.terminated(state)
+        ended |= e
+        alive &= ~e
+        if not alive.any():
+            break
+    if env.GOAL == "balance":
+        success = streak >= env.HOLD_STEPS
+    else:
+        success = ended if env.GOAL == "reach" else ~ended
+    return success.reshape(len(cand), k).mean(1), sim
+
+
+def _prescreen(levels: LevelSampler, hist, lc: LevelConfig, m: int, nn_k: int = 16) -> np.ndarray:
+    """The `m` best of `lc.sfl_amort * lc.sfl_n` uniform levels by the score of p predicted
+    as the mean measured p of the `nn_k` nearest scouted levels (box-normalized distance)."""
+    from scipy.spatial import cKDTree
+    lo, span = levels.bounds[:, 0], levels.bounds[:, 1] - levels.bounds[:, 0]
+    x = np.concatenate([c for c, _ in hist])
+    y = np.concatenate([q for _, q in hist])
+    pool = lo + span * levels.rng.uniform(size=(lc.sfl_amort * lc.sfl_n, len(lo)))
+    _, idx = cKDTree((x - lo) / span).query((pool - lo) / span, k=min(nn_k, len(x)))
+    p = y[idx].reshape(len(pool), -1).mean(1)
+    score = p * (1 - p) * (1 - p) ** lc.sfl_tilt
+    return pool[np.argsort(-score, kind="stable")[:m]]
 
 
 def _scout_pvl(rew, val, alive, term, v_end, gamma: float = 0.99, lam: float = 0.95) -> np.ndarray:
