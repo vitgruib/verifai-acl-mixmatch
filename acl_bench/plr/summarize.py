@@ -20,7 +20,8 @@ from scipy import stats
 
 from acl_bench import envs
 
-SUITES = {"random": "r", "verifai": "v", "heldout": "h", "verifai_dev": "vd", "verifai_test": "vt"}
+SUITES = {"random": "r", "verifai": "v", "heldout": "h", "verifai_dev": "vd", "verifai_test": "vt",
+          "calib_dev": "cd", "calib_test": "ct", "adv": "a"}
 
 
 def env_of(path: str) -> str:
@@ -53,6 +54,8 @@ def per_run(df: pd.DataFrame, env) -> pd.DataFrame:
     for tag, (succ, cont) in aggs.items():
         out[f"auc_{tag}"], out[f"fin_{tag}"] = g_all[succ].mean(), g_fin[succ].mean()
         out[f"auc_{tag}c"], out[f"fin_{tag}c"] = g_all[cont].mean(), g_fin[cont].mean()
+    if "adv/cvar" in df:
+        out["fin_cvar"] = g_fin["adv/cvar"].mean()
     return pd.DataFrame(out).reset_index()
 
 

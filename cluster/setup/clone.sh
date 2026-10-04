@@ -1,0 +1,18 @@
+#!/bin/bash
+# Clone every upstream repo at the pinned commit into $TP. Idempotent.
+set -euo pipefail
+source "$(dirname "$0")/../env.sh"
+mkdir -p "$TP"
+get() {  # dir repo commit
+  [ -d "$TP/$1/.git" ] || git clone -q "$2" "$TP/$1"
+  git -C "$TP/$1" fetch -q origin && git -C "$TP/$1" checkout -q "$3"
+  echo "$1 @ $(git -C "$TP/$1" rev-parse --short HEAD)"
+}
+get jaxued "$JAXUED_REPO" "$JAXUED_COMMIT"
+get dcd "$DCD_REPO" "$DCD_COMMIT"
+get sfl "$SFL_REPO" "$SFL_COMMIT"
+get baselines "$BASELINES_REPO" "$BASELINES_COMMIT"
+# Only local change to jaxued: wandb.Video(format="gif") so logging works headless.
+git -C "$TP/jaxued" apply --check "$ATLAS/cluster/patches/jaxued_gif.patch" 2>/dev/null \
+  && git -C "$TP/jaxued" apply "$ATLAS/cluster/patches/jaxued_gif.patch" && echo "jaxued: gif patch applied" \
+  || echo "jaxued: gif patch already applied"

@@ -2,6 +2,38 @@
 
 Start here in a new session. Details live in the docs linked below; this page is the map.
 
+## NEW GOAL (user, 2026-10-03) — supersedes the goal below
+
+"Do a documentation of various UED algorithms and show how they fail with VerifAI failure
+cases, and why they fail — using the exact environments they tested on — then show how we can
+succeed by combining falsifiers and existing PLR techniques." Full statement and success
+criterion: `.claude/commands/goal.md` (`/goal`). Start on the grid mazes (`acl_bench/envs/maze.py`,
+DCD held-out mazes), then CarRacing F1 tracks, BipedalWalker, JaxNav / XLand-MiniGrid.
+Everything below documents the previous goal (batches 1-18); stage C 14 is being finished
+for the record, batch 18 cancelled.
+
+**Status 2026-10-03:** `docs/ued_atlas.md` holds the algorithm registry (with paper-exact settings
+taken from the DCD configs), how our harness deviates, the 5-stage test pipeline, the compute
+table and the failure table (without and with VerifAI). **Waiting on a user decision:** train
+with the reference code (JaxUED / SFL / DCD on the professor's cluster; recommended), or extend our
+torch harness (LSTM, PAIRED, minimax). Either way, next is a structured maze Scenic spec (wall
+bitmap + start/goal + BFS validity) because the current `layout_seed` parameter reduces
+falsifiers to random search. Stage C 14: CartPole done (295 runs); Acrobot onward was still
+running in `queue16.sh`; the verdict is still to be recorded.
+
+**Batch 19 done 2026-10-04:** maze replay-vs-DR does not reproduce at 10% budget (DR 0.30/0.35 >= RPLR, PLR, ACCEL); PAIRED dropped as too costly locally, deferred to cluster.
+
+**Stage C 14 done 2026-10-04:** `sfl_tilt_carry` (Z +0.058, Holm p 0.51) and `sfl_spread_carry` (Z +0.115, Holm p 0.37) both FAIL on seeds 1101-1200; old library goal closed with no confirmed arm (details in `library_log.md`). The machine is now free for batch 19.
+
+**Status 2026-10-04:** decided (user): train with the papers' own code, scoped budgets. Env x method
+matrix and measured reproduction feasibility are in `docs/ued_atlas.md` section 2b (JaxUED maze runs
+locally; DCD Bipedal needs py3.11 patches and the cluster for real budgets; DCD CarRacing is
+cluster-only since it opens OpenGL windows on macOS, never run it on the Mac). Batch 19 (JaxUED maze,
+DR/PLR/RPLR/ACCEL/PAIRED, 3000 updates = 10% budget, seeds 0-1; `results/lib/b19_maze.sh`, code and
+outputs in the session scratchpad `jaxued/examples/{checkpoints,results,logs}`) is running. Seed-0 mean
+solve on the 8 named mazes: DR 0.30, PLR 0.30, RPLR 0.30, ACCEL 0.05; RPLR seed 1 0.19. Machine is
+oversubscribed (10 cores, load ~45) and stage C 14 pauses on low battery.
+
 ## The goal (user, 2026-09-28)
 
 A **generalized library that mixes and matches VerifAI, PLR and other techniques** into a
@@ -128,13 +160,71 @@ A CartPole run takes ~26 s of one core; 6 workers.
   - Across dev envs the hard-suite boost is CartPole-specific: Acrobot is slightly worse,
     Pendulum is flat, and MountainCar gains only on its random suite.
   - So: a real, mechanism-backed but modest effect, not a universal boost.
-- **Batch 12 (2026-10-01, running):** SFL extensions from its follow-ups (lineage in
-  `docs/literature.md`): `sfl_tilt_soft` (NCC score-proportional replay) and
-  `sfl_tilt_carry` (persistent frontier). Stage A via `results/lib/batch12.sh` (log
-  `results/lib/batch12.log`); verdict with `decide --stage A`, compared against `sfl_tilt`.
-- Lead: `sfl_mut_tilt` plus a grounding anchor (CURROT/DRED style) to fix its Pendulum guard.
-- Next in line if batch 10 fails: a bandit mixer over proposers, a CURROT-style
-  success floor, and PACE scoring on the frontier (`docs/literature.md`, end).
+- **Batch 12 (2026-10-01):** `sfl_tilt_soft` (NCC score-proportional replay) and
+  `sfl_tilt_carry` (persistent frontier). Both passed stage A (CartPole hard +0.183 p 0.021
+  and +0.105). **Stage B running:** `results/lib/stageB12.sh`, log `results/lib/stageB12.log`;
+  then `decide --stage B --arms sfl_tilt_soft sfl_tilt_carry`. The user dropped the "must
+  beat `sfl_tilt`" rule: record every arm that passes.
+- **Batch 13 (stage A running: `results/lib/batch13.sh`, log `results/lib/batch13.log`; verdict with `decide --stage A --arms sfl_tilt_verify sfl_tilt_amort`; from the "innovation moves" table in `docs/literature.md`):**
+  `sfl_tilt_verify` (re-roll a 200-level shortlist 24x, against the winner's curse) and
+  `sfl_tilt_amort` (k-NN on the last 3 scouts pre-screens 10k draws). Code and tests are in;
+  see `docs/library_log.md` for status.
+- **Testing suite:** hard suites floor outside CartPole (MountainCar DR 0.000, Acrobot
+  0.083 +- 0.018), so only CartPole's primary can move. Proposed Amendment 5 in
+  `docs/protocol.md` (recalibrated suites, multi-env primary, CVaR evaluation) **awaits the
+  user's approval**. `python -m acl_bench.plr.xenv` prints the cross-env standardized report.
+
+## Status (2026-10-02, Amendment 5 ADOPTED / batch 14)
+
+- **Amendment 5 adopted** with the user's approval (`docs/protocol.md`). The `calib` suites
+  were rebuilt from DR seeds 5001-5010 (`acl_bench/exam/calib.py`, `results/lib/calib5.sh`)
+  and the `adv` CVaR suites are report-only. The primary is a multi-env Z on `fin_cd`,
+  every stage uses all 4 dev envs, and results go in `results/<env>/a5/`.
+- Batch 12 stage B under the old rules: soft +0.142 and carry +0.126 (both p < 0.001),
+  ADVANCE. Batch 13 stage A: verify +0.092 and amort +0.219, both advance. All four are
+  re-screened under A5 in batch 14 rather than going on to old-rule stage C.
+- **Batch 14 (running, pid 45034, `results/lib/a5_pool.sh`, log `results/lib/a5_pool.log`):**
+  - First the A5 DR pool (seeds 1-48 x 4 envs, `a5/dr.csv`).
+  - Then stage A (seeds 1-8 x 4 envs, `a5/b14.csv`) of the five new "bold" arms
+    (`sfl_halving`: successive-halving scout; `sfl_ghost`: learning-progress bonus against
+    the previous policy; `sfl_spread`: farthest-point diverse buffer; `sfl_bisect`: bisect
+    failed/solved pairs onto the frontier; `sfl_tilt_sc`: soft + carry), plus `sfl_tilt`,
+    soft, carry, verify and amort.
+  - Code: `acl_bench/plr/fast.py` (`_halving`, `_bisect`, `_farthest`). Tests:
+    `tests/test_sfl.py`; the full suite passes (166).
+  - Check: `pgrep -f "a5_pool[.]sh"`. Verdict: `python -m acl_bench.plr.decide --a5 --stage A
+    --arms sfl_halving sfl_ghost sfl_spread sfl_bisect sfl_tilt_sc sfl_tilt sfl_tilt_soft
+    sfl_tilt_carry sfl_tilt_verify sfl_tilt_amort`.
+- 1-seed CartPole scratch probe (not counted; DR seed 1 calib_dev 0.029): sc 0.844, spread
+  0.550, ghost 0.540, halving 0.391, bisect 0.239. Bisect also collapsed random (0.546) and
+  CVaR (0.060), so it is likely to die at stage A.
+- **Batch 14 stage A verdicts** (`docs/library_log.md`): advance halving, spread, soft,
+  carry, verify; abandon ghost, bisect, sc, `sfl_tilt` (Z -0.137) and amort. Every arm gains on
+  CartPole, but hard-focused selection costs Acrobot (z -0.6 to -1.3). Spread, carry and verify
+  spare it.
+- **Stage B 14 (done):** only `sfl_tilt_carry` advances (Z +0.333, p 0.040, positive on all 3
+  resolving envs). Halving (+0.273, p 0.20), verify, spread and tilt_soft are abandoned.
+- **Batch 15 (done):** all 5 pass stage A. `sfl_spread_carry` is best (Z +0.450, p 0.048).
+  `sfl` +0.274 and `sfl_spread_verify` +0.177 advance. `sfl_auto` and `sfl_spread0` are dropped (Z ~0.1 or less).
+  The tilt causes the Acrobot cost; untilted `sfl` loses Pendulum instead.
+- **Running: `results/lib/queue16.sh` (log `queue16.log`).** It runs in order:
+  1. Stage B 15 (done): `sfl_spread_carry` ADVANCES (Z +0.330, p 0.073); `sfl` (+0.104) and
+     `sfl_spread_verify` (+0.100) abandoned.
+  2. Batch 16 stage A: `sfl_carry_mem` (new `sfl_memory`: carried levels pool discounted earlier
+     rollouts), `sfl_carry0`, `sfl_spread_carry0`, into `a5/b16.csv`.
+  3. Stage C 14: `results/lib/stageC14.sh`, DR + `sfl_tilt_carry` + `sfl_spread_carry` (added and
+     registered), seeds 1101-1200, `a5/c14.csv`. Verdict:
+     `decide --a5 --stage C --seeds 1101-1200 --arms sfl_tilt_carry sfl_spread_carry`.
+- **Batch 16 stage A (done):** `sfl_carry0` abandoned (-0.32); `sfl_carry_mem` (+0.119, cart +1.66) and
+  `sfl_spread_carry0` (+0.097) dropped as hopeless. Carry needs the tilt; memory helps CartPole only.
+- **Batch 17 cancelled** (knob-turning; the user asked for more self-evaluation and new mechanisms).
+- **Queued: `results/lib/queue18.sh` (log `queue18.log`)** waits for stage C 14, then runs batch 18:
+  start-state SFL (`sfl_states`: half the scout candidates are (level, visited state) pairs from a
+  training archive, replayed from that state), seeds 1-16, plus `sfl_tilt` seeds 9-16, into `a5/b18.csv`.
+  Stage A gate is seeds 1-8. Seeds 1-16 give an exploratory same-seed `sfl_states` vs `sfl_tilt` comparison.
+  The self-evaluation and falsifiers are in `library_log.md`.
+- **Uncommitted:** a git commit/push of this work was refused by the auto-mode permission
+  check; everything since `ab16711` is in the working tree only. Commit it next session.
 
 ## Next ideas
 

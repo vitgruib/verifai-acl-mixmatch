@@ -102,6 +102,72 @@ Pendulum; **stage A now runs 8 Pendulum seeds too** (guard as in Amendment 2, wi
 slack), so no arm advances without a continuous-reward check. `decide --stage A` reads
 CartPole, Acrobot and Pendulum. Earlier stage A verdicts stand (no stage is re-run).
 
+### Amendment 5 (proposed 2026-10-01; ADOPTED 2026-10-02 with the user's approval)
+
+The user asked to reconsider the testing suite. Measured on the DR pool (seeds 1-99):
+
+| env | DR hard dev (`fin_vd`) | DR random (`fin_r`) | resolves a gain? |
+|---|---|---|---|
+| CartPole | 0.333 +- 0.189 (n=96) | 0.893 +- 0.153 | yes |
+| Acrobot | 0.083 +- 0.018 (n=48) | 0.929 | barely: near the floor, tiny spread |
+| MountainCar | 0.000 +- 0.000 (n=48) | 0.574 +- 0.196 | no: hard suite floored |
+| Pendulum | 0.165 +- 0.086 (n=48) | 0.679 +- 0.112 | yes |
+
+MountainCar's random suite has a ceiling: of 784 MountainCar runs, 689 score exactly 0.671
+(200 of 298 tasks), none exceeds 0.677, and the rest are collapses (0, 0.224, 0.447). Its
+guard measures whether training collapsed, not the curriculum's effect. Its hard suite tops
+out at 0.032 over all 784 runs. Seed pairing does
+not help: arm and DR results on the same seed are uncorrelated (CartPole r ~ 0 to 0.18).
+
+Consequences: the only primary that can move is CartPole's, so every arm is selected for
+CartPole. "CartPole-specific" findings are partly a measurement artifact: the other hard
+suites (built from questions 60% of the *reference* agents fail) cannot show a gain.
+
+Proposed (each needs the user's approval because it changes a gate):
+1. **Recalibrated hard suites.** Rebuild each dev env's hard suite from questions that
+   independent DR agents (seeds outside every pool, e.g. 5001-5010) pass 10-60% of the time,
+   from the same VerifAI search pools, winnable-certified as now. DR then sits mid-range with
+   real seed-to-seed spread on every env. The old suites stay and are still reported.
+2. **Multi-env primary.** The stage A/B primary becomes the mean over dev envs of the gain
+   divided by DR's sd, over the suites that resolve (`python -m acl_bench.plr.xenv` computes
+   it now, as a report). With today's suites it is dominated by Acrobot's 0.018 sd, so it
+   needs item 1 first.
+3. **Adversarial evaluation (SFL's CVaR, 2408.15099).** For each final agent, its success on
+   the worst 10% of a large fixed level sample, as a robustness metric next to the suites.
+
+**Adopted rules (2026-10-02).** They apply to every stage run from batch 14 on. Earlier
+verdicts stand.
+- **Calibration agents:** DR on seeds 5001-5010, the final check-in (`results/lib/calib5.sh`,
+  snapshots in `results/<env>/snapshots/DR/`). These seeds are in no arm's pool.
+- **`calib` suite** (`python -m acl_bench.exam.calib`, seed 20261002): every question in the
+  45k-question `SEARCH_{ce,mab,sa}` pool that 1-6 of the 10 calibration agents pass (band
+  [0.1, 0.6]). At least one agent passes each question, and grading is deterministic, so
+  every question is proven winnable. The suite is capped at 2000 by a fixed-seed sample and
+  split even/odd into `calib_dev` and `calib_test`, like the VerifAI suite.
+- **`adv` suite (report only):** 1000 uniform levels x 4 starts, kept when a calibration agent
+  passes every start, first 500 levels. `adv/cvar` is the mean per-level success over the
+  agent's worst 10% of levels (`fin_cvar`, last-3 mean).
+- **Primary:** Z = mean over resolving envs of (arm mean - DR mean) / DR sd on `fin_cd`
+  (stage C: `fin_ct`). An env resolves when DR's mean is in [0.05, 0.95] and DR's sd is
+  >= 0.01. The p value is 2 * norm.sf(|Z| / SE), with SE = sqrt(sum over envs of
+  (var_a/n_a + var_DR/n_DR) / sd_DR^2) / (number of envs). Stage gates use Z and its p
+  exactly as before: A needs Z >= 0, B needs Z > 0 with p < 0.10, and C needs Z > 0 with
+  Holm p < 0.05.
+- **Environments:** every stage reads all 4 dev envs. Stage A uses 8 seeds per env. Stage B
+  uses 72 CartPole seeds plus 8 per other env, as before, against a new 48-seed DR pool per
+  env. Guards (Amendment 2) are unchanged.
+- **Storage:** A5 runs go in `results/<env>/a5/*.csv`. The old `lib/` CSVs lack the calib
+  columns. `python -m acl_bench.plr.decide --a5 --stage A|B|C ...` applies these rules.
+- **Caveat (MountainCar):** its calibration agents are bimodal (pass-count histogram
+  [9463, 23283, 0, ..., 0, 10198, 2056]). One agent reached a stronger mode, so the
+  MountainCar calib suite is mostly "questions only the strong mode solves". If DR does not
+  resolve on it, the env drops out of Z automatically.
+
+Built suites: calib = 2000 questions on every env, with calibration mean pass rates of
+0.345 (CartPole), 0.191 (Acrobot) and 0.100 (MountainCar). adv = 500 levels on every env;
+the winnable levels among the 1000 drawn were 807, 965, 910 and 738 (CartPole, Acrobot,
+MountainCar, Pendulum).
+
 ## 4. Reporting
 
 Per environment: the pass-rate differences with Welch p-values; at confirmation also

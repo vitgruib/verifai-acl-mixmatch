@@ -87,7 +87,7 @@ def main():
                 "questions": [lab for lab, k in zip(labels, ok) if k]}
     else:
         suite, info = verifai_suite(env, envs.search_dir(args.env), args.min_fail_frac, args.max_verifai, args.seed)
-        remove_sets([n for n in load_sets(exam) if n not in ("random", "heldout")], exam)
+        remove_sets([n for n in load_sets(exam) if n not in ("random", "heldout", "calib", "adv")], exam)
     save_sets({suite.name: suite}, exam, extra={suite.name: info})
     print(f"{info}\n{suite.name}: {len(suite)} questions -> {exam}")
 

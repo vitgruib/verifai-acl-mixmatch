@@ -671,7 +671,382 @@ change taken from SFL's follow-ups:
   the 1000 uniform candidates at each scout.
 Stage A as in Amendment 4: seeds 1-8 on CartPole, Acrobot and Pendulum, against the DR pool,
 with `sfl_tilt` from batch 10 shown as reference. Abandon if the primary is < 0 or a guard
-fails. Advancing additionally needs primary >= `sfl_tilt`'s stage-A primary, because the
-question is whether the change beats `sfl_tilt`, not DR. Script `results/lib/batch12.sh`,
+fails. ~~Advancing additionally needs primary >= `sfl_tilt`'s stage-A primary.~~ *Struck
+2026-10-01 at the user's instruction, after launch and before the verdict was read: arms
+advance on the standard stage-A rule against DR, and every arm that passes is recorded, not
+only those that beat `sfl_tilt`.* Script `results/lib/batch12.sh`,
 CSV `results/<env>/lib/batch12.csv`. Unit tests in `tests/test_sfl.py` (16 pass with the
 curriculum tests). A stored `sfl_tilt` row reproduces bit-exactly with the new code.
+
+**Batch 12 stage A verdict (2026-10-01).** `decide --stage A`, DR pool 96/48/48 seeds:
+
+| arm | n | hard d | p | CartPole r d | Acrobot r d | Pendulum r d | verdict |
+|---|---|---|---|---|---|---|---|
+| sfl_tilt_soft | 8 | +0.183 | 0.021 | -0.021 | -0.027 | -0.062 | advance to B |
+| sfl_tilt_carry | 8 | +0.105 | 0.278 | -0.177 | -0.005 | +0.005 | advance to B |
+| sfl_tilt (ref, batch 10) | 72 | +0.091 | 0.005 | -0.029 | -0.033 | +0.052 | (stage C confirmed) |
+
+Both advance. `carry`'s CartPole random cost (-0.177) is inside stage A's slack (tol -0.249)
+but would fail stage B's point-estimate guard (-0.179) if it stays there. On Pendulum's hard
+suite neither arm beats DR: soft -0.017, carry +0.007. Stage B launched: `results/lib/stageB12.sh`,
+CartPole seeds 9-72 and MountainCar 1-8; Pendulum's 8 seeds are stage A's.
+
+## Batch 13 (registered 2026-10-01, before running): innovation moves applied to SFL
+
+Source: `docs/literature.md`, "How these papers innovate". Two arms, each `sfl_tilt` plus
+one move. Advance does not require beating `sfl_tilt`; every arm that passes is recorded.
+- `sfl_tilt_verify` (move 1, check the proxy): after scouting, re-roll the top 200 by score
+  3 x 8 = 24 more times and rank on the pooled 32-rollout pass rate. This targets the winner's
+  curse the batch 11 mechanism check found: scouted levels re-test at 0.55, not 1/3. Scouting
+  cost rises 60%, all of it reported in `scouted_steps`.
+- `sfl_tilt_amort` (move 4, measurement to prediction): a k-NN (k=16, box-normalized) on the
+  last 3 scouts' (level, p) pre-screens 10,000 uniform draws. Half of the 1000 candidates are
+  the best-predicted, half stay uniform. No extra simulation.
+Stage A as in Amendment 4: seeds 1-8 on CartPole, Acrobot and Pendulum, against the DR pool.
+Abandon if the primary is < 0 or a guard fails. Script `results/lib/batch13.sh`, CSV
+`results/<env>/lib/batch13.csv`. Unit tests in `tests/test_sfl.py` (20 pass with the
+curriculum tests); default paths draw no extra rng, so old arms reproduce.
+
+Probe (1 CartPole seed, scratch, not counted): both arms run clean. Seed 1 final hard/random:
+verify 0.495/0.986 (237M scouted steps, 20 min), amort 0.037/0.603 (126M), against `sfl_tilt`
+seed 1 at 0.235/0.982. Stage A launched 2026-10-01, 4 workers next to stage B12.
+
+**Batch 12 stage B verdict (2026-10-02).** `decide --stage B`, CartPole 72 seeds:
+
+| arm | n | hard d | p | CartPole r d | Acrobot r d | MountainCar r d | Pendulum r d | verdict |
+|---|---|---|---|---|---|---|---|---|
+| sfl_tilt_soft | 72 | +0.142 | <0.001 | -0.014 | -0.027 | +0.097 | -0.062 | ADVANCE to C |
+| sfl_tilt_carry | 72 | +0.126 | <0.001 | -0.062 | -0.005 | +0.097 | +0.005 | ADVANCE to C |
+
+Both point estimates beat `sfl_tilt`'s stage B gain (+0.091). That does not show they are
+better than it: there was no head-to-head test. Carry's CartPole random cost shrank from
+-0.177 at 8 seeds to -0.062. Stage C (old rules) was not launched: Amendment 5 was adopted
+first, and both arms are re-screened under it in batch 14 (below).
+
+**Batch 13 stage A verdict (2026-10-02).** `decide --stage A`:
+
+| arm | n | hard d | p | note | verdict |
+|---|---|---|---|---|---|
+| sfl_tilt_verify | 8 | +0.092 | 0.25 | | advance to B |
+| sfl_tilt_amort | 8 | +0.219 | 0.04 | Pendulum r d -0.138, about stage B's tolerance | advance to B |
+
+## Amendment 5 adopted (2026-10-02)
+
+The user approved it. Exact rules are in `docs/protocol.md`. Calibration agents: DR seeds
+5001-5010 (`results/lib/calib5.sh`, 40 runs). Suites were built by `python -m
+acl_bench.exam.calib` with seed 20261002:
+
+| env | calib pass-count histogram (0..10 of the 10 agents) | calib n | adv winnable / 1000 | adv n |
+|---|---|---|---|---|
+| CartPole | 8320, 521, 311, 192, 430, 457, 358, 1455, 5819, 24592, 2545 | 2000 | 807 | 500 levels |
+| Acrobot | 20640, 5084, 2420, 1138, 635, 334, 281, 435, 610, 1188, 12235 | 2000 | 965 | 500 |
+| MountainCar | 9463, 23283, 0, ..., 0, 10198, 2056 (bimodal) | 2000 | 910 | 500 |
+| Pendulum | 26485, 1228, 1324, 1508, 2006, 1573, 1534, 1276, 901, 866, 6299 | 2000 | 738 | 500 |
+
+Grading is deterministic and adding suites does not touch training. A CartPole DR seed-1
+re-run reproduced its old `verifai_dev` and `random` numbers exactly. On the new suites it
+scored calib_dev 0.029, calib_test 0.031, adv 0.99 and CVaR 0.905. Code:
+`acl_bench/exam/calib.py`, `decide --a5`, and tests in `tests/test_a5.py`.
+
+## Batch 14 (registered 2026-10-02, before running): A5 pool and bold SFL arms
+
+**A5 DR pool.** DR seeds 1-48 on all 4 envs, written to `results/<env>/a5/dr.csv`.
+
+**Bold arms.** Each arm is `sfl_tilt` plus one idea. All are environment-agnostic and
+model-agnostic: they read only episode outcomes and the box bounds.
+- `sfl_halving` (best-arm identification; Hyperband/SH): 4000 candidates x 2 rollouts. Two
+  rounds each keep the best quarter, ranked by the score of the Beta(1,1) posterior mean,
+  and quadruple its rollouts (1000 levels to 8 rollouts, then 250 to 32). The top 100 come
+  from the 250. Scouting costs 20k rollouts, 2.5x `sfl_tilt`'s.
+- `sfl_ghost` (learning progress; TSCL / ALP-GMM): score + 0.5 x |p_now - p_old|, where p_old
+  comes from re-rolling the candidates with the policy saved at the previous scout. Scouting
+  costs 2x.
+- `sfl_spread` (diversity; DIPLR / ACCEL-style novelty): greedy farthest-point selection
+  (box-normalized) of 100 from the top 300 by score. No extra simulation.
+- `sfl_bisect` (boundary search; VerifAI falsification): 300 random failed levels
+  (p <= 1/8), each paired with its nearest solved level (p >= 7/8), bisected 3 times
+  toward p* = 1/(2+tilt) = 1/3. The final midpoints compete with the scouted levels.
+  Scouting costs +90%.
+- `sfl_tilt_sc`: soft replay and carry together (both passed stage B).
+
+**Stage A under A5.** Seeds 1-8 on all 4 envs, against the A5 DR pool. Arms: the 5 above,
+plus `sfl_tilt`, `sfl_tilt_soft`, `sfl_tilt_carry`, `sfl_tilt_verify` and `sfl_tilt_amort`,
+re-run because the old CSVs lack calib columns. Training is unchanged, so re-runs reproduce
+the old runs. Abandon if Z < 0 or a guard fails (Amendment 2, with 0.07 slack). Every pass is
+recorded.
+
+Script: `results/lib/a5_pool.sh`. CSVs: `results/<env>/a5/{dr,b14}.csv`. Unit tests are in
+`tests/test_sfl.py`, and the full suite passes (166 tests). With the new flags at their
+defaults, no new rng is drawn, so old arms reproduce.
+
+**Batch 14 scratch probe (not counted; 1 seed, CartPole, A5 suites; DR seed 1: calib_dev 0.029, random 0.98, CVaR 0.905).**
+calib_dev / random / CVaR / scouted steps: `sfl_tilt_sc` 0.844 / 0.965 / 0.525 / 145M;
+`sfl_spread` 0.550 / 0.993 / 0.985 / 146M; `sfl_ghost` 0.540 / 0.975 / 0.965 / 303M;
+`sfl_halving` 0.391 / 0.897 / 0.545 / 267M; `sfl_bisect` 0.239 / 0.546 / 0.060 / 184M.
+No crashes. Bisect's collapse on random and CVaR is a warning sign; the stage A run decides.
+Pendulum, same probe (seed 1; the A5 DR pool has not reached Pendulum yet, so the only reference is
+the calibration DR agents: 0.365 mean pass on `calib` and 0.68 on `adv` levels, both biased upward by selection):
+random / calib_dev / CVaR: `sfl_halving` 0.708 / 0.328 / 0.142; `sfl_ghost` 0.558 / 0.181 / 0.000;
+`sfl_tilt_sc` 0.524 / 0.135 / 0.000; `sfl_spread` 0.510 / 0.116 / 0.000; `sfl_bisect` 0.352 / 0.113 / 0.007.
+Every arm sits below the calibration reference, and only halving keeps a nonzero CVaR. Pendulum is the
+likely place where these arms fail the A5 primary or a guard.
+
+### Batch 14 stage A verdicts (Amendment 5, 2026-10-02)
+
+DR pool (48 seeds per env), `fin_cd`: CartPole 0.375 +- 0.193, Acrobot 0.150 +- 0.029,
+Pendulum 0.364 +- 0.163. MountainCar sits at 0.000 and does not resolve, so it drops out of Z.
+
+| arm | Z | p | per-env z (cart / acro / pend) | CVaR d | verdict |
+|---|---|---|---|---|---|
+| `sfl_halving` | +0.138 | 0.59 | +0.68 / -0.77 / +0.51 | -0.035 | advance to B |
+| `sfl_ghost` | -0.456 | 0.02 | +0.84 / -1.30 / -0.91 | -0.041 | ABANDON |
+| `sfl_spread` | +0.292 | 0.21 | +1.03 / +0.02 / -0.18 | +0.019 | advance to B |
+| `sfl_bisect` | -0.088 | 0.71 | +1.31 / -1.18 / -0.40 | -0.067 | ABANDON |
+| `sfl_tilt_sc` | -0.573 | 0.04 | -0.03 / -0.75 / -0.94 | -0.059 | ABANDON |
+| `sfl_tilt` | -0.137 | 0.59 | +0.29 / -1.15 / +0.46 | -0.061 | ABANDON |
+| `sfl_tilt_soft` | +0.003 | 0.99 | +1.06 / -0.60 / -0.45 | -0.059 | advance to B |
+| `sfl_tilt_carry` | +0.263 | 0.24 | +0.54 / +0.14 / +0.11 | -0.054 | advance to B |
+| `sfl_tilt_verify` | +0.179 | 0.49 | +0.60 / -0.16 / +0.09 | -0.002 | advance to B |
+| `sfl_tilt_amort` | -0.378 | 0.17 | +1.19 / -1.27 / -1.06 | -0.084 | ABANDON |
+
+No guard fails. Pendulum's worst losses on the random suite are amort -0.138, sc -0.117 and ghost -0.107.
+MountainCar's random suite is +0.097 for every arm: DR collapses on some seeds and SFL arms do not.
+
+Reading:
+- Every arm gains on CartPole's recalibrated suite.
+- The A5 multi-env primary exposes an **Acrobot cost of hard-focused selection**: z between -0.6
+  and -1.3 for most arms.
+- The arms that leave Acrobot intact are the ones that stabilize or diversify the buffer:
+  spread +0.02, carry +0.14, verify -0.16.
+- `sfl_tilt`, confirmed under the old CartPole-only primary, fails the A5 stage A. Its old
+  verdict stands but does not carry over.
+
+### Batch 14 stage B (registered 2026-10-02, before running)
+
+`sfl_halving`, `sfl_spread`, `sfl_tilt_soft`, `sfl_tilt_carry`, `sfl_tilt_verify`: CartPole seeds 9-72
+(other envs keep their 8, per A5). Script `results/lib/stageB14.sh`; verdict `decide --a5 --stage B`.
+
+### Batch 15 (registered 2026-10-02, before running): spare Acrobot
+
+Hypothesis from batch 14: hard-focused selection costs Acrobot, while stabilizing or diversifying the
+buffer avoids that cost. Stage A (A5 rules, seeds 1-8 on all 4 envs, `results/<env>/a5/b15.csv`):
+- `sfl`: plain SFL (no tilt), the control. Is the Acrobot cost caused by the tilt, or by SFL itself?
+- `sfl_spread_carry`: tilt + farthest-point spread (3x pool) + carry the last buffer into rescoring.
+- `sfl_spread_verify`: tilt + spread + 4x-rollout re-ranking of the top 200.
+- `sfl_spread0`: spread without tilt.
+- `sfl_auto`: tilt, with the replay probability self-tuned each scout by an epsilon-greedy bandit
+  (eps 0.3, recency alpha 0.3) over {0, 0.25, 0.5, 0.75}. The reward is the change in mean +
+  worst-quarter pass rate on 500 fixed uniform levels (k=8 rollouts each, reported as scouting cost).
+  This is environment-agnostic: it uses only episode outcomes on the task box, and every env uses the
+  same constants. Setting the intensity to 0 recovers DR, so the bandit can back off where hard focus hurts.
+Script `results/lib/batch15.sh`; it starts after stage B 14 finishes. Verdict: `decide --a5 --stage A`.
+
+### Batch 14 stage B results (2026-10-02)
+
+DR pool: 48 seeds per env. DR fin_cd is cart 0.375, acro 0.150, pend 0.364; MountainCar does not resolve.
+
+| arm | Z | p | z per env | verdict |
+| --- | --- | --- | --- | --- |
+| sfl_tilt_carry | +0.333 | 0.040 | cart +0.75, acro +0.14, pend +0.11 | **ADVANCE to C** |
+| sfl_halving | +0.273 | 0.20 | cart +1.09, acro -0.77, pend +0.51 | abandon |
+| sfl_tilt_verify | +0.242 | 0.30 | cart +0.79, acro -0.16, pend +0.09 | abandon |
+| sfl_spread | +0.122 | 0.58 | cart +0.52, acro +0.02, pend -0.18 | abandon |
+| sfl_tilt_soft | -0.061 | 0.76 | cart +0.87, acro -0.60, pend -0.45 | abandon |
+
+Guards pass for every arm (worst random-suite delta: tilt_soft pend -0.062).
+Only carry is positive on all three resolving envs. Its CartPole gain is smaller than halving's, but
+it costs no other env, and the multi-env primary rewards exactly that.
+
+### Batch 14 stage C (registered 2026-10-02, before running)
+
+`sfl_tilt_carry` vs `DR`: fresh seeds 1101-1200 on all 4 envs (Amendments 2 and 3), `results/<env>/a5/c14.csv`.
+Primary is the A5 Z on `fin_ct` (test halves); Holm over 1 arm (plus any batch 15 survivor added
+later, which is then registered here too, before its runs). Guards: one-sided 95% lower bound
+>= -0.20 x DR's random-suite rate. Script `results/lib/stageC14.sh` (starts after batch 15).
+Verdict: `decide --a5 --stage C --seeds 1101-1200 --arms sfl_tilt_carry`.
+
+### Batch 15 stage A results (2026-10-02)
+
+| arm | Z | p | z per env | verdict |
+| --- | --- | --- | --- | --- |
+| sfl_spread_carry | +0.450 | 0.048 | cart +1.01, acro -0.39, pend +0.73 | advance to B |
+| sfl | +0.274 | 0.25 | cart +1.07, acro +0.17, pend -0.42 | advance to B |
+| sfl_spread_verify | +0.177 | 0.47 | cart +0.55, acro -0.36, pend +0.34 | advance to B |
+| sfl_auto | +0.100 | 0.68 | cart +0.42, acro -0.40, pend +0.28 | stage A pass; **dropped** (see below) |
+| sfl_spread0 | +0.039 | 0.90 | cart +0.04, acro -0.33, pend +0.41 | stage A pass; **dropped** |
+
+Guards pass for every arm (worst: sfl_auto cart random-suite -0.092).
+- Plain `sfl` is the only arm positive on Acrobot apart from carry: the batch 14 Acrobot cost comes
+  mostly from the tilt, not from SFL itself. But untilted `sfl` loses Pendulum.
+- `sfl_auto` and `sfl_spread0` pass stage A but are dropped as hopeless under the working-style rule:
+  Z is about 0.1 or less, CartPole gain is small, and auto has the worst random-suite cost. Dropping
+  arms only reduces claims.
+
+### Stage B 15 (registered 2026-10-02, before running)
+
+`sfl`, `sfl_spread_carry`, `sfl_spread_verify`: CartPole seeds 9-72 into `results/cartpole/a5/b15B.csv`.
+Verdict `decide --a5 --stage B`. Up to 2 survivors join stage C 14 (max 3 arms with `sfl_tilt_carry`).
+They share its DR runs, and are registered there by name before those arms run.
+
+### Batch 16 (registered 2026-10-02, before running): carry variants
+
+Carry (re-scouting the last buffer) is the only mechanism to reach stage C under A5.
+- `sfl_carry_mem`: tilt + carry + memory 0.5. A carried level pools its earlier rollouts: discounted
+  pass/trial counts are added to the new k=8 ones (`sfl_memory` in `fast.py`). This is a cheap
+  `verify` aimed at the persistent frontier, so a level stops winning or losing on 8 noisy rollouts.
+- `sfl_carry0`: carry without the tilt. Batch 15 shows the tilt costs Acrobot.
+- `sfl_spread_carry0`: spread + carry without the tilt.
+Stage A: seeds 1-8 x 4 envs into `results/<env>/a5/b16.csv`. `sfl_tilt_carry`'s batch 14 runs are the
+reference.
+
+Compute order (`results/lib/queue16.sh`): stage B 15, then batch 16 stage A, then stage C 14. Stage C
+was paused minutes after starting so it can include stage B 15 survivors; `--resume` keeps its runs.
+
+### Stage B 15 results (2026-10-02)
+
+CartPole 72 seeds, other envs 8 (batch 15 stage A runs).
+
+| arm | Z | p | z per env | verdict |
+| --- | --- | --- | --- | --- |
+| sfl_spread_carry | +0.330 | 0.073 | cart +0.65, acro -0.39, pend +0.73 | **ADVANCE to C** |
+| sfl | +0.104 | 0.63 | cart +0.56, acro +0.17, pend -0.42 | abandon |
+| sfl_spread_verify | +0.100 | 0.60 | cart +0.32, acro -0.36, pend +0.34 | abandon |
+
+All guards pass (random-suite deltas within ±0.07). Both arms reaching stage C use carry.
+
+**Stage C 14 addendum (registered before its runs):** `sfl_spread_carry` joins `sfl_tilt_carry` vs DR
+on 1101-1200. Holm over 2 arms. Verdict
+`decide --a5 --stage C --seeds 1101-1200 --arms sfl_tilt_carry sfl_spread_carry`.
+
+### Stage C 14 results (2026-10-04): both arms FAIL
+
+| arm | Z | p | Holm p | z per env | verdict |
+| --- | --- | --- | --- | --- | --- |
+| sfl_tilt_carry | +0.058 | 0.51 | 0.51 | cart +0.55, acro -0.55, pend +0.17 | FAIL |
+| sfl_spread_carry | +0.115 | 0.18 | 0.37 | cart +0.30, acro -0.06, pend +0.10 | FAIL |
+
+100 fresh seeds (1101-1200) per env vs the 100-seed DR pool. Neither arm's primary is significant. The
+stage B signs held only weakly: CartPole stays positive, Acrobot is negative for `sfl_tilt_carry`. Guards are moot after the primary fails (worst random-suite
+lower bound: `sfl_tilt_carry` MountainCar -0.074). This closes the old goal's last open line: no SFL variant gives a confirmed environment-agnostic
+boost on these four envs.
+
+### Batch 16 stage A results (2026-10-02)
+
+| arm | Z | p | z per env | verdict |
+| --- | --- | --- | --- | --- |
+| sfl_carry_mem | +0.119 | 0.66 | cart +1.66, acro -0.73, pend -0.57 | stage A pass; **dropped** (see below) |
+| sfl_spread_carry0 | +0.097 | 0.62 | cart -0.32, acro +0.44, pend +0.17 | stage A pass; **dropped** |
+| sfl_carry0 | -0.323 | 0.22 | cart +0.19, acro -0.72, pend -0.43 | ABANDON (primary < 0) |
+
+Guards pass (worst: sfl_spread_carry0 cart random-suite -0.102, inside the stage A slack).
+- **The tilt is needed with carry.** Without it, carry loses on every env but CartPole, and spread+carry loses
+  CartPole. In batch 15 the tilt cost Acrobot without carry; with carry it pays off.
+- **Memory is the strongest CartPole signal yet (+1.66 z at 8 seeds) but costs Acrobot and Pendulum.** Pooled
+  evidence keeps carried levels around longer, so the frontier may go stale on envs that learn fast.
+  A weaker memory may keep the CartPole gain at a lower cost (batch 17).
+- Both stage A passers are dropped as hopeless, the same rule as batch 15 (Z about 0.1, one env
+  strongly negative). Dropping arms only reduces claims.
+
+### Batch 17 (registered 2026-10-02, before running): tuning the carry winners
+
+Every arm keeps tilt + carry (batch 16).
+- `sfl_carry_mem25`: memory 0.25, half of batch 16's. Does a weaker memory keep the CartPole gain without
+  making the frontier stale on Acrobot/Pendulum?
+- `sfl_spread2_carry`: spread 2 instead of 3. `sfl_tilt_carry` (spread 0) wins Acrobot and
+  `sfl_spread_carry` (spread 3) wins Pendulum; this tests whether a midpoint keeps both.
+- `sfl_spread_carry_mem`: spread 3 + carry + memory 0.25.
+Stage A: seeds 1-8 x 4 envs into `results/<env>/a5/b17.csv`, run after stage C 14
+(`results/lib/queue17.sh`). These are tuning arms, so any stage C claim needs fresh seeds beyond 1200.
+
+**Batch 17 CANCELLED (2026-10-03) before any run.** The user judged batches 15-17 knob-turning ("bashing
+rather than innovating"), and I agree. Batch 17 only re-tuned tilt, spread, memory and carry on 8-seed
+z-scores whose signs flip between envs. `queue17.sh` was killed and no b17 rows exist.
+
+### Batch 18 (registered 2026-10-03, before running): start-state SFL (`sfl_states`)
+
+**Mechanism (a new unit of curriculum, not a knob).**
+- SFL scores *levels* from their own start distribution. `sfl_states` scores (level, start state) pairs.
+- During training, one visited state in 8 from every episode goes into a 20k FIFO archive, as a
+  (level, state) pair.
+- At each scout, half of the 1000 candidates are archive pairs and half are fresh levels with standard
+  starts. Each gets 8 rollouts and the same score p(1-p)(1-p), and the top 100 are kept.
+- A replay of an archived pair starts *from that state*.
+- Plain SFL is the special case with a 0% archive share. The scoring decides whether mid-trajectory
+  states beat whole levels.
+- Lineage: Florensa et al. 2017 (reverse curriculum: starts with intermediate success), Go-Explore
+  (return to visited states), Kakade & Langford 2002 (restart distributions).
+- Arms: `sfl_states` = `sfl_tilt` + `sfl_states 0.5`. `sfl_states_carry` is registered but not run.
+
+**Agnosticism.** No env name, constant or bucket. It needs one extra capability: the simulator can be reset
+to a stored state, as every env here can (states are plain vectors). It is model-agnostic: it uses only
+episode outcomes. This assumption is stronger than plain SFL's and will be reported as such. Tests are
+unchanged: they always use the standard starts.
+
+**Self-evaluation before running.**
+- *Hypothesis:* the hard part of a hard level is often a phase reached late in an episode. Examples: holding
+  upright after a swing-up (Pendulum, Acrobot), or recovering from a high-velocity state (CartPole).
+  Standard starts rarely reach that phase while the policy is weak, so its credit is thin. Starting there
+  gives the learnable phase direct practice.
+- *Why it might fail:* (1) 50% of replays come from off-test starts. If the swing-up itself is the
+  bottleneck, practice near the top is wasted, and Pendulum could get worse. (2) The archive holds the
+  agent's own states. If the agent never gets near success, every archived state has p = 0, and nothing
+  new is learnable (the MountainCar weak mode).
+- *Mechanism probe* (1 seed, 1/4 budget): the archive share of the kept buffer, by training quarter.
+  CartPole 0.94→0.63, Acrobot 0.52→0.76, Pendulum 1.00 throughout, MountainCar 0.84→0.40. The candidate
+  share is 0.5, so the scoring prefers archived states on every env. The mechanism is active and not
+  inert. Pendulum's 100% is the biggest risk for failure mode (1).
+- *Falsifiers:* stage A Z < 0. Or, at 16 seeds, `sfl_states` is no better than `sfl_tilt` on the mean
+  z over the three resolving envs (point estimate <= 0). Then the state unit adds nothing over levels.
+  If Pendulum's z falls below `sfl_tilt`'s by more than 0.5, failure mode (1) is real.
+- *Detectability:* 8 seeds cannot resolve ±0.3 z, as batches 15-16 showed. So stage A follows the protocol
+  (seeds 1-8 decide the gate), and seeds 9-16 are added for `sfl_states` *and* `sfl_tilt` as an
+  exploratory same-seed comparison at 16 seeds. MountainCar is not in Z (its calib suite does not
+  resolve), so its calib and random pass rates are reported as an exploration side-check.
+- *Cost:* the same scouting as SFL (1000 x 8 rollouts per scout). Archived rollouts may be shorter.
+
+Runs: `sfl_states` seeds 1-16 and `sfl_tilt` seeds 9-16, x 4 envs, into `results/<env>/a5/b18.csv`
+(`results/lib/queue18.sh`, after stage C 14). Verdict: `decide --a5 --stage A --arms sfl_states`
+on seeds 1-8.
+
+**Batch 18 CANCELLED (2026-10-03, before any run):** the user changed the goal to a UED failure atlas via VerifAI falsification plus a falsifier + PLR fix (`.claude/commands/goal.md`). The `sfl_states` code and tests stay in the repo; the mechanism probe above is its only result.
+
+## Batch 19 (registered 2026-10-03, before running): small-scale reproduction of the maze results with the papers' own code (JaxUED)
+
+**Question.** Can the published maze ordering (Robust PLR / ACCEL > PLR > DR > PAIRED on held-out
+mazes) be reproduced at ~10% of the paper budget on this machine, with the authors' JaxUED code?
+
+- Code: JaxUED examples `maze_dr.py`, `maze_plr.py` (Robust PLR default; PLR via
+  `--exploratory_grad_updates`; ACCEL via `--use_accel`), `maze_paired.py`. Default hyperparameters
+  (JaxUED's paper-matched defaults), only `--num_updates 3000` (paper: 30000) changed. Headless,
+  `WANDB_MODE=offline`, no windows.
+- Arms: DR, PLR, Robust PLR, ACCEL, PAIRED; seeds 0-1 (a probe of feasibility, not a claim).
+- Eval: JaxUED `--mode eval` on the 8 named mazes (SixteenRooms, SixteenRooms2, Labyrinth,
+  LabyrinthFlipped, Labyrinth2, StandardMaze, StandardMaze2, StandardMaze3), solve rate.
+- *Reproduces if:* PAIRED is worst and the replay methods (PLR/Robust PLR/ACCEL) beat DR on mean
+  solve rate for both seeds. *Does not reproduce if:* DR >= all replay methods. With 2 seeds this
+  only checks direction; 10% budget may be too short for curricula to separate (stated deviation).
+- Cost: ~1.6 h per run contended (measured probe 1.9 s/update) -> 10 runs, 2 at a time, ~8-10 h.
+
+### Batch 19 results so far (2026-10-04; PAIRED pending)
+
+Mean solve rate over the 8 named mazes (10 attempts each), 3000 updates:
+
+| arm | seed 0 | seed 1 |
+| --- | --- | --- |
+| DR | 0.30 | **0.35** |
+| Robust PLR | 0.30 | 0.19 |
+| PLR | 0.30 | 0.04 |
+| ACCEL | 0.05 | 0.12 |
+| PAIRED | running | running |
+
+**Replay-vs-DR part: does not reproduce** (registered criterion: DR >= all replay methods, which holds on
+both seeds; seed 0 is a three-way tie at 0.30). ACCEL is last among the replay methods on both seeds, the opposite of
+its paper. Caveats, as registered: 2 seeds and 10% budget. In the papers, the methods separate late in training,
+and edit-based ACCEL needs the longest horizon. Seed spread (PLR 0.30 vs 0.04) is as large as any gap
+between methods. So this is "not reproducible at this scale", not evidence against the papers. PAIRED (3 networks, ~3x
+slower) is still training; the "PAIRED worst" half is pending.
+
+**PAIRED dropped (2026-10-04, user decision):** too compute-heavy here (3 networks; ~80 min per 250 updates
+even on a free machine, ~12-15 h left per seed). Both PAIRED runs were stopped part-way (seed 0 near update 1000,
+seed 1 near update 250) and are not evaluated. Batch 19 final: replay-vs-DR **does not reproduce** at 10% budget
+and 2 seeds. "PAIRED worst" is **not measured**. PAIRED is deferred to the cluster.
