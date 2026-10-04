@@ -1,7 +1,7 @@
 # VerifAI x UED: a failure atlas for curriculum algorithms
 
 **Current goal (2026-10-03):** document the published unsupervised-environment-design
-algorithms (DR, minimax, PAIRED, PLR, Robust PLR, ACCEL, SFL), find where each fails using
+algorithms (DR, minimax, PLR, Robust PLR, ACCEL, SFL; PAIRED dropped 2026-10-04 as too slow), find where each fails using
 VerifAI falsification on the exact environments of their papers and with the papers' own code,
 explain why with diagnostics, and fix the failures with falsifier + PLR.
 
@@ -9,7 +9,7 @@ explain why with diagnostics, and fix the failures with falsifier + PLR.
 |---|---|
 | [docs/ued_atlas.md](docs/ued_atlas.md) | algorithm registry, paper-exact settings, plan, results |
 | [docs/failure_records.md](docs/failure_records.md) | the failure-record schema and a diagnosis checklist |
-| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (4 parts: maze, CarRacing, Bipedal, SFL) |
+| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (4 parts, one per environment: Maze, CarRacing, Bipedal, JaxNav) |
 | [docs/handoff.md](docs/handoff.md) | current state, running jobs, next steps |
 | [docs/literature.md](docs/literature.md) | papers and lineage |
 | [docs/library_log.md](docs/library_log.md), [docs/protocol.md](docs/protocol.md) | the previous goal (agnostic curriculum wrapper): batches, verdicts, the staged protocol |

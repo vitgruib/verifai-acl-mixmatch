@@ -1,4 +1,4 @@
-"""Load a JaxUED maze checkpoint (DR, PLR, Robust PLR, ACCEL, PAIRED student) and roll it
+"""Load a JaxUED maze checkpoint (DR, PLR, Robust PLR, ACCEL, minimax student) and roll it
 out on arbitrary levels, using JaxUED's own network and `evaluate_rnn` so behaviour matches
 the paper code exactly. Needs JAX and a JaxUED checkout: set JAXUED_DIR (default
 third_party/jaxued, as cluster/setup_jaxued.sh creates it)."""
@@ -35,7 +35,7 @@ class Policy:
             from flax.traverse_util import unflatten_dict
             from safetensors.flax import load_file
             self.config = {"agent_view_size": 5, "n_walls": 60, "format": "sfl_safetensors"}
-            meta = os.path.join(self.ckpt_dir, "config.json")   # written by cluster/sfl/train.sbatch
+            meta = os.path.join(self.ckpt_dir, "config.json")   # written by cluster/1_maze/train.sbatch
             if os.path.exists(meta):
                 with open(meta) as f:
                     self.config.update(json.load(f))
@@ -83,7 +83,7 @@ class Policy:
 
 
 def _buffer(sampler):
-    """The PLR/ACCEL level buffer saved in the checkpoint (None for DR/PAIRED)."""
+    """The PLR/ACCEL level buffer saved in the checkpoint (None for DR/minimax)."""
     if sampler is None:
         return None
     n = int(np.asarray(sampler["size"]))

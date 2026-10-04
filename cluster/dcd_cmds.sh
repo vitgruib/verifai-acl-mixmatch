@@ -8,7 +8,7 @@ dom=$1 xvfb=$2; shift 2
 cd "$DCD_DIR"
 for c in "$@"; do
   d=train_scripts/grid_configs/$dom; [ -f "$here/dcd_configs/$dom/${c%.json}.json" ] && d=$here/dcd_configs/$dom
-  python train_scripts/make_cmd.py --dir "$d" --json $c \
+  ${PYTHON:-python3} train_scripts/make_cmd.py --dir "$d" --json $c \
     --num_trials ${NSEEDS:-10} $([ "$xvfb" = 1 ] && echo --xvfb) \
   | sed -e ':a' -e '/\\$/N; s/ *\\\n */ /; ta' \
   | grep -E '^(xvfb-run|python)' | sed "s|\$| --log_dir=$RUNS/dcd/$dom|"
