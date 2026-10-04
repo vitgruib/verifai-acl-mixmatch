@@ -159,6 +159,65 @@ in 280 s; our SFL-style scouting costs about 9x DR wall-clock.
 Ask for: GPU nodes with JAX (JaxUED, SFL, XLand, JaxNav), and CPU-many-core jobs for DCD
 BipedalWalker. Everything after training (steps 3-5) can run locally.
 
+## 4b. Falsifier prelim (maze, 2026-10-04)
+
+Purpose: choose the VerifAI samplers for the cluster falsification (`cluster/maze/falsify.sbatch`).
+Setup: batch-19 JaxUED checkpoints (DR, PLR, Robust PLR, ACCEL; 3000 updates = 10% of the paper
+budget; train seeds 0-1). Two spaces (`dr`: JaxUED's own generator parameters; `seg`: wall
+segments), five samplers (random, halton, ce, mab, sa), falsifier seeds 0-2, 1000 levels each,
+10 attempts per level, spec `solve_rate >= 0.5`. Every level is oracle-certified solvable first.
+240 runs, no crashes. Driver `results/atlas/prelim_maze.sh`, log `results/atlas/prelim_maze.log`,
+table `results/atlas/prelim_maze.csv`, reproduce with `python -m atlas.prelim runs/maze_prelim`.
+
+Ranking (geometric mean over the 4 algorithms, relative to random at the same budget; headline
+is distinct failure modes, i.e. coarse `desc` cells, because the atlas wants kinds of failure,
+not one failure resampled):
+
+| space | sampler | modes x | cex rate x | invalid |
+|---|---|---|---|---|
+| dr | **ce** | **1.13** | **4.51** | 0.211 |
+| dr | **mab** | 1.06 | 2.46 | 0.123 |
+| dr | random | 1.00 | 1.00 | 0.066 |
+| dr | halton | 0.99 | 1.01 | 0.060 |
+| dr | sa | 0.92 | 0.93 | 0.062 |
+| seg | **ce** | **1.07** | **5.89** | 0.173 |
+| seg | random | 1.00 | 1.00 | 0.094 |
+| seg | sa | 0.96 | 1.07 | 0.084 |
+| seg | halton | 0.89 | 1.14 | 0.086 |
+| seg | **mab** | 0.87 | 5.22 | 0.145 |
+
+**Chosen: `random ce mab`.** ce is best on both metrics in both spaces. mab is the runner-up on
+counterexample rate everywhere (and finds the first one quickly), but concentrates on fewer
+modes in `seg`. Random stays as the control every ratio is taken against, and it gives the
+unbiased failure rate. Halton is indistinguishable from random and sa is below it, so both are
+dropped (this cuts the falsify cost by 40%). The adaptive samplers waste 2-3x more budget on
+invalid levels: they steer toward wall-heavy regions where more draws are unsolvable.
+
+Failure rate under random search (share of solvable levels with solve rate < 0.5; 10% budget,
+so these are not the paper agents): `dr` space DR 0.053, PLR 0.056, Robust PLR 0.058, ACCEL 0.083;
+`seg` space DR 0.058, PLR 0.040, Robust PLR 0.063, ACCEL 0.098.
+
+**What kind of level fails** (random sampler, pooled over algorithms; fail / pass ratio):
+walls 1.72x (`dr`) / 1.60x (`seg`), shortest path 1.78x / 1.83x, dead ends 2.08x / 1.62x,
+detour (path / Manhattan) 1.55x / 1.58x, but Manhattan distance only 1.25x / 1.30x. Failures are
+levels that force a detour around walls, not simply levels with a distant goal.
+
+**Why (train context; H2 = the curriculum saw the region but scored it low):**
+- PLR and Robust PLR: failing levels are further from the DR generator's levels (`dr_knn` 15.6
+  vs 10.3 for PLR; 12.3 vs 10.1 for Robust PLR) and from the replay buffer (`buf_knn` 15.7 vs
+  10.3; 12.3 vs 10.1). Their buffer neighbours have *higher* replay scores (percentile 0.58 vs
+  0.46; 0.53 vs 0.47), with buffer age unchanged. The failures are mostly out of distribution,
+  and where the buffer does reach them it already ranks them high. H2 is not supported at
+  this budget; the gap is generation, not scoring.
+- ACCEL: failing levels are slightly *closer* to its buffer (5.4 vs 6.2), whose neighbours are
+  fresher (age 15.0k vs 17.6k) and higher-scored (0.63 vs 0.56). ACCEL's edits are already
+  working on these regions; at 10% budget it has not learned them yet.
+- DR: failures are further from its own generator distribution (`dr_knn` 12.9 vs 10.3), i.e. the
+  tail of what DR samples.
+
+Caveats: 10% budget, two training seeds, 1000-level runs. Repeat on the full-budget cluster
+checkpoints before writing any of this into section 5.
+
 ## 5. Failure atlas (to be filled)
 
 Two columns per cell: **without VerifAI** (the paper's own metrics) and **with VerifAI**

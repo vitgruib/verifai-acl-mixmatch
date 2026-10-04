@@ -89,8 +89,9 @@ distinct_cex_cells` (counterexamples binned coarsely on `desc`: distinct failure
 1. **Is it real?** Check `oracle.status == "solvable"` (the falsifier enforces it) and compare
    `lengths` with `oracle.min_steps`: the agent had 250 steps for a 10-step solution. Then `hard` counterexamples (0/10 solved) are failures; `solve_rate` of 0.4 is
    a coin-flip near tau. Re-evaluate the `level` with more attempts before writing it up.
-2. **What kind?** Compare `desc_cex` against `desc_ok`. In the maze prelim, failing levels have
-   about twice the walls and path length of passing ones. Group counterexamples by coarse
+2. **What kind?** Compare `desc_cex` against `desc_ok`. In the maze prelim (random sampler), failing
+   levels have 1.6-1.7x the walls, 1.8x the shortest path, 1.6-2.1x the dead ends and only 1.3x
+   the Manhattan distance of passing ones: detours, not distance (`atlas.prelim` prints this). Group counterexamples by coarse
    `desc` cells (`atlas/prelim.py: mode_of`) and look at one level per cell.
 3. **Why: never seen, or seen and ignored?**
    - High `dr_knn` and high `buf_knn`: out of distribution. The curriculum never generated it,

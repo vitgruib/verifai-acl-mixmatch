@@ -89,9 +89,10 @@ sbatch --array=0-59 --dependency=afterok:$jid cluster/maze/falsify.sbatch
   `BUDGET` levels, 10 stochastic attempts each, spec `solve_rate >= 0.5`. Records go to
   `runs/maze_falsify/`. See [docs/failure_records.md](../docs/failure_records.md).
 - The sampler defaults come from the local prelim ([docs/ued_atlas.md](../docs/ued_atlas.md),
-  "Falsifier prelim"). Override with `SAMPLERS="random ce"` and similar.
+  section 4b, "Falsifier prelim"): `random ce mab`. Override with `SAMPLERS="random ce"` and similar.
 - Cost: about 1,000 falsifier levels take ~45 s on a laptop CPU. One falsify task (2 spaces ×
-  samplers × 3 seeds × 5000 levels) is roughly 1–3 GPU-hours. Training time has not been
+  3 samplers × 3 seeds × 5000 levels = 90k levels) is about 1 h of laptop-CPU time, well under
+  the 8 h limit. Training time has not been
   measured at 30k updates; the 24 h limit is generous. PAIRED and minimax are the slow ones.
 
 ## 2. CarRacing (DCD, Robust PLR paper) — Xvfb only
