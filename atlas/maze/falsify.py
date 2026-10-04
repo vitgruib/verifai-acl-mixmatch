@@ -2,9 +2,12 @@
 acl_bench.sampling) and write a failure-record directory (atlas.record).
 
 Spec: the agent solves the level in at least `tau` of `attempts` stochastic episodes.
-rho = solve_rate - tau; rho < 0 is a counterexample. Invalid levels (unreachable goal,
-agent on goal) are recorded but not evaluated, and fed back as rho = 1 - tau (the best
-possible value), so adaptive samplers move away from them.
+rho = solve_rate - tau; rho < 0 is a counterexample. Every level first goes through the exact
+solvability oracle (atlas.maze.oracle): only levels certified solvable within the episode's step
+limit are evaluated, so every counterexample comes with a witness action sequence proving the
+level was solvable. Invalid levels (agent on goal, oracle-unsolvable) are recorded but not
+evaluated, and fed back as rho = 1 - tau (the best possible value), so adaptive
+samplers move away from them.
 
   python -m atlas.maze.falsify --ckpt checkpoints/<run>/<seed> --algo rplr \
       --space seg --sampler ce --budget 2000 --out runs/maze
@@ -21,7 +24,7 @@ from dotmap import DotMap
 
 from acl_bench.sampling import DEFAULT_SAMPLER_PARAMS, _scenario_params
 from atlas import record
-from atlas.maze import space
+from atlas.maze import oracle, space
 from atlas.maze.context import TrainContext
 from atlas.maze.policy import JAXUED_DIR, Policy
 
@@ -56,7 +59,9 @@ def run(policy: Policy, ctx: TrainContext, args) -> dict:
         "falsifier": {"name": args.sampler, "params": DEFAULT_SAMPLER_PARAMS.get(args.sampler, {}),
                       "via": "scenic.scenarioFromString + VerifAI"},
         "spec": {"metric": "solve_rate", "tau": args.tau, "attempts": args.attempts,
-                 "rho": "solve_rate - tau", "cex": "rho < 0"},
+                 "rho": "solve_rate - tau", "cex": "rho < 0 on an oracle-certified solvable level"},
+        "oracle": {"name": "exact BFS over (x, y, dir), JaxUED Maze._step_agent rule",
+                   "max_steps": policy.env_params.max_steps_in_episode, "module": "atlas.maze.oracle"},
         "budget": args.budget, "seed": args.seed, "train_context": ctx.summary(),
     }
     rec = record.Recorder(args.out_dir, header, space.DESC_KEYS)
@@ -66,9 +71,12 @@ def run(policy: Policy, ctx: TrainContext, args) -> dict:
         p = {k: float(scene.params[k]) for k in space.SPACES[args.space]}
         walls, agent, d, goal, why = space.build(args.space, p)
         level = space.to_str(walls, agent, d, goal)
+        orc = oracle.solve(walls, agent, d, goal, policy.env_params.max_steps_in_episode)
+        if orc["status"] != oracle.SOLVABLE:
+            why = why or f"oracle_{orc['status']}"
         if why:
             fb = 1 - args.tau
-            rec.add({"params": p, "valid": False, "invalid_reason": why, "level": level})
+            rec.add({"params": p, "valid": False, "invalid_reason": why, "level": level, "oracle": orc})
             continue
         rets, lens, pos = policy.run(walls, agent, d, goal, args.attempts, args.seed * 1_000_003 + n)
         solve = float((rets > 0).mean())
@@ -77,7 +85,7 @@ def run(policy: Policy, ctx: TrainContext, args) -> dict:
                  "desc": space.descriptors(walls, agent, goal),
                  "returns": rets.round(4), "lengths": lens, "solve_rate": solve,
                  "mean_return": round(float(rets.mean()), 4), "rho": fb, "cex": fb < 0,
-                 "hard": solve == 0, "train": ctx(walls, agent, goal)},
+                 "hard": solve == 0, "oracle": orc, "train": ctx(walls, agent, goal)},
                 trace={"pos": pos[:lens.max()].astype(np.int8), "len": lens})
     return rec.close()
 

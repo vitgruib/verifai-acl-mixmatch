@@ -23,7 +23,7 @@ import time
 
 import numpy as np
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2   # 2: per-row "oracle" (solvability certificate), header "oracle"
 
 
 def git_commit(path: str) -> str | None:

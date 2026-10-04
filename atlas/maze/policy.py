@@ -78,3 +78,21 @@ def _buffer(sampler):
     return {"walls": np.asarray(lv["wall_map"][:n], bool), "agent": np.asarray(lv["agent_pos"][:n]),
             "goal": np.asarray(lv["goal_pos"][:n]), "scores": np.asarray(sampler["scores"][:n]),
             "timestamps": np.asarray(sampler["timestamps"][:n])}
+
+
+def replay_actions(env, env_params, walls, agent, agent_dir, goal, actions: str):
+    """Replay an oracle certificate (atlas.maze.oracle) in the real JaxUED env.
+    -> (total reward, steps until done or len(actions)). Reward > 0 means the goal was reached."""
+    from atlas.maze.oracle import ACTIONS
+    lvl = Level(wall_map=jnp.asarray(walls, bool), goal_pos=jnp.asarray(goal, jnp.uint32),
+                agent_pos=jnp.asarray(agent, jnp.uint32), agent_dir=jnp.asarray(agent_dir, jnp.uint8),
+                width=13, height=13)
+    rng = jax.random.PRNGKey(0)
+    _, state = env.reset_to_level(rng, lvl, env_params)
+    total, steps = 0.0, 0
+    for a in actions:
+        _, state, r, done, _ = env.step(rng, state, ACTIONS[a], env_params)
+        total, steps = total + float(r), steps + 1
+        if bool(done):
+            break
+    return total, steps
