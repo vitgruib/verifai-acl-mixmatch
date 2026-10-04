@@ -8,7 +8,7 @@ the DR reference set. Two references:
             uniform over free cells). Every algorithm sees DR levels, so this is the base
             training distribution. Unsolvable DR levels are kept, as in training.
   buf_*     the PLR/ACCEL level buffer saved in the checkpoint, with its scores (absent
-            for DR and PAIRED).
+            for DR and minimax).
 
 Fields: dr_knn (mean distance to the 10 nearest DR levels; large = rarely seen),
 buf_knn (same against the buffer), buf_score_pct (percentile, within the buffer, of the

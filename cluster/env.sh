@@ -8,7 +8,8 @@ export DCD_DIR=${DCD_DIR:-$TP/dcd}
 export SFL_DIR=${SFL_DIR:-$TP/sfl}
 
 # Python environments built by cluster/setup/*.sh
-export JAX_VENV=${JAX_VENV:-$ATLAS/.venv-jax}   # jaxued + sfl + verifai/scenic (py3.11)
+export JAX_VENV=${JAX_VENV:-$ATLAS/.venv-jax}   # jaxued + verifai/scenic + atlas (py3.11)
+export SFL_VENV=${SFL_VENV:-$ATLAS/.venv-sfl}   # SFL repo (py3.11, 2024-era jax pins; Parts 1 and 4)
 export DCD_CONDA=${DCD_CONDA:-dcd}              # conda env name for DCD (py3.8, original pins)
 
 # Pinned upstream commits (what our local results used)

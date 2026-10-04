@@ -87,15 +87,15 @@ trains each cell where any paper's code can. Where none can, the cell is a port.
 |---|---|---|---|---|
 | DR | JaxUED | DCD | DCD | SFL repo |
 | minimax | JaxUED + `--minimax` patch | DCD, derived config | DCD | **port** |
-| PAIRED | JaxUED | DCD | DCD | **port** |
 | PLR | JaxUED | DCD | DCD, derived config | SFL repo |
 | Robust PLR | JaxUED | DCD | DCD | SFL repo |
 | ACCEL | JaxUED | **port** | DCD | SFL repo |
 | SFL | SFL repo (`minigrid_sfl`, JaxUED Maze env) | **port** | **port** | SFL repo |
 
-Covered cells: 23 of 28. Their cluster jobs are in `cluster/README.md`. The five port cells
-would need our own code: SFL's sampler inside DCD's PyTorch runner (CarRacing, Bipedal); a
-Bezier-track mutator for ACCEL; an adversary generator for JaxNav. They are deferred until
+Covered cells: 20 of 24 (PAIRED dropped 2026-10-04: three networks, too slow). Their cluster
+jobs are in `cluster/README.md`. The four port cells would need our own code: SFL's sampler
+inside DCD's PyTorch runner (CarRacing, Bipedal); a Bezier-track mutator for ACCEL; an
+adversary generator for minimax on JaxNav. They are deferred until
 decided. Maze caveat: SFL's own maze settings (60 walls, its PPO) differ from JaxUED's (25 walls).
 
 **Small-scale reproduction feasibility (measured on this Mac):**
@@ -148,7 +148,7 @@ in 280 s; our SFL-style scouting costs about 9x DR wall-clock.
 | Job | Per seed | x runs (8-10 seeds) | Where |
 |---|---|---|---|
 | Maze, paper-exact (LSTM), DR/PLR/Robust PLR/ACCEL, 250M steps, DCD on CPU | roughly 1-3 days CPU *(estimate; LSTM is slower than our MLP's 3.8 h)* | 4 algorithms x 10 seeds = 40 runs | **supercomputer**, or a GPU with JaxUED (reported about 100x faster than the CPU DCD code) |
-| Maze PAIRED / minimax / REPAIRED (3 networks) | about 2-3x the above | 30 runs | **supercomputer / GPU** |
+| Maze minimax (PAIRED script, 3 networks) | about 2-3x the above | 10 runs | **supercomputer / GPU** |
 | SFL maze, official JAX code | needs a GPU; the scouting (N=5000 x L=2000 each T) dominates | 10 runs | **GPU** |
 | XLand-MiniGrid, JaxNav (SFL paper) | GPU-only (JAX, 256-8192 envs) | 10 x algorithms | **supercomputer GPU** |
 | CarRacing F1 (DCD, pixels, 5.5M steps) | several hours with a GPU | 7 algorithms x 10 seeds | GPU node |
@@ -161,7 +161,7 @@ BipedalWalker. Everything after training (steps 3-5) can run locally.
 
 ## 4b. Falsifier prelim (maze, 2026-10-04)
 
-Purpose: choose the VerifAI samplers for the cluster falsification (`cluster/maze/falsify.sbatch`).
+Purpose: choose the VerifAI samplers for the cluster falsification (`cluster/1_maze/falsify.sbatch`).
 Setup: batch-19 JaxUED checkpoints (DR, PLR, Robust PLR, ACCEL; 3000 updates = 10% of the paper
 budget; train seeds 0-1). Two spaces (`dr`: JaxUED's own generator parameters; `seg`: wall
 segments), five samplers (random, halton, ce, mab, sa), falsifier seeds 0-2, 1000 levels each,

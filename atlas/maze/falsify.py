@@ -101,7 +101,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", required=True, help="checkpoints/<run_name>/<seed>, or an SFL run dir with model.safetensors")
     ap.add_argument("--step", type=int, default=-1, help="checkpoint step (-1 = latest)")
-    ap.add_argument("--algo", required=True, help="label: dr, plr, rplr, accel, paired, minimax, sfl")
+    ap.add_argument("--algo", required=True, help="label: dr, plr, rplr, accel, minimax, sfl")
     ap.add_argument("--space", choices=tuple(space.SPACES), default="seg")
     ap.add_argument("--sampler", choices=SAMPLERS, nargs="+", default=["random"])
     ap.add_argument("--budget", type=int, default=2000)
