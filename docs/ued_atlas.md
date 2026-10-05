@@ -92,11 +92,18 @@ trains each cell where any paper's code can. Where none can, the cell is a port.
 | ACCEL | JaxUED | **port** | DCD | SFL repo |
 | SFL | SFL repo (`minigrid_sfl`, JaxUED Maze env) | **port** | **port** | SFL repo |
 
-Covered cells: 20 of 24 (PAIRED dropped 2026-10-04: three networks, too slow). Their cluster
-jobs are in `cluster/README.md`. The four port cells would need our own code: SFL's sampler
-inside DCD's PyTorch runner (CarRacing, Bipedal); a Bezier-track mutator for ACCEL; an
-adversary generator for minimax on JaxNav. They are deferred until
-decided. Maze caveat: SFL's own maze settings (60 walls, its PPO) differ from JaxUED's (25 walls).
+All 24 cells are covered (PAIRED dropped 2026-10-04: three networks, too slow). Their cluster
+jobs are in `cluster/README.md`. The four **port** cells are our own code, written and tested
+2026-10-04: SFL's sampler inside DCD's PyTorch runner (CarRacing, Bipedal), a Bezier-track
+mutator for ACCEL on CarRacing, and a cell-by-cell PPO adversary for minimax on JaxNav
+(`cluster/patches/`, tests in `cluster/tests/`). Minimax learning check (JaxNav, 32 levels,
+512-step rollouts, 150 updates, CPU): protagonist return on adversary levels falls from -5.7 to
+-6.7 by update 75, then recovers to -5.8 as the protagonist adapts; the solvable fraction stays
+about 0.44 and walls about 34 of 48; adversary entropy falls slowly (4.39 to 4.28). The signal
+has the right sign, but at this budget it is weak. Caveat: short checks need NUM_STEPS >=
+max_steps (500). An earlier 128-step check left most levels without a finished episode, so the
+adversary was rewarded on partial returns and drifted to easy levels (solvable 0.40 to 0.82).
+Maze caveat: SFL's own maze settings (60 walls, its PPO) differ from JaxUED's (25 walls).
 
 **Small-scale reproduction feasibility (measured on this Mac):**
 - *JaxUED maze:* runs unmodified (one wandb gif patch), headless. About 1.9 s/update contended:
