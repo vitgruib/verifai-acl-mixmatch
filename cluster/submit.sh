@@ -2,9 +2,9 @@
 # One command per part. Prints every sbatch line it runs; DRY_RUN=1 prints without submitting.
 #   bash cluster/submit.sh smoke      # ~10 min sanity check of Parts 1 and 4 (tiny budgets; JaxNav SFL + minimax)
 #   bash cluster/submit.sh 1          # Maze: train (60 tasks) -> falsify (60 tasks, after train)
-#   bash cluster/submit.sh 2          # CarRacing train (60 tasks, Xvfb)
-#   bash cluster/submit.sh 3          # BipedalWalker train (60 tasks, requeues)
-#   bash cluster/submit.sh 4          # JaxNav train (60 tasks)
+#   bash cluster/submit.sh 2          # CarRacing: train (60 tasks, Xvfb) -> falsify (60 CPU tasks, after train)
+#   bash cluster/submit.sh 3          # BipedalWalker: train (60 tasks) -> falsify (60 CPU tasks, after train)
+#   bash cluster/submit.sh 4          # JaxNav: train (60 tasks) -> falsify (60 tasks, after train)
 #   bash cluster/submit.sh all        # 1-4
 # Extra sbatch flags (partition, account, ...) go in SBATCH_ARGS, e.g. SBATCH_ARGS="-p gpu -A lab".
 set -euo pipefail
@@ -26,11 +26,18 @@ dcd() {  # dcd() <part dir> <domain> <xvfb> <configs...>
   local f=$RUNS/${dom}_cmds.txt
   bash cluster/dcd_cmds.sh $dom $x "$@" > "$f"
   echo "$(wc -l < "$f") commands -> $f" >&2
-  sb --array=0-$(( $(wc -l < "$f") - 1 )) cluster/$p/train.sbatch "$f"
+  local j; j=$(sb --array=0-$(( $(wc -l < "$f") - 1 )) cluster/$p/train.sbatch "$f")
+  # falsify algo names from the configs (cr_robust_plr -> rplr); dcd_ckpt.sh maps them back
+  local A; A=$(for c in "$@"; do c=${c#*_}; [ $c = robust_plr ] && c=rplr; echo -n "$c "; done)
+  ALGOS="$A" sb --export=ALL --array=0-$(count "$A") --dependency=afterok:$j cluster/$p/falsify.sbatch
 }
 part2() { dcd 2_carracing car_racing 1 ${CONFIGS:-cr_dr cr_minimax cr_plr cr_robust_plr cr_accel cr_sfl}; }
 part3() { dcd 3_bipedal bipedal 0 ${CONFIGS:-bipedal_dr bipedal_minimax bipedal_plr bipedal_robust_plr bipedal_accel bipedal_sfl}; }
-part4() { local A=${ALGOS:-"dr minimax plr rplr accel sfl"}; ALGOS="$A" sb --export=ALL --array=0-$(count "$A") cluster/4_jaxnav/train.sbatch; }
+part4() {
+  local A=${ALGOS:-"dr minimax plr rplr accel sfl"}
+  local j; j=$(ALGOS="$A" sb --export=ALL --array=0-$(count "$A") cluster/4_jaxnav/train.sbatch)
+  ALGOS="$A" sb --export=ALL --array=0-$(count "$A") --dependency=afterok:$j cluster/4_jaxnav/falsify.sbatch
+}
 
 smoke() {  # one seed, one algo per codebase, tiny budgets; outputs under $RUNS/smoke
   local S="learning.NUM_ENVS=16 learning.NUM_ENVS_FROM_SAMPLED=8 learning.NUM_ENVS_TO_GENERATE=8 learning.NUM_STEPS=32 learning.TOTAL_TIMESTEPS=4096 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=2 BATCH_SIZE=64 NUM_BATCHES=1 ROLLOUT_STEPS=50 NUM_TO_SAVE=32"

@@ -10,7 +10,8 @@ tarball.
 ```bash
 git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas && cd atlas
 bash cluster/setup/clone.sh && bash cluster/setup/setup_jax.sh \
-  && bash cluster/setup/setup_dcd.sh && bash cluster/setup/setup_sfl.sh   # once, login node
+  && bash cluster/setup/setup_dcd.sh && bash cluster/setup/setup_dcd_falsify.sh \
+  && bash cluster/setup/setup_sfl.sh                                     # once, login node
 bash cluster/submit.sh smoke     # ~15 min of GPU; check runs/slurm/*.out before going on
 bash cluster/submit.sh all       # or one part at a time: 1, 2, 3, 4
 bash cluster/collect.sh          # when done: runs/atlas_collect_<date>.tgz -> send back
@@ -26,9 +27,9 @@ Paths can be overridden too, e.g. `RUNS=/scratch/$USER/atlas` (all paths are in
 | part | environment (paper) | code | algorithms | array tasks | per task (sbatch limit) |
 |---|---|---|---|---|---|
 | **1** | Maze, 13×13 (PAIRED / Robust PLR / ACCEL papers) | JaxUED; SFL repo for the SFL cell | DR, PLR, Robust PLR, ACCEL, minimax, SFL | 60 train + 60 falsify | 1 GPU; 24 h train, 8 h falsify |
-| **2** | CarRacing Bezier → F1 tracks (Robust PLR paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 | 1 GPU, 16 CPU, 48 h, **Xvfb** |
-| **3** | BipedalWalker (ACCEL paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 | 1 GPU, 16 CPU, 72 h (resubmit on timeout) |
-| **4** | JaxNav, single agent (SFL paper) | SFL repo (JAX) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 | 1 GPU, 24 h |
+| **2** | CarRacing Bezier → F1 tracks (Robust PLR paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 48 h, **Xvfb**; falsify 4 CPU, 48 h |
+| **3** | BipedalWalker (ACCEL paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 72 h (resubmit on timeout); falsify 4 CPU, 24 h |
+| **4** | JaxNav, single agent (SFL paper) | SFL repo (JAX) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | 1 GPU; 24 h train, 8 h falsify |
 
 Each array task is one (algorithm, seed), with 10 seeds per algorithm. Task `i` is algorithm
 `ALGOS[i / 10]` and seed `i % 10`. Run a subset with e.g. `ALGOS="dr rplr" bash cluster/submit.sh 1`
@@ -37,8 +38,8 @@ Each array task is one (algorithm, seed), with 10 seeds per algorithm. Task `i` 
 | directory | contents |
 |---|---|
 | `1_maze/` | `train.sbatch` (JaxUED and SFL training), `falsify.sbatch` (VerifAI falsification) |
-| `2_carracing/`, `3_bipedal/` | `train.sbatch` runs one line of a DCD command file per task (made by `dcd_cmds.sh`) |
-| `4_jaxnav/` | `train.sbatch` (SFL repo's `jaxnav_plr` / `jaxnav_sfl`, our `jaxnav_minimax`) |
+| `2_carracing/`, `3_bipedal/` | `train.sbatch` runs one line of a DCD command file per task (made by `dcd_cmds.sh`); `falsify.sbatch` (CPU; finds the checkpoint with `dcd_ckpt.sh`) |
+| `4_jaxnav/` | `train.sbatch` (SFL repo's `jaxnav_plr` / `jaxnav_sfl`, our `jaxnav_minimax`), `falsify.sbatch` |
 | `setup/` | `clone.sh` (upstream repos at pinned commits), one environment script per codebase |
 | `dcd_configs/` | DCD grid configs that upstream lacks (below) |
 | `patches/` | our patches to JaxUED, DCD and the SFL repo, applied by `clone.sh` (below) |
@@ -54,7 +55,8 @@ incompatible:
 |---|---|---|
 | `setup_jax.sh` | `.venv-jax`: py3.11, current `jax[cuda12]`, JaxUED, VerifAI, Scenic | Part 1 (JaxUED algorithms, falsifier) |
 | `setup_dcd.sh` | conda env `dcd`: py3.8, DCD's original requirements | Parts 2, 3 |
-| `setup_sfl.sh` | `.venv-sfl`: py3.11, **jax 0.4.30 / flax 0.8.5** | Part 1 SFL cell, Part 4 |
+| `setup_dcd_falsify.sh` | `.venv-dcdf`: py3.11, torch + gym 0.15.7 + VerifAI/Scenic (exact local freeze) | Parts 2, 3 falsify |
+| `setup_sfl.sh` | `.venv-sfl`: py3.11, **jax 0.4.30 / flax 0.8.5**, VerifAI/Scenic | Part 1 SFL cell, Part 4 |
 
 - The SFL code is 2024-era. It uses `jax.tree_map` and older flax internals, both removed in
   current JAX. `setup_sfl.sh` pins the versions that ran in our local test. On GPU these need
@@ -81,9 +83,19 @@ least 5 of 10 attempts". An exact BFS oracle certifies every level solvable befo
 a failure, so each counterexample comes with a shortest solution. The record format is in
 [docs/failure_records.md](../docs/failure_records.md).
 
-**Parts 2–4** train only for now. Their falsifiers (CarRacing track control points, the
-Bipedal terrain vector, JaxNav) are written on our side against the returned checkpoints.
-DCD uses its paper configs (seeds 88–97). Afterwards, DCD's own benchmarks can be run with
+**Parts 2–4** follow the same train → falsify pattern (spec: solves in at least 5 of 10
+attempts; samplers `random`, `ce`, `mab`; 3 falsifier seeds). A failure counts only once a
+solvability witness exists:
+- CarRacing (`dr`, `sketch` track spaces; 1000 levels): an in-env pure-pursuit controller,
+  tried at finer action repeats.
+- Bipedal (`dr` terrain vector; 1000 levels): the scripted backtracking walker, the other
+  algorithms' checkpoints of the same seed (`--ref-ckpt`), or the policy itself. Without
+  reference checkpoints the hard counterexamples are limited to near-flat terrain.
+- JaxNav (`dr`, `seg` spaces; 5000 levels): BFS plus a scripted controller.
+
+The DCD falsifiers run on CPU in their own py3.11 venv (`.venv-dcdf`; DCD's training env is
+py3.8), with one process per sampler. DCD uses its paper configs (seeds 88–97), so DCD falsifier
+records sit under `s<88 + trial>`. Afterwards, DCD's own benchmarks can be run with
 `python -m eval --xpid <xpid> --benchmark f1` (CarRacing) or `--benchmark bipedal`.
 
 ## The algorithm × environment matrix
@@ -175,7 +187,7 @@ bash cluster/collect.sh   # -> runs/atlas_collect_<date>.tgz: falsifier records,
                           #    configs, slurm logs, final checkpoints only
 ```
 
-## Status (2026-10-04)
+## Status (2026-10-05)
 
 - **Local CPU validity run passed.** Run on 2026-10-04 at smoke budgets, which are not results:
   - Maze Robust PLR: JaxUED train → checkpoint → falsify, which wrote `summary.json` (44/47 counterexamples).
@@ -199,8 +211,17 @@ bash cluster/collect.sh   # -> runs/atlas_collect_<date>.tgz: falsifier records,
     weak at this budget. Short tests need `learning.NUM_STEPS` >= the env's 500 max steps, or
     levels finish no episode and the adversary is scored on partial returns.
   - Both patches apply cleanly to fresh pinned clones, and `clone.sh` is idempotent.
-- `DRY_RUN=1 submit.sh all` produces 60 tasks per part.
-- Falsifiers for Parts 2–4 are not written yet; they need these checkpoints.
+- `DRY_RUN=1 submit.sh all` produces 60 train tasks per part, and for Parts 1–4 a falsify array
+  that waits on the train array (`afterok`).
+- **Parts 2–4 falsify, run locally end to end on 2026-10-05** (headless, smoke budgets, fake
+  `RUNS` with linked checkpoints). Every `falsify.sbatch` exited 0, and `collect.sh` packed the
+  10 resulting `summary.json` files.
+  - Bipedal: found one reference checkpoint and skipped a missing one.
+  - CarRacing: both spaces.
+  - JaxNav: `JAX_PLATFORMS=cpu`, found counterexamples in both spaces.
+  Untested on the cluster: `.venv-dcdf`, and the VerifAI install in `.venv-sfl`.
+- CarRacing falsification costs 5–20 s per level, because the oracle runs on every failure,
+  so 1000 levels take about 8–33 h per sampler.
 - Training wall-clock at full budget has not been measured on GPU. The limits above are
   generous guesses, except Bipedal: we measured about 63 h at 8.8k steps/s. SFL's level scoring adds
   extra simulation (about +31% on Bipedal, so ~83 h; about +96% on CarRacing), so the SFL tasks

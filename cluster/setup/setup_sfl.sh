@@ -14,4 +14,6 @@ pip install -q distrax wandb safetensors matplotlib tqdm pyyaml
 # Pins verified by a local CPU smoke run of minigrid_sfl and jaxnav_sfl (2026-10-04).
 pip install -q "jax[${JAX_EXTRA-cuda12}]==0.4.30" flax==0.8.5 chex==0.1.86 optax==0.2.3 \
   distrax==0.1.5 orbax-checkpoint==0.5.20 tensorflow-probability==0.24.0 "matplotlib<3.10"
-python -c "import jax, sfl, jaxmarl, jaxued, distrax, wandb, safetensors; print('ok', jax.__version__, jax.devices())"
+# VerifAI for Part 4 falsify (atlas.jaxnav.falsify); local smoke run with these on jax 0.4.30 (2026-10-05).
+pip install -q verifai==2.2.0 scenic==3.1.1 dotmap==1.3.30
+python -c "import jax, sfl, jaxmarl, jaxued, distrax, wandb, safetensors; import verifai, scenic; print('ok', jax.__version__, jax.devices())"
