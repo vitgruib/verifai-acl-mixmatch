@@ -27,8 +27,8 @@ Paths can be overridden too, e.g. `RUNS=/scratch/$USER/atlas` (all paths are in
 | part | environment (paper) | code | algorithms | array tasks | per task (sbatch limit) |
 |---|---|---|---|---|---|
 | **1** | Maze, 13×13 (PAIRED / Robust PLR / ACCEL papers) | JaxUED; SFL repo for the SFL cell | DR, PLR, Robust PLR, ACCEL, minimax, SFL | 60 train + 60 falsify | 1 GPU; 24 h train, 8 h falsify |
-| **2** | CarRacing Bezier → F1 tracks (Robust PLR paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 48 h, **Xvfb**; falsify 4 CPU, 48 h |
-| **3** | BipedalWalker (ACCEL paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 72 h (resubmit on timeout); falsify 4 CPU, 24 h |
+| **2** | CarRacing Bezier → F1 tracks (Robust PLR paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 48 h, **Xvfb**; falsify 2 CPU, 48 h |
+| **3** | BipedalWalker (ACCEL paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 72 h (resubmit on timeout); falsify 2 CPU, 24 h |
 | **4** | JaxNav, single agent (SFL paper) | SFL repo (JAX) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | 1 GPU; 24 h train, 8 h falsify |
 
 Each array task is one (algorithm, seed), with 10 seeds per algorithm. Task `i` is algorithm
@@ -77,14 +77,14 @@ incompatible:
 
 **Part 1, Maze.** Training uses JaxUED's own example scripts at their paper settings (30k
 updates). Falsification starts after training finishes (SLURM dependency). For each
-checkpoint it runs 2 search spaces × 3 VerifAI samplers (`random`, `ce`, `mab`, chosen in a
-local prelim) × 3 falsifier seeds, at 5000 levels each. The spec is "solves the level in at
+checkpoint it runs 2 search spaces × 2 VerifAI samplers (`ce`, `mab`: the two best in a local
+prelim, compared head to head) × 3 falsifier seeds, at 5000 levels each. The spec is "solves the level in at
 least 5 of 10 attempts". An exact BFS oracle certifies every level solvable before it counts as
 a failure, so each counterexample comes with a shortest solution. The record format is in
 [docs/failure_records.md](../docs/failure_records.md).
 
 **Parts 2–4** follow the same train → falsify pattern (spec: solves in at least 5 of 10
-attempts; samplers `random`, `ce`, `mab`; 3 falsifier seeds). A failure counts only once a
+attempts; samplers `ce` and `mab`, compared head to head; 3 falsifier seeds). A failure counts only once a
 solvability witness exists:
 - CarRacing (`dr`, `sketch` track spaces; 1000 levels): an in-env pure-pursuit controller,
   tried at finer action repeats.

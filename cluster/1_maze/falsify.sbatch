@@ -14,9 +14,9 @@ set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}; N=${NUM_UPDATES:-30000}
 # Samplers from the local prelim (docs/ued_atlas.md, "Falsifier prelim"; results/atlas/prelim_maze.csv):
-# ce finds the most failure modes in both spaces; mab is second on counterexample rate; random
-# is the unbiased baseline every ratio is taken against. halton ~ random and sa < random: dropped.
-SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-"random ce mab"}
+# ce finds the most failure modes in both spaces; mab is second on counterexample rate. Only these
+# two run (ce vs mab is the comparison); random, halton and sa are dropped.
+SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-"ce mab"}
 BUDGET=${BUDGET:-5000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
