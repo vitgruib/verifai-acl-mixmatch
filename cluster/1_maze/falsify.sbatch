@@ -5,10 +5,9 @@
 #   sbatch --array=0-59 --dependency=afterok:<train_jobid> cluster/1_maze/falsify.sbatch
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-1-maze-falsify
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=08:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
@@ -25,7 +24,12 @@ else ck=$RUNS/maze_train/checkpoints/maze_${algo}_n$N/$seed; fi   # orbax checkp
 echo "task=$i algo=$algo seed=$seed ckpt=$ck host=$(hostname)"
 run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 [ -n "${DRY_RUN:-}" ] || source "$JAX_VENV/bin/activate"
-for sp in $SPACES; do
-  run python -m atlas.maze.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $SAMPLERS \
-    --budget $BUDGET --attempts 10 --tau 0.5 --seed $FSEEDS --out "$RUNS/maze_falsify"
-done
+# CPU only: one process per space x sampler (4 by default) on 8 CPUs; per-level cost is env + oracle, not the network.
+export JAX_PLATFORMS=cpu
+pids=()
+for sp in $SPACES; do for sm in $SAMPLERS; do
+  run python -m atlas.maze.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $sm \
+    --budget $BUDGET --attempts 10 --tau 0.5 --seed $FSEEDS --out "$RUNS/maze_falsify" &
+  pids+=($!)
+done; done
+rc=0; for p in "${pids[@]}"; do wait $p || rc=1; done; exit $rc
