@@ -1,8 +1,9 @@
 #!/bin/bash
 # PART 2 - CarRacing: train with DCD CarRacing (Robust PLR paper), 5.5M steps per run, rendered under Xvfb.
 # NEVER run on a desktop: it opens pyglet windows without xvfb-run.
-# cr_sfl adds ~96% extra simulation (level scoring), so it may exceed 48 h. A timed-out task resumes
-# from runs/.../model.tar (checkpoint every 100 updates) when resubmitted with the same array index:
+# DR ~11-13 h if 16 procs give ~120-140 steps/s (70/s measured on 8 local procs); cr_sfl ~2x (~25 h).
+# submit.sh chains SEGMENTS=2 arrays (afterany), so a run that times out resumes from its model.tar
+# (checkpoint every 100 updates). By hand, resubmit the same array index:
 #   sbatch --array=<idx> cluster/2_carracing/train.sbatch runs/cr_cmds.txt
 # or give the whole part more time up front: SBATCH_TIMELIMIT=96:00:00 bash cluster/submit.sh 2
 #   bash cluster/dcd_cmds.sh car_racing 1 cr_dr cr_minimax cr_plr cr_robust_plr cr_accel cr_sfl > runs/cr_cmds.txt

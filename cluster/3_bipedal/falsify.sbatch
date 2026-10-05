@@ -11,12 +11,13 @@
 #SBATCH --job-name=atlas-3-bipedal-falsify
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}
-# ~1-5 s per level on one CPU (policy, then reference witnesses on failures): 1000 levels x 3 fseeds ~ 4 h per sampler.
+# Measured locally: <=5 s per level worst case on one CPU (policy 10x2000 steps ~1.4 s + 5 reference
+# witnesses ~3 s); 1000 levels x 3 fseeds <= ~4 h per sampler, samplers in parallel -> 12 h limit.
 SPACES=${SPACES:-"dr"}; SAMPLERS=${SAMPLERS:-"ce mab"}
 BUDGET=${BUDGET:-1000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}

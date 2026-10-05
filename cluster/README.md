@@ -12,7 +12,7 @@ git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas && cd atlas
 bash cluster/setup/clone.sh && bash cluster/setup/setup_jax.sh \
   && bash cluster/setup/setup_dcd.sh && bash cluster/setup/setup_dcd_falsify.sh \
   && bash cluster/setup/setup_sfl.sh                                     # once, login node
-bash cluster/submit.sh smoke     # ~15 min of GPU; check runs/slurm/*.out before going on
+bash cluster/submit.sh smoke     # <1 h, all 4 parts; check runs/slurm/*.out before going on
 bash cluster/submit.sh all       # or one part at a time: 1, 2, 3, 4
 bash cluster/collect.sh          # when done: runs/atlas_collect_<date>.tgz -> send back
 ```
@@ -26,10 +26,10 @@ Paths can be overridden too, e.g. `RUNS=/scratch/$USER/atlas` (all paths are in
 
 | part | environment (paper) | code | algorithms | array tasks | per task (sbatch limit) |
 |---|---|---|---|---|---|
-| **1** | Maze, 13×13 (PAIRED / Robust PLR / ACCEL papers) | JaxUED; SFL repo for the SFL cell | DR, PLR, Robust PLR, ACCEL, minimax, SFL | 60 train + 60 falsify | 1 GPU; 24 h train, 8 h falsify |
-| **2** | CarRacing Bezier → F1 tracks (Robust PLR paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 48 h, **Xvfb**; falsify 2 CPU, 48 h |
-| **3** | BipedalWalker (ACCEL paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 72 h (resubmit on timeout); falsify 2 CPU, 24 h |
-| **4** | JaxNav, single agent (SFL paper) | SFL repo (JAX) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | 1 GPU; 24 h train, 8 h falsify |
+| **1** | Maze, 13×13 (PAIRED / Robust PLR / ACCEL papers) | JaxUED; SFL repo for the SFL cell | DR, PLR, Robust PLR, ACCEL, minimax, SFL | 60 train + 60 falsify | train 1 GPU, 24 h; falsify 8 CPU (no GPU), 2 h |
+| **2** | CarRacing Bezier → F1 tracks (Robust PLR paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, **Xvfb**, 2 chained 48 h segments; falsify 2 CPU, 48 h |
+| **3** | BipedalWalker (ACCEL paper) | DCD (PyTorch) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 16 CPU, 2 chained 72 h segments; falsify 2 CPU, 12 h |
+| **4** | JaxNav, single agent (SFL paper) | SFL repo (JAX) | DR, minimax, PLR, Robust PLR, ACCEL, SFL | 60 train + 60 falsify | train 1 GPU, 24 h; falsify 8 CPU (no GPU), 8 h |
 
 Each array task is one (algorithm, seed), with 10 seeds per algorithm. Task `i` is algorithm
 `ALGOS[i / 10]` and seed `i % 10`. Run a subset with e.g. `ALGOS="dr rplr" bash cluster/submit.sh 1`
@@ -170,15 +170,15 @@ no longer a separate part: its Maze cell runs in Part 1, and Part 4 is the JaxNa
 
 ## Smoke test
 
-`bash cluster/submit.sh smoke` runs, on one seed with tiny budgets:
+`bash cluster/submit.sh smoke` (under 1 h) runs, on one seed with tiny budgets, a train → falsify
+chain per codebase:
 
-- Robust PLR (JaxUED) and SFL (SFL repo) training on Maze;
-- falsification of both checkpoints;
-- SFL and minimax training on JaxNav.
+- Maze: Robust PLR (JaxUED) and SFL (SFL repo) training, then falsification of both;
+- JaxNav: SFL training then falsification, plus minimax training;
+- CarRacing and Bipedal: the DCD SFL port (`cr_sfl`, `bipedal_sfl`) training, then falsification.
 
-All five jobs should exit 0. The falsify job should write
-`runs/smoke/maze_falsify/*/s0/dr_random_r0/summary.json`. The same pipeline was run locally on
-CPU before shipping (see Status).
+All jobs should exit 0 and write `summary.json` files under `runs/smoke/*_falsify/`. Every
+smoke line was run locally (CPU, headless) before shipping (see Status).
 
 ## Bring results home
 
@@ -220,13 +220,35 @@ bash cluster/collect.sh   # -> runs/atlas_collect_<date>.tgz: falsifier records,
   - CarRacing: both spaces.
   - JaxNav: `JAX_PLATFORMS=cpu`, found counterexamples in both spaces.
   Untested on the cluster: `.venv-dcdf`, and the VerifAI install in `.venv-sfl`.
-- CarRacing falsification costs 5–20 s per level, because the oracle runs on every failure,
-  so 1000 levels take about 8–33 h per sampler.
-- Training wall-clock at full budget has not been measured on GPU. The limits above are
-  generous guesses, except Bipedal: we measured about 63 h at 8.8k steps/s. SFL's level scoring adds
-  extra simulation (about +31% on Bipedal, so ~83 h; about +96% on CarRacing), so the SFL tasks
-  will likely exceed 72 h / 48 h. SLURM does not requeue on timeout. Either resubmit the timed-out
-  array index with the same command file (`sbatch --array=<idx> cluster/3_bipedal/train.sbatch
-  runs/.../cmds.txt`); DCD resumes from `model.tar`, saved every 100 updates, including the SFL
-  buffer. Or set the limit up front: `SBATCH_TIMELIMIT=120:00:00 bash cluster/submit.sh 3`
-  (`96:00:00` for part 2).
+- **Resume, tested locally on 2026-10-05.** A DCD run killed mid-training resumes from its
+  `model.tar` (same update counter, SFL buffer restored); a finished run resumes into an empty
+  loop and exits. `submit.sh` therefore chains `SEGMENTS=2` train arrays for Parts 2 and 3
+  (`--dependency=afterany`, so the second segment starts even if the first timed out), and
+  falsify waits on the last segment (`afterok`). Set `SEGMENTS=3` for more headroom.
+- **Falsification cost, measured locally per level on one CPU** (oracle included; untrained
+  policies, so trained ones may differ):
+
+  | part | s / level | full task (1000 levels × 3 seeds × 2 spaces; samplers in parallel) | limit |
+  |---|---|---|---|
+  | 1 Maze | ~0.04 | ~10 min | 2 h |
+  | 2 CarRacing | ~13 | ~22 h | 48 h |
+  | 3 Bipedal | ≤5 | ≤4 h (dr space only) | 12 h |
+  | 4 JaxNav | ~0.4 | ~1.8 h | 8 h |
+
+- **Samplers.** Only cross-entropy (`ce`) and the bandit (`mab`) run, head to head, as asked.
+  On the Maze preliminary, relative to random sampling: counterexample rate ce 4.5× / mab 2.5×
+  (`dr` space) and ce 5.9× / mab 5.2× (`seg` space); distinct failure modes about the same
+  (0.9–1.1×). The cost: adaptive samplers spend 2–3× more of the budget on unsolvable
+  (invalid) levels (dr: ce 21%, mab 12%, random 7%). Sampler compute itself is negligible;
+  time goes to simulation and the solvability oracle.
+- **Bipedal counterexamples are relative.** A Bipedal level counts as a counterexample only if
+  some reference checkpoint (or the policy itself on another attempt) finishes it, because
+  there is no exact solver. With no reference checkpoints every level is "invalid".
+- **Training wall-clock** has not been measured on GPU. Estimates: CarRacing DR ~11–13 h if 16
+  processes reach 120–140 steps/s (70/s measured on 8 local processes), SFL ~2× (~25 h);
+  Bipedal ~63 h at 8.8k steps/s (measured), SFL ~83 h. Both fit in two chained segments.
+- **Total compute (NSEEDS=10, 240 train tasks):** roughly Maze ≤24 GPU-h × 60, CarRacing
+  12–25 × 60, Bipedal 63–83 × 60, JaxNav ≤24 × 60, i.e. about 6–9k GPU-hours (upper end if the limits are hit),
+  dominated by Bipedal. Falsification is CPU only. `NSEEDS=5` halves everything.
+- Not testable locally: the cluster's conda DCD env (`dcd_task.sh`), Xvfb rendering speed,
+  GPU timing, falsify rates with trained checkpoints, and the cluster-side venv builds.

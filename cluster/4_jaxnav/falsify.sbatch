@@ -5,8 +5,7 @@
 #   sbatch --array=0-59 --dependency=afterok:<train_jobid> cluster/4_jaxnav/falsify.sbatch
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-4-jaxnav-falsify
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --time=08:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
@@ -21,8 +20,13 @@ ck=$RUNS/sfl/jaxnav_${algo}/s$seed                                 # model.safet
 echo "task=$i algo=$algo seed=$seed ckpt=$ck host=$(hostname)"
 run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 [ -n "${DRY_RUN:-}" ] || source "$SFL_VENV/bin/activate"
+# CPU only: one process per space x sampler (4 by default) on 8 CPUs; per-level cost is env + oracle, not the network.
+export JAX_PLATFORMS=cpu
 export MPLBACKEND=Agg
-for sp in $SPACES; do
-  run python -m atlas.jaxnav.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $SAMPLERS \
-    --budget $BUDGET --attempts 10 --tau 0.5 --seed $FSEEDS --out "$RUNS/jaxnav_falsify"
-done
+pids=()
+for sp in $SPACES; do for sm in $SAMPLERS; do
+  run python -m atlas.jaxnav.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $sm \
+    --budget $BUDGET --attempts 10 --tau 0.5 --seed $FSEEDS --out "$RUNS/jaxnav_falsify" &
+  pids+=($!)
+done; done
+rc=0; for p in "${pids[@]}"; do wait $p || rc=1; done; exit $rc
