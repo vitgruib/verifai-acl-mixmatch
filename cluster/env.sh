@@ -11,6 +11,7 @@ export SFL_DIR=${SFL_DIR:-$TP/sfl}
 export JAX_VENV=${JAX_VENV:-$ATLAS/.venv-jax}   # jaxued + verifai/scenic + atlas (py3.11)
 export SFL_VENV=${SFL_VENV:-$ATLAS/.venv-sfl}   # SFL repo (py3.11, 2024-era jax pins; Parts 1 and 4)
 export DCD_CONDA=${DCD_CONDA:-dcd}              # conda env name for DCD (py3.8, original pins)
+export DCDF_VENV=${DCDF_VENV:-$ATLAS/.venv-dcdf}   # DCD falsify: torch/gym + verifai/scenic (py3.11)
 
 # Pinned upstream commits (what our local results used)
 export JAXUED_REPO=https://github.com/DramaCow/jaxued.git        JAXUED_COMMIT=0f8f1284677375b889e4f13a32c9617cd009f8c4
