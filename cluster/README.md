@@ -193,6 +193,11 @@ bash cluster/collect.sh   # -> runs/atlas_collect_<date>.tgz: falsifier records,
   - Minimax on JaxNav: unit tests pass (action masking, cell→world geometry checked against
     the env's own collision map, the JAX flood fill against a Python BFS on 300 levels), and
     it trains, evaluates and saves `model.safetensors` + `adversary.safetensors`.
+    Learning check (32 levels, 512-step rollouts, 150 updates): protagonist return on adversary
+    levels drops from -5.7 to -6.7, then recovers to -5.8 as the protagonist adapts; levels stay
+    hard (about 44% solvable, about 34 walls). The adversary's signal has the right sign but is
+    weak at this budget. Short tests need `learning.NUM_STEPS` >= the env's 500 max steps, or
+    levels finish no episode and the adversary is scored on partial returns.
   - Both patches apply cleanly to fresh pinned clones, and `clone.sh` is idempotent.
 - `DRY_RUN=1 submit.sh all` produces 60 tasks per part.
 - Falsifiers for Parts 2–4 are not written yet; they need these checkpoints.
