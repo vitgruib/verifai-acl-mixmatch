@@ -1,6 +1,6 @@
 #!/bin/bash
 # PART 1a - Maze: train every algorithm. One array task = one (algo, seed).
-# Default: 6 algos x 10 seeds = 60 tasks.   sbatch --array=0-59 cluster/1_maze/train.sbatch
+# Default: 6 algos x 5 seeds = 30 tasks.   sbatch --array=0-29 cluster/1_maze/train.sbatch
 #   dr plr rplr accel minimax -> JaxUED examples (paper settings, 30k updates)
 #   sfl                       -> SFL repo's minigrid_sfl (same JaxUED Maze env and network)
 # DRY_RUN=1 prints the command instead of running it. JAXUED_ARGS / SFL_ARGS pass extra flags (smoke tests).
@@ -8,11 +8,11 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}; N=${NUM_UPDATES:-30000}
+ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-5}; N=${NUM_UPDATES:-30000}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
 echo "task=$i algo=$algo seed=$seed host=$(hostname)"

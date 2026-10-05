@@ -9,7 +9,7 @@ cd "$DCD_DIR"
 for c in "$@"; do
   d=train_scripts/grid_configs/$dom; [ -f "$here/dcd_configs/$dom/${c%.json}.json" ] && d=$here/dcd_configs/$dom
   ${PYTHON:-python3} train_scripts/make_cmd.py --dir "$d" --json $c \
-    --num_trials ${NSEEDS:-10} $([ "$xvfb" = 1 ] && echo --xvfb) \
+    --num_trials ${NSEEDS:-5} $([ "$xvfb" = 1 ] && echo --xvfb) \
   | sed -e ':a' -e '/\\$/N; s/ *\\\n */ /; ta' \
-  | grep -E '^(xvfb-run|python)' | sed "s|\$| --log_dir=$RUNS/dcd/$dom|"
+  | grep -E '^(xvfb-run|python)' | sed "s|\$| ${DCD_ARGS:-} --log_dir=$RUNS/dcd/$dom|"
 done

@@ -2,8 +2,8 @@
 # PART 4 - JaxNav (SFL paper code, sampling-for-learnability): train. hydra configs, wandb offline.
 # DR, PLR, Robust PLR, ACCEL, SFL with the paper's own sweep_configs/jaxnav-sa (single agent),
 # plus minimax (our sfl/train/jaxnav_minimax.py, from cluster/patches/sfl_minimax.patch).
-# One task = one (algo, seed). Default: 6 algos x 10 seeds = 60 tasks.
-#   sbatch --array=0-59 cluster/4_jaxnav/train.sbatch
+# One task = one (algo, seed). Default: 6 algos x 5 seeds = 30 tasks.
+#   sbatch --array=0-29 cluster/4_jaxnav/train.sbatch
 # (The Maze SFL cell also uses this repo but lives in Part 1: cluster/1_maze/train.sbatch.)
 # DRY_RUN=1 prints the command instead of running it.
 # XLand lives in $SFL_DIR/xland with its own Dockerfile/jax pin; see cluster/README.md.
@@ -11,11 +11,11 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr minimax plr rplr accel sfl"}; NSEEDS=${NSEEDS:-10}
+ALGOS=${ALGOS:-"dr minimax plr rplr accel sfl"}; NSEEDS=${NSEEDS:-5}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
 JN="env.num_agents=1 env.test_set=single"           # jaxnav-sa sweep settings

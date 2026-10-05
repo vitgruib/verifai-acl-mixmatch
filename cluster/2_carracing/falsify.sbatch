@@ -3,20 +3,20 @@
 # One array task = one (algo, trial); it runs every space x sampler x falsifier seed into
 # $RUNS/carracing_falsify/<algo>/s<dcd seed>/<space>_<sampler>_r<fseed>/  (DCD seed = 88 + trial).
 # The samplers run as parallel processes, one CPU each. Needs $DCDF_VENV (setup/setup_dcd_falsify.sh).
-#   sbatch --array=0-59 --dependency=afterok:<train_jobid> cluster/2_carracing/falsify.sbatch
+#   sbatch --array=0-29 --dependency=afterok:<train_jobid> cluster/2_carracing/falsify.sbatch
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-2-carracing-falsify
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
-#SBATCH --time=48:00:00
+#SBATCH --time=18:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}
-# 5-20 s per level on one CPU (10 attempts; the in-env oracle runs on every failure): 1000 levels x
-# 3 fseeds x 2 spaces ~ 8-33 h per sampler.
+ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-5}
+# ~13 s per level measured on one CPU with an untrained policy (10 attempts; the in-env oracle runs
+# on every failure, so trained policies are cheaper): 500 levels x 3 fseeds x 2 spaces ~ 11 h per sampler.
 SPACES=${SPACES:-"dr sketch"}; SAMPLERS=${SAMPLERS:-"ce mab"}
-BUDGET=${BUDGET:-1000}; FSEEDS=${FSEEDS:-"0 1 2"}
+BUDGET=${BUDGET:-500}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
 ck=$(bash cluster/dcd_ckpt.sh car_racing $algo $seed)            # model.tar + meta.json

@@ -2,16 +2,16 @@
 # PART 4b - JaxNav: VerifAI falsification of the SFL-repo checkpoints from train.sbatch.
 # One array task = one (algo, seed); it runs every space x sampler x falsifier seed into
 # $RUNS/jaxnav_falsify/<algo>/s<seed>/<space>_<sampler>_r<fseed>/  (docs/failure_records.md).
-#   sbatch --array=0-59 --dependency=afterok:<train_jobid> cluster/4_jaxnav/falsify.sbatch
+#   sbatch --array=0-29 --dependency=afterok:<train_jobid> cluster/4_jaxnav/falsify.sbatch
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-4-jaxnav-falsify
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=08:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr minimax plr rplr accel sfl"}; NSEEDS=${NSEEDS:-10}
+ALGOS=${ALGOS:-"dr minimax plr rplr accel sfl"}; NSEEDS=${NSEEDS:-5}
 SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-"ce mab"}
 BUDGET=${BUDGET:-5000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}

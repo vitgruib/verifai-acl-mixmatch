@@ -1,16 +1,17 @@
 #!/bin/bash
 # One command per part. Prints every sbatch line it runs; DRY_RUN=1 prints without submitting.
 #   bash cluster/submit.sh smoke      # <1 h sanity check of all 4 parts (tiny budgets; train -> falsify per codebase)
-#   bash cluster/submit.sh 1          # Maze: train (60 tasks) -> falsify (60 tasks, after train)
-#   bash cluster/submit.sh 2          # CarRacing: train (60 tasks, Xvfb) -> falsify (60 CPU tasks, after train)
-#   bash cluster/submit.sh 3          # BipedalWalker: train (60 tasks) -> falsify (60 CPU tasks, after train)
-#   bash cluster/submit.sh 4          # JaxNav: train (60 tasks) -> falsify (60 tasks, after train)
+#   bash cluster/submit.sh 1          # Maze: train (30 tasks) -> falsify (30 tasks, after train)
+#   bash cluster/submit.sh 2          # CarRacing: train (30 tasks, Xvfb) -> falsify (30 CPU tasks, after train)
+#   bash cluster/submit.sh 3          # BipedalWalker: train (30 tasks) -> falsify (30 CPU tasks, after train)
+#   bash cluster/submit.sh 4          # JaxNav: train (30 tasks) -> falsify (30 tasks, after train)
 #   bash cluster/submit.sh all        # 1-4
-# Parts 2-3 chain SEGMENTS=2 train arrays (resume after timeout) before falsify.
+# Part 2 chains SEGMENTS=2 24 h train arrays (resume after timeout) before falsify; Part 3 trains
+# Bipedal for 300M env steps (paper: 2B) via DCD_ARGS, in one segment.
 # Extra sbatch flags (partition, account, ...) go in SBATCH_ARGS, e.g. SBATCH_ARGS="-p gpu -A lab".
 set -euo pipefail
 cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p "$RUNS/slurm" runs/slurm
-NSEEDS=${NSEEDS:-10}
+NSEEDS=${NSEEDS:-5}
 sb() {  # sbatch wrapper -> prints job id
   echo "sbatch ${SBATCH_ARGS:-} $*" >&2
   if [ -n "${DRY_RUN:-}" ]; then echo DRYRUN; else sbatch --parsable ${SBATCH_ARGS:-} "$@"; fi
@@ -37,8 +38,8 @@ dcd() {  # dcd() <part dir> <domain> <xvfb> <configs...>
   local A; A=$(for c in "$@"; do c=${c#*_}; [ $c = robust_plr ] && c=rplr; echo -n "$c "; done)
   ALGOS="$A" sb --export=ALL --array=0-$(count "$A") --dependency=afterok:$j cluster/$p/falsify.sbatch
 }
-part2() { SEGMENTS=${SEGMENTS:-2} dcd 2_carracing car_racing 1 ${CONFIGS:-cr_dr cr_minimax cr_plr cr_robust_plr cr_accel cr_sfl}; }
-part3() { SEGMENTS=${SEGMENTS:-2} dcd 3_bipedal bipedal 0 ${CONFIGS:-bipedal_dr bipedal_minimax bipedal_plr bipedal_robust_plr bipedal_accel bipedal_sfl}; }
+part2() { SEGMENTS=${SEGMENTS:-2} DCD_ARGS=${DCD_ARGS:-} dcd 2_carracing car_racing 1 ${CONFIGS:-cr_dr cr_minimax cr_plr cr_robust_plr cr_accel cr_sfl}; }
+part3() { SEGMENTS=${SEGMENTS:-1} DCD_ARGS=${DCD_ARGS:---num_env_steps=300000000} dcd 3_bipedal bipedal 0 ${CONFIGS:-bipedal_dr bipedal_minimax bipedal_plr bipedal_robust_plr bipedal_accel bipedal_sfl}; }
 part4() {
   local A=${ALGOS:-"dr minimax plr rplr accel sfl"}
   local j; j=$(ALGOS="$A" sb --export=ALL --array=0-$(count "$A") cluster/4_jaxnav/train.sbatch)
