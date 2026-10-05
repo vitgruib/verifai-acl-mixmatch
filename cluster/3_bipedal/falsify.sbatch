@@ -6,18 +6,18 @@
 # (--ref-ckpt; only those whose model.tar exists). Without them, hard counterexamples are limited
 # to near-flat levels (atlas/bipedal/falsify.py docstring).
 # The samplers run as parallel processes, one CPU each. Needs $DCDF_VENV (setup/setup_dcd_falsify.sh).
-#   sbatch --array=0-59 --dependency=afterok:<train_jobid> cluster/3_bipedal/falsify.sbatch
+#   sbatch --array=0-29 --dependency=afterok:<train_jobid> cluster/3_bipedal/falsify.sbatch
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-3-bipedal-falsify
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
-#SBATCH --time=12:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}
+ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-5}
 # Measured locally: <=5 s per level worst case on one CPU (policy 10x2000 steps ~1.4 s + 5 reference
-# witnesses ~3 s); 1000 levels x 3 fseeds <= ~4 h per sampler, samplers in parallel -> 12 h limit.
+# witnesses ~3 s); 1000 levels x 3 fseeds <= ~4 h per sampler, samplers in parallel -> 8 h limit.
 SPACES=${SPACES:-"dr"}; SAMPLERS=${SAMPLERS:-"ce mab"}
 BUDGET=${BUDGET:-1000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
