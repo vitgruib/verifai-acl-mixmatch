@@ -9,9 +9,8 @@ get() {  # dir repo commit
   echo "$1 @ $(git -C "$TP/$1" rev-parse --short HEAD)"
 }
 get jaxued "$JAXUED_REPO" "$JAXUED_COMMIT"
-get dcd "$DCD_REPO" "$DCD_COMMIT"
+get kinetix "$KINETIX_REPO" "$KINETIX_COMMIT"
 get sfl "$SFL_REPO" "$SFL_COMMIT"
-get baselines "$BASELINES_REPO" "$BASELINES_COMMIT"
 # Local changes to jaxued: wandb.Video(format="gif") so logging works headless, and a --minimax
 # flag on maze_paired.py (adversary reward = -student return; JaxUED ships no minimax baseline).
 for p in gif minimax; do
@@ -20,8 +19,8 @@ for p in gif minimax; do
     || echo "jaxued: $p patch already applied"
 done
 # ACL27 changes to the other two repos (see cluster/README.md, "Patches"):
-#   dcd_acl27.patch: numpy>=1.24 / torch>=2.6 compat, CarRacing level replay + ACCEL mutation fixes,
-#     the SFL teacher (--ued_algo=sfl), and an optional window-free renderer (ACL27_SOFT_RENDER=1).
+#   kinetix_acl27.patch: upstream bugs on jax 0.9 (SFL shard_map nesting, bool mask, jax.tree.tree_map,
+#     ACCEL create_empty_env signature); no behaviour change otherwise.
 #   sfl_minimax.patch: sfl/train/jaxnav_minimax.py (minimax adversary for single-agent JaxNav).
 apply_once() {  # repo patch
   if git -C "$TP/$1" apply --check "$ATLAS/cluster/patches/$2" 2>/dev/null; then
@@ -32,5 +31,5 @@ apply_once() {  # repo patch
     echo "ERROR: $2 neither applies nor is already applied to $TP/$1"; exit 1
   fi
 }
-apply_once dcd dcd_acl27.patch
+apply_once kinetix kinetix_acl27.patch
 apply_once sfl sfl_minimax.patch
