@@ -2,6 +2,11 @@
 
 Start here in a new session. Details live in the docs linked below; this page is the map.
 
+**Update 2026-10-06:** the cluster suite (`cluster/README.md`) dropped CarRacing and BipedalWalker
+(DCD, PyTorch: pixel rendering and 300M+ steps made them the bulk of the compute) for Kinetix
+(FLAIROx, ICLR 2025, JAX, S levels; DR/PLR/Robust PLR/ACCEL/SFL). Parts are now 1 Maze,
+2 Kinetix, 3 JaxNav. Mentions of DCD CarRacing/Bipedal below are history.
+
 ## NEW GOAL (user, 2026-10-03) — supersedes the goal below
 
 "Do a documentation of various UED algorithms and show how they fail with VerifAI failure

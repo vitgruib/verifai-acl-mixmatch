@@ -1,13 +1,13 @@
 #!/bin/bash
-# PART 4 - JaxNav (SFL paper code, sampling-for-learnability): train. hydra configs, wandb offline.
+# PART 3 - JaxNav (SFL paper code, sampling-for-learnability): train. hydra configs, wandb offline.
 # DR, PLR, Robust PLR, ACCEL, SFL with the paper's own sweep_configs/jaxnav-sa (single agent),
 # plus minimax (our sfl/train/jaxnav_minimax.py, from cluster/patches/sfl_minimax.patch).
 # One task = one (algo, seed). Default: 6 algos x 5 seeds = 30 tasks.
-#   sbatch --array=0-29 cluster/4_jaxnav/train.sbatch
+#   sbatch --array=0-29 cluster/3_jaxnav/train.sbatch
 # (The Maze SFL cell also uses this repo but lives in Part 1: cluster/1_maze/train.sbatch.)
 # DRY_RUN=1 prints the command instead of running it.
 # XLand lives in $SFL_DIR/xland with its own Dockerfile/jax pin; see cluster/README.md.
-#SBATCH --job-name=atlas-4-jaxnav
+#SBATCH --job-name=atlas-3-jaxnav
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
