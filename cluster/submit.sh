@@ -55,7 +55,7 @@ smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs unde
   ALGOS=sfl sb --export=ALL --time=00:30:00 --array=0 --dependency=afterok:$j3 cluster/3_jaxnav/falsify.sbatch
   ALGOS=minimax SFL_ARGS="learning.NUM_ENVS=16 learning.NUM_STEPS=32 learning.TOTAL_TIMESTEPS=4096 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=2" \
     sb --export=ALL --time=00:30:00 --array=0 cluster/3_jaxnav/train.sbatch >/dev/null
-  echo "smoke jobs submitted; check runs/slurm/*.out (atlas-2-kinetix probe: steps/s), then: python -m atlas.prelim $RUNS/maze_falsify" >&2
+  echo "smoke jobs submitted; check runs/slurm/*.out (probe: full_run_h on the last line of runs/slurm/atlas-2-kinetix_*.out), then: python -m atlas.prelim $RUNS/maze_falsify" >&2
 }
 
 case ${1:-} in

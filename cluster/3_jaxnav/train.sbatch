@@ -6,7 +6,6 @@
 #   sbatch --array=0-59 cluster/3_jaxnav/train.sbatch
 # (The Maze SFL cell also uses this repo but lives in Part 1: cluster/1_maze/train.sbatch.)
 # DRY_RUN=1 prints the command instead of running it.
-# XLand lives in $SFL_DIR/xland with its own Dockerfile/jax pin; see cluster/README.md.
 #SBATCH --job-name=atlas-3-jaxnav
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
