@@ -5,21 +5,112 @@ three standard UED benchmarks, using the papers' own code. It then searches each
 on (VerifAI falsification). Everything here is a SLURM array job. Results come back as one
 tarball.
 
-## TL;DR
+## Pipeline at a glance
+
+Each environment runs the same two-stage chain. Falsification waits on training through a SLURM
+`afterok` dependency.
+
+```
+setup (login node, once) ─► smoke (~1 h) ─► for each part 1-3:  train array ──afterok──► falsify array ─► collect
+```
+
+| stage | purpose | resources per task | worst case (every task hits its limit) | expected |
+|---|---|---|---|---|
+| setup | Clone the upstream repos at pinned commits, apply our patches, build 3 venvs | login node | — (pip installs; not timed on the cluster) | minutes |
+| smoke | Run tiny train → falsify chains for every codebase on 1 seed, plus a Kinetix GPU speed probe; catches broken installs and configs before the real run | 0.5 h (probe 1 h) | 5 GPU-h + 20 CPU-h; ~1 h wall | well under 1 h |
+| 1 train (Maze) | Train 6 UED algos × 5 seeds at the papers' settings: the agents to be audited | 1 GPU, 12 h | 30 × 12 = 360 GPU-h | a few hours each (unmeasured on GPU) |
+| 1 falsify | VerifAI searches each Maze agent for solvable levels it fails (BFS-certified) | 8 CPU, 1 h | 30 × 1 h × 8 = 240 CPU-h | ~10 min each |
+| 2 train (Kinetix) | Train 5 UED algos × 5 seeds on Kinetix S, 201M steps: a physics-based, more general benchmark | 1 GPU, 6 h | 25 × 6 = 150 GPU-h | set by the probe's steps/s |
+| 2 falsify | VerifAI on moved-object / changed-physics versions of the 10 S eval levels (replay-certified witness) | 8 CPU, 4 h | 25 × 4 h × 8 = 800 CPU-h | ~1–1.5 h each |
+| 3 train (JaxNav) | Train 6 UED algos × 5 seeds on single-agent robot navigation (SFL paper) | 1 GPU, 12 h | 30 × 12 = 360 GPU-h | a few hours each (unmeasured on GPU) |
+| 3 falsify | VerifAI on JaxNav levels (BFS + scripted-controller certified) | 8 CPU, 4 h | 30 × 4 h × 8 = 960 CPU-h | ~1.8 h each |
+| collect | Pack failure records, eval CSVs, configs, logs and final checkpoints into one tarball | login node | — | seconds |
+
+**Suite worst case: 870 GPU-h + ~2,000 CPU-h** (85 GPU tasks, 85 CPU tasks). If the queue runs
+every array task at once, wall clock is bounded by the slowest chain: JaxNav, 12 h + 4 h =
+16 h. A realistic total is well under half the GPU figure. Nothing is ever charged beyond the
+limits: SLURM kills a job at its `--time`.
+
+The output of the whole pipeline is the **failure atlas**: for each (environment, algorithm,
+seed), the levels the trained agent fails even though a solution provably exists, each with its
+witness solution and descriptors (record format: [docs/failure_records.md](../docs/failure_records.md)).
+
+## How to run
+
+**0. Requirements.** SLURM with a GPU partition (1 GPU per training task, CUDA 12 driver),
+`python3.11` and `git`, and internet on the login node for the clone and pip steps.
+
+**1. Get the code and set up, once, on the login node.**
 
 ```bash
 git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas && cd atlas
-bash cluster/setup/clone.sh && bash cluster/setup/setup_jax.sh \
-  && bash cluster/setup/setup_kinetix.sh && bash cluster/setup/setup_sfl.sh   # once, login node
-bash cluster/submit.sh smoke     # ~1 h, all 3 parts; check runs/slurm/*.out before going on
-bash cluster/submit.sh all       # or one part at a time: 1, 2, 3
-bash cluster/collect.sh          # when done: runs/atlas_collect_<date>.tgz -> send back
+bash cluster/setup/clone.sh          # upstream repos at pinned commits + our patches
+bash cluster/setup/setup_jax.sh      # .venv-jax      (Part 1)
+bash cluster/setup/setup_kinetix.sh  # .venv-kinetix  (Part 2)
+bash cluster/setup/setup_sfl.sh      # .venv-sfl      (Part 1 SFL cell, Part 3)
 ```
 
-Use `DRY_RUN=1 bash cluster/submit.sh all` to print every `sbatch` line without submitting.
-Pass partition or account flags through `SBATCH_ARGS`, e.g. `SBATCH_ARGS="-p gpu -A mylab"`.
-Paths can be overridden too, e.g. `RUNS=/scratch/$USER/atlas` (all paths are in
-[`env.sh`](env.sh)).
+Each setup script ends with an import check that prints `ok ...`. If `python3.11` has a
+different name, pass it as `PYBIN=/path/to/python3.11`. If the cluster needs `module load cuda`,
+put that in `~/.bashrc` (see Setup notes).
+
+**2. Point it at your cluster.** These variables are read by every later command, so export
+them in the same shell (or in `~/.bashrc`):
+
+```bash
+export SBATCH_ARGS="-p <gpu partition> -A <account>"   # whatever your cluster needs
+export RUNS=/scratch/$USER/atlas                       # optional; default is ./runs
+```
+
+Check the submission without sending anything: `DRY_RUN=1 bash cluster/submit.sh all` prints
+every `sbatch` line (30 / 25 / 30 tasks for Parts 1 / 2 / 3, each followed by a falsify array).
+
+**3. Smoke test (about 1 h).**
+
+```bash
+bash cluster/submit.sh smoke
+squeue -u $USER                                    # wait until empty
+sacct -u $USER -S today --format=JobName%30,State,ExitCode,Elapsed
+grep "steps/s" runs/slurm/atlas-2-kinetix_*.out    # probe throughput
+ls $RUNS/smoke/*_falsify/*/*/*/summary.json        # falsify outputs
+```
+
+Go on only if: every job is `COMPLETED` with exit `0:0`; `summary.json` files exist for Maze,
+Kinetix and JaxNav; and the Kinetix probe (the full-width DR line) shows at least ~20,000
+steps/s. If the probe is slower, the 6 h Kinetix limit is too short. Raise `#SBATCH --time`
+in `cluster/2_kinetix/train.sbatch` by the same factor, or lower `STEPS`.
+
+**4. Full run.**
+
+```bash
+bash cluster/submit.sh all      # or one part at a time: bash cluster/submit.sh 1 | 2 | 3
+```
+
+Logs go to `runs/slurm/<job>_<jobid>_<task>.out`. Each line names the task's algorithm and
+seed (task `i` = algorithm `i / 5`, seed `i % 5`). A training log ends with
+`done ... steps/s=` (Kinetix) or the final evaluation. Falsification writes
+`$RUNS/<env>_falsify/<algo>/s<seed>/<space>_<sampler>_r<seed>/summary.json`.
+
+**5. If a task fails or times out.** `afterok` means a failed training task leaves that part's
+whole falsify array pending forever (`DependencyNeverSatisfied`). To recover:
+
+```bash
+scancel <falsify jobid>                                          # the stuck array
+sbatch $SBATCH_ARGS --array=<i> cluster/<part>/train.sbatch      # rerun failed task(s), e.g. --array=3,17
+sbatch $SBATCH_ARGS --array=0-<N-1> --dependency=afterok:<new train jobid> cluster/<part>/falsify.sbatch
+```
+
+A rerun restarts training from scratch. Timed-out tasks need a longer `--time` passed on that
+`sbatch` line.
+
+**6. Bring results home.**
+
+```bash
+bash cluster/collect.sh   # -> $RUNS/atlas_collect_<date>.tgz; send this one file back
+```
+
+It holds the falsifier records, eval CSVs, configs, SLURM logs and only the final checkpoints
+(not the intermediate checkpoints or full run directories).
 
 ## The three parts (one per environment)
 
@@ -152,13 +243,6 @@ chain per codebase:
 
 All jobs should exit 0 and write `summary.json` files under `runs/smoke/*_falsify/`. Every
 smoke line was run locally (CPU, headless) before shipping (see Status).
-
-## Bring results home
-
-```bash
-bash cluster/collect.sh   # -> runs/atlas_collect_<date>.tgz: falsifier records, eval CSVs,
-                          #    configs, slurm logs, final checkpoints only
-```
 
 ## Status (2026-10-06)
 
