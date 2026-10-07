@@ -2,20 +2,21 @@
 # PART 1b - Maze: VerifAI falsification of the checkpoints from train.sbatch.
 # One array task = one (algo, seed); it runs every space x sampler x falsifier seed into
 # $RUNS/maze_falsify/<algo>/s<seed>/<space>_<sampler>_r<fseed>/  (docs/failure_records.md).
-#   sbatch --array=0-29 --dependency=afterok:<train_jobid> cluster/1_maze/falsify.sbatch
+#   sbatch --array=0-59 --dependency=afterok:<train_jobid> cluster/1_maze/falsify.sbatch
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-1-maze-falsify
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=01:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-5}; N=${NUM_UPDATES:-30000}
+ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}; N=${NUM_UPDATES:-30000}
 # Samplers from the local prelim (docs/ued_atlas.md, "Falsifier prelim"; results/atlas/prelim_maze.csv):
-# ce finds the most failure modes in both spaces; mab is second on counterexample rate. Only these
-# two run (ce vs mab is the comparison); random, halton and sa are dropped.
-SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-"ce mab"}
+# ce beat mab (and random, halton, sa) in both spaces on distinct failure modes (1.13x / 1.07x random,
+# mab 1.06x / 0.87x) and counterexample rate (4.5x / 5.9x, mab 2.5x / 5.2x), so only ce runs.
+# Every part uses it. SAMPLERS="ce mab" restores the head-to-head.
+SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-ce}
 BUDGET=${BUDGET:-5000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
@@ -24,7 +25,7 @@ else ck=$RUNS/maze_train/checkpoints/maze_${algo}_n$N/$seed; fi   # orbax checkp
 echo "task=$i algo=$algo seed=$seed ckpt=$ck host=$(hostname)"
 run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 [ -n "${DRY_RUN:-}" ] || source "$JAX_VENV/bin/activate"
-# CPU only: one process per space x sampler (4 by default) on 8 CPUs; per-level cost is env + oracle, not the network.
+# CPU only: one process per space x sampler (2 by default) on 4 CPUs; per-level cost is env + oracle, not the network.
 export JAX_PLATFORMS=cpu
 pids=()
 for sp in $SPACES; do for sm in $SAMPLERS; do

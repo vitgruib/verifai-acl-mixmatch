@@ -2,20 +2,20 @@
 # PART 2b - Kinetix: VerifAI falsification of the checkpoints from train.sbatch (atlas.kinetix.falsify).
 # One array task = one (algo, seed); it runs every space x sampler x falsifier seed into
 # $RUNS/kinetix_falsify/<algo>/s<seed>/<space>_<sampler>_r<fseed>/  (docs/failure_records.md).
-#   sbatch --array=0-24 --dependency=afterok:<train_jobid> cluster/2_kinetix/falsify.sbatch
+#   sbatch --array=0-49 --dependency=afterok:<train_jobid> cluster/2_kinetix/falsify.sbatch
 # Spaces: pos (move agent/goal components) and phys (gravity, friction, motor, thrust scales) on the
 # 10 S eval levels. Measured on CPU: ~1.2-1.8 s per level incl. the witness oracle, so 1000 levels
-# x 3 falsifier seeds ~ 1-1.5 h per process; 4 processes in parallel.
+# x 3 falsifier seeds ~ 1-1.5 h per process; 2 processes (pos, phys) in parallel.
 # DRY_RUN=1 prints the commands instead of running them.
 #SBATCH --job-name=atlas-2-kinetix-falsify
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=04:00:00
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"dr plr rplr accel sfl"}; NSEEDS=${NSEEDS:-5}
-SPACES=${SPACES:-"pos phys"}; SAMPLERS=${SAMPLERS:-"ce mab"}
+ALGOS=${ALGOS:-"dr plr rplr accel sfl"}; NSEEDS=${NSEEDS:-10}
+SPACES=${SPACES:-"pos phys"}; SAMPLERS=${SAMPLERS:-ce}
 BUDGET=${BUDGET:-1000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
