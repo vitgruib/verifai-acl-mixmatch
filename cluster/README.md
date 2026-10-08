@@ -22,6 +22,53 @@ curves, configs, logs and final checkpoints. The analysis is done afterwards, of
 - Likely well under half the GPU figure.
 - Wall clock ≈ 28 h if the queue runs everything in parallel.
 
+## Why run this: the papers' tests have not been properly reproduced
+
+Each UED paper reports robustness with its own evaluation, and those evaluations are hard to
+compare or to trust as a measure of where the agents fail:
+
+- **Every paper tests on a small, fixed set it chose itself.** PAIRED, Robust PLR and ACCEL
+  report success on a handful of named held-out mazes (Labyrinth, SixteenRooms, ...), on F1
+  tracks and on Bipedal test courses. SFL reports CVaR over 10,000 *randomly sampled* levels.
+  None of them searches for the levels the agent fails. A fixed set can miss whole regions of
+  failures, and random sampling rarely hits rare ones.
+- **Each comparison runs on a different setup.** The papers differ in network (LSTM vs MLP),
+  budget (5.5M to 2B steps), PPO settings and replay-buffer settings. A gap between methods
+  can come from the setup rather than the algorithm. The SFL paper also argues that PLR's
+  scores track success rate rather than regret. That would undercut the mechanism the regret
+  methods rely on, and it has not been checked on the levels where they fail.
+- **Our own first reimplementation was not a faithful recreation either.** It used:
+  - a memoryless MLP;
+  - a 50× smaller budget;
+  - levels encoded as a random seed.
+
+  The seed encoding meant ACCEL's "edits" replaced the whole maze, and an adaptive search over
+  seeds degenerates to random search. Its held-out scores (DR 0–0.13, SFL 0–0.18) could not
+  tell an algorithm failure from a harness bug.
+
+**So this run does two things.**
+
+1. **Recreates the papers' tests faithfully.** It trains every method with *its paper's own
+   released code and configs*, unchanged except for documented bug fixes (appendix), at the
+   budgets listed under "What runs", with 10 seeds. A failure cannot then be blamed on our reimplementation.
+2. **Replaces fixed or random test sets with a search for failures.** VerifAI's cross-entropy
+   sampler looks for the levels each agent fails. Each failure must be *certified solvable*
+   (an exact path, or a replayed solution), so it is a real gap in the agent, not an
+   impossible level.
+
+**Pilot results.** On a Maze pilot, the search found counterexamples 4.5–5.9× as often as
+random sampling at the same budget. The failures were levels that force detours around walls,
+not simply levels with a distant goal. Caveat: the agents were trained to 10% of budget.
+
+The atlas compares two numbers for each method:
+- what its paper's metric says;
+- what the failure search finds.
+
+A method that looks robust by the first and still fails on certified-solvable levels is the
+finding. Each cluster of failures is then explained with the training logs: did the curriculum
+ever generate that region, and how did it score it? Full plan and literature:
+[docs/ued_atlas.md](../docs/ued_atlas.md).
+
 ## Pipeline and compute
 
 ```
