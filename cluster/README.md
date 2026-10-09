@@ -232,7 +232,7 @@ pilot was Maze only, with agents trained to 10% of budget. `SAMPLERS="ce mab"` r
   and 300M–2B step budgets were ~2/3 of the GPU hours). Kinetix replaces them as the
   general, physics-based benchmark.
 
-## Validation status (as of 2026-10-07)
+## Validation status (as of 2026-10-08)
 
 Every smoke-test line, and every training and falsification path, was run locally: headless,
 CPU only, at tiny budgets, through the actual `.sbatch` scripts.
@@ -244,6 +244,9 @@ CPU only, at tiny budgets, through the actual `.sbatch` scripts.
   against the env's collision map, and flood fill against a Python BFS on 300 levels. It trains
   and saves both networks.
 - **Submission:** `DRY_RUN=1 submit.sh all` and `smoke` produce the arrays and dependencies above.
+- **Isolation (2026-10-08):** a Kinetix falsify run through the `.sbatch` script pinned its two
+  processes to separate CPU slices, wrote caches only under `<repo>/.cache`, and `collect.sh`
+  produced a tarball with the SLURM logs and no symlinks.
 
 **Falsification cost** (measured locally, one CPU per process, untrained policies):
 
