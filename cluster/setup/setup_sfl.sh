@@ -4,7 +4,6 @@
 set -euo pipefail
 source "$(dirname "$0")/../env.sh"
 PYBIN=${PYBIN:-python3.11}
-SFL_VENV=${SFL_VENV:-$ATLAS/.venv-sfl}
 $PYBIN -m venv "$SFL_VENV" && source "$SFL_VENV/bin/activate"
 pip install -q --upgrade pip
 pip install -q -e "$SFL_DIR"

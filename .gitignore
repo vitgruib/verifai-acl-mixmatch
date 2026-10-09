@@ -8,3 +8,5 @@ results/*/snapshots/
 results/**/*.log
 runs/
 third_party/
+.venv-*/
+.cache/

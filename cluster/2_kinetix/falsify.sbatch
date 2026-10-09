@@ -25,10 +25,13 @@ run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 [ -n "${DRY_RUN:-}" ] || source "$KINETIX_VENV/bin/activate"
 # CPU only, headless: no renderer is ever called.
 export JAX_PLATFORMS=cpu MPLBACKEND=Agg SDL_VIDEODRIVER=dummy
+# one process per space x sampler, each pinned to its share of the allocated CPUs
+np=$(( $(wc -w <<< "$SPACES") * $(wc -w <<< "$SAMPLERS") )); k=0
+cap_threads $(( (${SLURM_CPUS_PER_TASK:-4} + np - 1) / np ))
 pids=()
 for sp in $SPACES; do for sm in $SAMPLERS; do
-  run python -m atlas.kinetix.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $sm \
+  run $(pin_cpus $k $np) python -m atlas.kinetix.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $sm \
     --budget $BUDGET --attempts 10 --tau 0.5 --seed $FSEEDS --out "$RUNS/kinetix_falsify" &
-  pids+=($!)
+  pids+=($!); k=$((k + 1))
 done; done
 rc=0; for p in "${pids[@]}"; do wait $p || rc=1; done; exit $rc
