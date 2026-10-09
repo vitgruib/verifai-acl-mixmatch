@@ -23,10 +23,13 @@ run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 # CPU only: one process per space x sampler (2 by default) on 4 CPUs; per-level cost is env + oracle, not the network.
 export JAX_PLATFORMS=cpu
 export MPLBACKEND=Agg
+# one process per space x sampler, each pinned to its share of the allocated CPUs
+np=$(( $(wc -w <<< "$SPACES") * $(wc -w <<< "$SAMPLERS") )); k=0
+cap_threads $(( (${SLURM_CPUS_PER_TASK:-4} + np - 1) / np ))
 pids=()
 for sp in $SPACES; do for sm in $SAMPLERS; do
-  run python -m atlas.jaxnav.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $sm \
+  run $(pin_cpus $k $np) python -m atlas.jaxnav.falsify --ckpt "$ck" --algo $algo --space $sp --sampler $sm \
     --budget $BUDGET --attempts 10 --tau 0.5 --seed $FSEEDS --out "$RUNS/jaxnav_falsify" &
-  pids+=($!)
+  pids+=($!); k=$((k + 1))
 done; done
 rc=0; for p in "${pids[@]}"; do wait $p || rc=1; done; exit $rc

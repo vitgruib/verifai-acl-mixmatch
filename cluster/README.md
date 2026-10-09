@@ -117,9 +117,10 @@ bash cluster/setup/setup_sfl.sh      # .venv-sfl      (Maze SFL cell, Part 3 Jax
 - Each setup script ends with an import check that prints `ok <jax version> [devices]`.
   On a login node without a GPU the device list shows CPU; that is fine.
 - If Python 3.11 has another name, prefix `PYBIN=/path/to/python3.11`.
-- If jobs need `module load cuda` (or similar), put it in `~/.bashrc`.
+- If jobs need `module load cuda` (or similar), load it in the shell you submit from: every job is
+  submitted with `--export=ALL` and inherits that environment. No dotfiles need editing.
 
-**2. Cluster settings.** Export these in the shell you submit from, or in `~/.bashrc`:
+**2. Cluster settings.** Export these in the shell you submit from:
 
 ```bash
 export SBATCH_ARGS="-p <gpu partition> -A <account>"   # anything your cluster requires
@@ -325,3 +326,14 @@ upstream's container `nvcr.io/nvidia/jax:23.10-py3` also works.
 
 Every job is headless (`MPLBACKEND=Agg`, `SDL_VIDEODRIVER=dummy`; no renderer is called), and
 wandb runs offline (`wandb sync` afterwards for dashboards).
+
+**Isolation.** Nothing reaches outside the repo, `$RUNS` and the resources SLURM granted:
+- No writes to `$HOME` or shared caches: pip, matplotlib, XDG and wandb caches go to `<repo>/.cache`
+  (`ATLAS_CACHE`), wandb run dirs to `$RUNS`.
+- No symlinks are created anywhere; `collect.sh` adds the SLURM logs to the tarball by path.
+- No network from compute nodes: only the setup scripts download, on the login node; wandb is
+  offline or disabled, and VerifAI runs in-process (no server, no sockets).
+- CPU: BLAS/OpenMP threads are capped at `SLURM_CPUS_PER_TASK`; each falsify process is pinned
+  with `taskset` to its own slice of the job's CPUs, so XLA does not spread over the whole node.
+- GPU: each training job sees only the GPU it was granted (`CUDA_VISIBLE_DEVICES` is set from
+  `SLURM_JOB_GPUS` if the scheduler leaves it unset).

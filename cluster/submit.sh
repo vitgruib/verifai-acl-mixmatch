@@ -7,7 +7,7 @@
 #   bash cluster/submit.sh all        # 1-3
 # Extra sbatch flags (partition, account, ...) go in SBATCH_ARGS, e.g. SBATCH_ARGS="-p gpu -A lab".
 set -euo pipefail
-cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p "$RUNS/slurm" runs/slurm
+cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p runs/slurm
 NSEEDS=${NSEEDS:-10}
 sb() {  # sbatch wrapper -> prints job id
   echo "sbatch ${SBATCH_ARGS:-} $*" >&2
