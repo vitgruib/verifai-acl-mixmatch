@@ -14,9 +14,10 @@ cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 ALGOS=${ALGOS:-"dr plr rplr accel minimax sfl"}; NSEEDS=${NSEEDS:-10}; N=${NUM_UPDATES:-30000}
 # Samplers from the local prelim (docs/ued_atlas.md, "Falsifier prelim"; results/atlas/prelim_maze.csv):
 # ce beat mab (and random, halton, sa) in both spaces on distinct failure modes (1.13x / 1.07x random,
-# mab 1.06x / 0.87x) and counterexample rate (4.5x / 5.9x, mab 2.5x / 5.2x), so only ce runs.
-# Every part uses it. SAMPLERS="ce mab" restores the head-to-head.
-SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-ce}
+# mab 1.06x / 0.87x) and counterexample rate (4.5x / 5.9x, mab 2.5x / 5.2x), so ce is the search.
+# Maze also runs random: the unbiased control for failure rates and the H2 test (docs/library_log.md,
+# batch 20). Maze falsification is cheap (~10 min per process).
+SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-"random ce"}
 BUDGET=${BUDGET:-5000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
@@ -25,7 +26,7 @@ else ck=$RUNS/maze_train/checkpoints/maze_${algo}_n$N/$seed; fi   # orbax checkp
 echo "task=$i algo=$algo seed=$seed ckpt=$ck host=$(hostname)"
 run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 [ -n "${DRY_RUN:-}" ] || source "$JAX_VENV/bin/activate"
-# CPU only: one process per space x sampler (2 by default) on 4 CPUs; per-level cost is env + oracle, not the network.
+# CPU only: one process per space x sampler (4 by default) on 4 CPUs; per-level cost is env + oracle, not the network.
 export JAX_PLATFORMS=cpu
 # one process per space x sampler, each pinned to its share of the allocated CPUs
 np=$(( $(wc -w <<< "$SPACES") * $(wc -w <<< "$SAMPLERS") )); k=0

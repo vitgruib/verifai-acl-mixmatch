@@ -22,6 +22,7 @@ The cluster pilot's pre-registered H2 test (`h2_test`, docs/library_log.md "Batc
 import argparse
 import csv
 import glob
+import math
 import os
 from collections import defaultdict
 
@@ -63,8 +64,8 @@ def h2_test(runs):
     """Pre-registered H2 test (docs/library_log.md, batch 20). Per (algo, seed) with a buffer, random
     sampler only, pooled over spaces and falsifier seeds: among levels the buffer covers (buf_knn at
     most the median buf_knn of passing levels), is the mean buf_score_pct of failing levels below
-    that of passing levels? H2 supported if yes in >= 8 of 9 runs (one-sided sign test p = 0.020);
-    refuted if no in >= 5 of 9; otherwise inconclusive."""
+    that of passing levels? H2 supported if the one-sided sign test gives p < 0.05 (>= 20 of 30 runs on
+    the full Maze run); refuted if yes in at most half the runs; otherwise inconclusive."""
     print("\nH2 test (random sampler, buffer-covered levels; cex vs ok buf_score_pct per run):")
     n = below = 0
     for (algo, seed), rows in sorted(runs.items()):
@@ -84,8 +85,9 @@ def h2_test(runs):
         below += np.mean(c) < np.mean(o)
         print(f"  {algo:>6} {seed}: cex {np.mean(c):.3f} (n={len(c)})  ok {np.mean(o):.3f} (n={len(o)})")
     if n:
-        verdict = "SUPPORTED" if n == 9 and below >= 8 else "REFUTED" if n - below >= 5 else "inconclusive"
-        print(f"  cex below ok in {below}/{n} runs -> H2 {verdict}" + ("" if n == 9 else " (rule is for 9 runs)"))
+        p = sum(math.comb(n, k) for k in range(below, n + 1)) / 2 ** n
+        verdict = "SUPPORTED" if p < 0.05 else "REFUTED" if below <= n / 2 else "inconclusive"
+        print(f"  cex below ok in {below}/{n} runs (sign test p = {p:.3f}) -> H2 {verdict}")
 
 
 def main():

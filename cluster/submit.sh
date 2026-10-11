@@ -1,8 +1,8 @@
 #!/bin/bash
 # One command per part. Prints every sbatch line it runs; DRY_RUN=1 prints without submitting.
-#   bash cluster/submit.sh pilot      # FIRST: Maze H2 pilot, 4 algos x 3 seeds at full budget (12 GPU + 12 CPU tasks), into $RUNS/pilot
+#   bash cluster/submit.sh maze-smoke # FIRST: ~30 min tiny Maze train -> falsify check (2 GPU + 2 CPU tasks)
 #   bash cluster/submit.sh smoke      # ~1 h sanity check of all 3 parts (tiny budgets; train -> falsify), Kinetix probe up to 3 h
-#   bash cluster/submit.sh 1          # Maze: train (60 tasks) -> falsify (60 tasks, after train)
+#   bash cluster/submit.sh 1          # THEN: Maze: train (60 tasks) -> falsify (60 tasks, after train)
 #   bash cluster/submit.sh 2          # Kinetix: train (50 GPU tasks) -> falsify (50 CPU tasks, after train)
 #   bash cluster/submit.sh 3          # JaxNav: train (60 tasks) -> falsify (60 tasks, after train)
 #   bash cluster/submit.sh all        # 1-3
@@ -33,20 +33,27 @@ chain() {  # chain <part dir> <algos>: train array -> falsify array (afterok)
   ALGOS="$2" sb --export=ALL --array=0-$(count "$2") --dependency=afterok:$j cluster/$1/falsify.sbatch
 }
 
-pilot() {  # pre-registered H2 test (docs/library_log.md, batch 20); random sampler is the unbiased control
-  export RUNS=$RUNS/pilot NSEEDS=3 SAMPLERS="random ce"; mkdir -p "$RUNS"
-  ALGOS="dr plr rplr accel" part1
-  echo "pilot submitted; when done: python -m atlas.prelim $RUNS/maze_falsify (H2 verdict printed last)" >&2
-}
-
-smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs under $RUNS/smoke
-  local S="learning.NUM_ENVS=16 learning.NUM_ENVS_FROM_SAMPLED=8 learning.NUM_ENVS_TO_GENERATE=8 learning.NUM_STEPS=32 learning.TOTAL_TIMESTEPS=4096 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=2 BATCH_SIZE=64 NUM_BATCHES=1 ROLLOUT_STEPS=50 NUM_TO_SAVE=32"
-  local R=$RUNS
+# Smoke settings: tiny SFL-repo budgets (S), one seed, 50 updates, 50-level falsification; outputs under $RUNS/smoke.
+S="learning.NUM_ENVS=16 learning.NUM_ENVS_FROM_SAMPLED=8 learning.NUM_ENVS_TO_GENERATE=8 learning.NUM_STEPS=32 learning.TOTAL_TIMESTEPS=4096 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=2 BATCH_SIZE=64 NUM_BATCHES=1 ROLLOUT_STEPS=50 NUM_TO_SAVE=32"
+smoke_env() {
   export RUNS=$RUNS/smoke NSEEDS=1 NUM_UPDATES=50 JAXUED_ARGS="--eval_freq 10 --checkpoint_save_interval 1" BUDGET=50 FSEEDS=0 SAMPLERS=ce; mkdir -p "$RUNS"
+}
+smoke_maze() {  # tiny Maze chain: Robust PLR (JaxUED) and SFL (SFL repo) -> falsify
   local j1 j2
   j1=$(ALGOS=rplr sb --export=ALL --time=00:30:00 --array=0 cluster/1_maze/train.sbatch)
   j2=$(ALGOS=sfl SFL_ARGS="$S learning.WARMUP_UPDATES=1" sb --export=ALL --time=00:30:00 --array=0 cluster/1_maze/train.sbatch)
   ALGOS="rplr sfl" sb --export=ALL --time=00:30:00 --array=0-1 --dependency=afterok:$j1:$j2 cluster/1_maze/falsify.sbatch
+}
+maze_smoke() {
+  smoke_env
+  smoke_maze
+  echo "maze smoke submitted; check: ls $RUNS/maze_falsify/*/*/*/summary.json" >&2
+}
+
+smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs under $RUNS/smoke
+  local R=$RUNS
+  smoke_env
+  smoke_maze
   # Kinetix: ACCEL (plr.py) and SFL (sfl.py) at 32 envs, 16 / 64 updates (sfl has no level_buffer_capacity)
   local K="learning.num_train_envs=32 learning.num_minibatches=4 learning.update_epochs=2 eval.eval_num_attempts=2"
   local KS="learning.num_steps=64 ued.batch_size=64 ued.rollout_steps=64 ued.num_to_save=32"
@@ -66,7 +73,7 @@ smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs unde
 }
 
 case ${1:-} in
-  pilot) pilot;; smoke) smoke;; 1) part1;; 2) part2;; 3) part3;;
+  maze-smoke) maze_smoke;; smoke) smoke;; 1) part1;; 2) part2;; 3) part3;;
   all) part1; part2; part3;;
   *) sed -n '2,9p' "$0"; exit 2;;
 esac
