@@ -17,7 +17,14 @@ fails. A failure only counts if it comes with a certificate that the level is so
 seed), the certified failures with their witnesses and level descriptors, plus training eval
 curves, configs, logs and final checkpoints. The analysis is done afterwards, off the cluster.
 
-**Cost.** 170 one-GPU training jobs and 170 CPU-only falsification jobs.
+**Start with a small pilot (step 3 below).** It is 12 GPU jobs on Maze only, with a ceiling of
+144 GPU-h + 48 CPU-h, and takes about half a day. It tests one pre-registered hypothesis (H2):
+*replay methods fail on levels they saw during training but scored as unimportant*. The pass/fail
+rule is fixed in advance (`docs/library_log.md`, batch 20) and printed by one command. The pilot
+also checks the whole pipeline at full budget before the large run is requested.
+
+**Cost of the full run (only after the pilot).** 170 one-GPU training jobs and 170 CPU-only
+falsification jobs.
 - Hard ceiling: **1,920 GPU-h + 2,000 CPU-h**. SLURM kills any job at its time limit.
 - Likely well under half the GPU figure.
 - Wall clock ≈ 28 h if the queue runs everything in parallel.
@@ -124,7 +131,7 @@ setup (login node, once) ─► smoke test (~1–3 h) ─► per environment: tr
 **Source of the estimates.**
 - **Falsification:** timed locally per level.
 - **GPU training:** not measured, since we have no local GPU. The smoke test's Kinetix probe
-  measures it before the full run (step 3).
+  measures it before the full run (step 4).
 
 ## How to run
 
@@ -165,7 +172,21 @@ The dry run should show:
 - a fourth Kinetix SFL array (0-9, `--time=24:00:00`);
 - one falsify array per part, each depending on its training.
 
-**3. Smoke test.**
+**3. Pilot: run this first.**
+
+```bash
+bash cluster/submit.sh pilot                 # 12 train tasks -> 12 falsify tasks, into $RUNS/pilot
+squeue -u $USER                              # wait until empty (~half a day)
+RUNS=$RUNS/pilot bash cluster/collect.sh     # send this tarball back
+```
+
+- What runs: Maze with DR, PLR, Robust PLR and ACCEL; 3 seeds each at the paper's budget. Then
+  falsification with the random sampler (the unbiased control) and the cross-entropy sampler.
+- Result: `python -m atlas.prelim $RUNS/pilot/maze_falsify` ends with the H2 verdict.
+- Ceiling: 144 GPU-h + 48 CPU-h.
+- It does not need the smoke test (step 4), which covers the Kinetix and JaxNav parts.
+
+**4. Smoke test (before the full run).**
 
 ```bash
 bash cluster/submit.sh smoke
@@ -188,7 +209,7 @@ Go ahead only if all of these hold:
 - the **SFL probe** gives the SFL limit. Set it to ~1.5× that probe's `full_run_h`, e.g.
   `export SFL_TIME=30:00:00` (default 24 h).
 
-**4. Full run.**
+**5. Full run (after the pilot and smoke test).**
 
 ```bash
 bash cluster/submit.sh all      # or one part at a time: bash cluster/submit.sh 1 | 2 | 3
@@ -200,7 +221,7 @@ bash cluster/submit.sh all      # or one part at a time: bash cluster/submit.sh 
   algorithm `ALGOS[i / 10]`, seed `i % 10`; the order is in each `.sbatch` header.
 - **Falsification output:** `$RUNS/<env>_falsify/<algo>/s<seed>/<space>_ce_r<fseed>/summary.json`.
 
-**5. If a training task fails or times out.** Falsification waits on training with `afterok`, so
+**6. If a training task fails or times out.** Falsification waits on training with `afterok`, so
 a single failed training task leaves that part's whole falsify array pending forever (reason
 `DependencyNeverSatisfied`). To recover:
 
@@ -211,12 +232,13 @@ sbatch $SBATCH_ARGS --array=0-<N-1> --dependency=afterok:<new train jobid> clust
 ```
 
 - `<part>` is `1_maze`, `2_kinetix` or `3_jaxnav`; `N` is 60, 50 or 60.
+- **Pilot:** first export `RUNS=$RUNS/pilot NSEEDS=3 SAMPLERS="random ce" ALGOS="dr plr rplr accel"`; then `<part>` is `1_maze` and `N` is 12.
 - A rerun restarts training from scratch. For a timeout, add a larger `--time=` to the rerun.
 - **Kinetix SFL:** its array numbers seeds 0-9, so rerun with
   `ALGOS=sfl sbatch $SBATCH_ARGS --export=ALL --time=$SFL_TIME --array=<seed> cluster/2_kinetix/train.sbatch`.
 - **Kinetix falsify:** the falsify array still uses the full 0-49 numbering.
 
-**6. Collect and send back.**
+**7. Collect and send back.**
 
 ```bash
 bash cluster/collect.sh     # -> $RUNS/atlas_collect_<date>.tgz

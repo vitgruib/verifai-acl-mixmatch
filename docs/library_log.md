@@ -1050,3 +1050,30 @@ slower) is still training; the "PAIRED worst" half is pending.
 even on a free machine, ~12-15 h left per seed). Both PAIRED runs were stopped part-way (seed 0 near update 1000,
 seed 1 near update 250) and are not evaluated. Batch 19 final: replay-vs-DR **does not reproduce** at 10% budget
 and 2 seeds. "PAIRED worst" is **not measured**. PAIRED is deferred to the cluster.
+
+## Batch 20 (registered 2026-10-11, before running): cluster pilot, H2 on Maze at full budget
+
+**Hypothesis H2** (`docs/ued_atlas.md` section 5): replay curricula fail on regions they *saw but
+scored low*, i.e. the regret proxy tracks success (the SFL paper's critique). At 10% budget (batch 19
+checkpoints) the data said the opposite: among buffer-covered levels, failing levels' buffer
+neighbours scored *higher* (0/6 runs below). The 10% agents may not be representative, so this
+repeats it on paper-budget agents before the full cluster run.
+
+**Run.** `bash cluster/submit.sh pilot`: JaxUED Maze, DR / PLR / Robust PLR / ACCEL, seeds 0-2,
+30k updates (paper), then falsification with `random` and `ce` samplers, `dr` and `seg` spaces,
+5000 levels x falsifier seeds 0-2. 12 GPU + 12 CPU tasks; ceiling 144 GPU-h + 48 CPU-h.
+
+**Test** (`atlas/prelim.py` `h2_test`, random sampler only, so no sampler shapes the comparison).
+Per (algo, seed) for PLR, Robust PLR, ACCEL (9 runs), pooled over spaces and falsifier seeds,
+restricted to buffer-covered levels (`buf_knn` <= the median of passing levels in that run): is
+mean `buf_score_pct` of counterexamples below that of passing levels?
+- **Supported:** below in >= 8 of 9 runs (one-sided sign test p = 0.020).
+- **Refuted:** not below in >= 5 of 9 runs.
+- Otherwise inconclusive.
+
+**Self-evaluation.** It is falsifiable, and the 10% data already gives a prediction against it. The
+effect is measured within each run over thousands of levels, so 3 seeds per algorithm are enough
+for a sign test, but not for comparisons *between* algorithms. Those wait for the full run.
+Descriptive, not tested: falsification rate per algorithm (DR as baseline) and ce vs random rate
+(H1). If H2 is refuted again, the atlas's "why" becomes generation coverage (`dr_knn`, `buf_knn`),
+not scoring, and the fix should target the proposer, not the score.

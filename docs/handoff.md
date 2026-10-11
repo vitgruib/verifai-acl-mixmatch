@@ -13,8 +13,9 @@ Full statement and success criterion: `.claude/commands/goal.md`.
 - Local work is done. The cluster suite (`cluster/README.md`) is built and tested headless at
   tiny budgets: 3 parts (1 Maze, 2 Kinetix, 3 JaxNav), DR / PLR / Robust PLR / ACCEL / SFL,
   10 seeds, then a `ce` falsifier with certified-solvable failures.
-- **Waiting on:** the run on the professor's cluster (`submit.sh smoke`, then `submit.sh all`,
-  then `collect.sh`). Only the cluster can verify the CUDA venv builds, GPU training speed and
+- **Waiting on:** the professor running the pilot on the cluster (`submit.sh pilot`, Maze, 12 GPU
+  jobs). It tests H2, pre-registered as batch 20 in `docs/library_log.md`. After that come
+  `submit.sh smoke` and `submit.sh all`. Only the cluster can verify the CUDA venv builds, GPU training speed and
   falsification rates on fully trained agents.
 - **After the tarball returns:** diagnose each failure (`docs/failure_records.md` checklist),
   write it into `docs/ued_atlas.md`, then design the falsifier + PLR fix.

@@ -16,6 +16,8 @@ dr_knn for counterexamples vs non-counterexamples, and prints which level featur
 failing from passing levels (random sampler only, so the comparison is not shaped by a sampler).
 
   python -m atlas.prelim runs/maze_prelim --csv results/atlas/prelim_maze.csv
+
+The cluster pilot's pre-registered H2 test (`h2_test`, docs/library_log.md "Batch 20") is printed last.
 """
 import argparse
 import csv
@@ -57,6 +59,35 @@ def h2_rows(rows):
                     yield k, v, r["cex"]
 
 
+def h2_test(runs):
+    """Pre-registered H2 test (docs/library_log.md, batch 20). Per (algo, seed) with a buffer, random
+    sampler only, pooled over spaces and falsifier seeds: among levels the buffer covers (buf_knn at
+    most the median buf_knn of passing levels), is the mean buf_score_pct of failing levels below
+    that of passing levels? H2 supported if yes in >= 8 of 9 runs (one-sided sign test p = 0.020);
+    refuted if no in >= 5 of 9; otherwise inconclusive."""
+    print("\nH2 test (random sampler, buffer-covered levels; cex vs ok buf_score_pct per run):")
+    n = below = 0
+    for (algo, seed), rows in sorted(runs.items()):
+        rows = [r for r in rows if r["valid"] and (r.get("train") or {}).get("buf_score_pct") is not None]
+        ok_knn = [r["train"]["buf_knn"] for r in rows if not r["cex"]]
+        if not ok_knn:
+            continue
+        cut = float(np.median(ok_knn))
+        cov = [r for r in rows if r["train"]["buf_knn"] <= cut]
+        c = [r["train"]["buf_score_pct"] for r in cov if r["cex"]]
+        o = [r["train"]["buf_score_pct"] for r in cov if not r["cex"]]
+        if not c or not o:
+            print(f"  {algo:>6} {seed}: no covered counterexamples (n_cex={len(c)}), counted as not below")
+            n += 1
+            continue
+        n += 1
+        below += np.mean(c) < np.mean(o)
+        print(f"  {algo:>6} {seed}: cex {np.mean(c):.3f} (n={len(c)})  ok {np.mean(o):.3f} (n={len(o)})")
+    if n:
+        verdict = "SUPPORTED" if n == 9 and below >= 8 else "REFUTED" if n - below >= 5 else "inconclusive"
+        print(f"  cex below ok in {below}/{n} runs -> H2 {verdict}" + ("" if n == 9 else " (rule is for 9 runs)"))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root")
@@ -66,6 +97,7 @@ def main():
     stats = defaultdict(list)          # (algo, space, sampler) -> [run_stats]
     h2 = defaultdict(lambda: ([], []))  # (algo, key) -> (cex values, ok values)
     desc = defaultdict(lambda: ([], []))  # (space, key) -> (cex values, ok values), random only
+    h2runs = defaultdict(list)  # (algo, seed) -> rows, random sampler only
     for d in sorted(glob.glob(os.path.join(a.root, "*", "s*", "*_r*"))):
         if not os.path.exists(os.path.join(d, "summary.json")):
             continue
@@ -75,6 +107,7 @@ def main():
         for k, v, is_cex in h2_rows(rows):
             h2[(header["algo"], k)][0 if is_cex else 1].append(v)
         if header["falsifier"]["name"] == "random":
+            h2runs[(header["algo"], d.split(os.sep)[-2])].extend(rows)
             for r in rows:
                 if r["valid"]:
                     for k, v in r["desc"].items():
@@ -131,6 +164,8 @@ def main():
             for r in table:
                 w.writerow({c: round(r[c], 4) if isinstance(r[c], float) else r[c] for c in cols})
         print(f"\nwrote {a.csv}")
+
+    h2_test(h2runs)
 
 
 if __name__ == "__main__":
