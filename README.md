@@ -1,5 +1,7 @@
 # VerifAI x UED: a failure atlas for curriculum algorithms
 
+**To run the cluster suite, read [cluster/README.md](cluster/README.md).** It is self-contained.
+
 **Current goal (2026-10-03):** document the published unsupervised-environment-design
 algorithms (DR, minimax, PLR, Robust PLR, ACCEL, SFL; PAIRED dropped 2026-10-04 as too slow), find where each fails using
 VerifAI falsification on the exact environments of their papers and with the papers' own code,
