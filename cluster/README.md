@@ -17,13 +17,14 @@ fails. A failure only counts if it comes with a certificate that the level is so
 seed), the certified failures with their witnesses and level descriptors, plus training eval
 curves, configs, logs and final checkpoints. The analysis is done afterwards, off the cluster.
 
-**Start with a small pilot (step 3 below).** It is 12 GPU jobs on Maze only, with a ceiling of
-144 GPU-h + 48 CPU-h, and takes about half a day. It tests one pre-registered hypothesis (H2):
-*replay methods fail on levels they saw during training but scored as unimportant*. The pass/fail
-rule is fixed in advance (`docs/library_log.md`, batch 20) and printed by one command. The pilot
-also checks the whole pipeline at full budget before the large run is requested.
+**Start with one environment: Maze, the cheapest (steps 3–4 below).** It runs every algorithm
+(DR, PLR, Robust PLR, ACCEL, minimax, SFL) × 10 seeds at the paper's budget. That is 60 GPU jobs
+with a ceiling of 720 GPU-h + 240 CPU-h, likely far less, and ≤ 16 h of wall clock in parallel.
+It also tests one pre-registered hypothesis (H2): *replay methods fail on levels they saw during
+training but scored as unimportant*. The pass/fail rule is fixed in advance (`docs/library_log.md`,
+batch 20) and printed by one command. Kinetix and JaxNav (steps 5–6) wait until Maze is back.
 
-**Cost of the full run (only after the pilot).** 170 one-GPU training jobs and 170 CPU-only
+**Cost of all three environments.** 170 one-GPU training jobs and 170 CPU-only
 falsification jobs.
 - Hard ceiling: **1,920 GPU-h + 2,000 CPU-h**. SLURM kills any job at its time limit.
 - Likely well under half the GPU figure.
@@ -36,8 +37,8 @@ that you can check it without trusting the agent.
 
 **What it can do to the cluster.**
 - **Bounded cost.** Every job has a SLURM time limit, so the worst case is the ceiling above.
-- **Nothing runs unseen.** `DRY_RUN=1` prints every `sbatch` line and submits nothing. The ≤ 3 h
-  smoke test runs before the full run.
+- **Nothing runs unseen.** `DRY_RUN=1` prints every `sbatch` line and submits nothing. A 30 min Maze
+  smoke test runs before anything large.
 - **Contained.** It writes only inside the repo and `$RUNS`. Compute nodes make no network
   calls. No cluster script contains `sudo`, `rm -rf`, `curl`, `wget` or `ssh`. Details are under
   "Isolation" in the appendix.
@@ -111,12 +112,13 @@ ever generate that region, and how did it score it? Full plan and literature:
 ## Pipeline and compute
 
 ```
-setup (login node, once) ─► smoke test (~1–3 h) ─► per environment: train array ──afterok──► falsify array ─► collect
+setup (login node, once) ─► smoke test (~0.5–3 h) ─► per environment: train array ──afterok──► falsify array ─► collect
 ```
 
 | stage | per task | tasks | worst case (every task hits its limit) | expected |
 |---|---|---|---|---|
-| smoke test | ≤ 0.5 h (Kinetix speed probe: 1 h / 3 h) | 13 | 7 GPU-h + 10 CPU-h | under 1 h; probe ≤ 3 h |
+| Maze smoke test (step 3) | ≤ 0.5 h | 4 | 1 GPU-h + 4 CPU-h | under 30 min |
+| full smoke test (step 5) | ≤ 0.5 h (Kinetix speed probe: 1 h / 3 h) | 13 | 7 GPU-h + 10 CPU-h | under 1 h; probe ≤ 3 h |
 | **1 Maze** train | 1 GPU, 12 h | 6 algos × 10 seeds = 60 | 720 GPU-h | a few hours each |
 | 1 Maze falsify | 4 CPU, 1 h | 60 | 240 CPU-h | ~10 min each |
 | **2 Kinetix** train | 1 GPU, 6 h; SFL 24 h (`SFL_TIME`) | 5 × 10 = 50 (40 + 10 SFL) | 40 × 6 + 10 × 24 = 480 GPU-h | measured by the smoke probe |
@@ -125,13 +127,13 @@ setup (login node, once) ─► smoke test (~1–3 h) ─► per environment: tr
 | 3 JaxNav falsify | 4 CPU, 4 h | 60 | 960 CPU-h | ~1.8 h each |
 | **total** | | 170 GPU + 170 CPU | **1,920 GPU-h + 2,000 CPU-h** | |
 
-**Wall clock.** With unlimited parallelism the slowest chain is Kinetix SFL: 24 h of training plus
+**Wall clock.** Maze alone: ≤ 16 h (12 h training + 1 h falsification, as limits). With unlimited parallelism the slowest chain is Kinetix SFL: 24 h of training plus
 4 h of falsification, 28 h. Everything else finishes within 16 h (12 h + 4 h).
 
 **Source of the estimates.**
 - **Falsification:** timed locally per level.
 - **GPU training:** not measured, since we have no local GPU. The smoke test's Kinetix probe
-  measures it before the full run (step 4).
+  measures it before Kinetix is submitted (step 5).
 
 ## How to run
 
@@ -172,21 +174,38 @@ The dry run should show:
 - a fourth Kinetix SFL array (0-9, `--time=24:00:00`);
 - one falsify array per part, each depending on its training.
 
-**3. Pilot: run this first.**
+**3. Maze smoke test (~30 min).**
 
 ```bash
-bash cluster/submit.sh pilot                 # 12 train tasks -> 12 falsify tasks, into $RUNS/pilot
-squeue -u $USER                              # wait until empty (~half a day)
-RUNS=$RUNS/pilot bash cluster/collect.sh     # send this tarball back
+bash cluster/submit.sh maze-smoke
+squeue -u $USER                                         # wait until empty
+sacct -u $USER -S today --format=JobName%30,State,ExitCode,Elapsed
+ls $RUNS/smoke/maze_falsify/*/*/*/summary.json          # should list falsification outputs
 ```
 
-- What runs: Maze with DR, PLR, Robust PLR and ACCEL; 3 seeds each at the paper's budget. Then
-  falsification with the random sampler (the unbiased control) and the cross-entropy sampler.
-- Result: `python -m atlas.prelim $RUNS/pilot/maze_falsify` ends with the H2 verdict.
-- Ceiling: 144 GPU-h + 48 CPU-h.
-- It does not need the smoke test (step 4), which covers the Kinetix and JaxNav parts.
+It trains Robust PLR and SFL for 50 updates, then falsifies them on 50 levels. Go ahead only if
+every job is `COMPLETED` with exit code `0:0` and the `summary.json` files exist.
 
-**4. Smoke test (before the full run).**
+**4. Maze, every algorithm (the first real run).**
+
+```bash
+bash cluster/submit.sh 1        # 60 train tasks -> 60 falsify tasks (after training)
+squeue -u $USER                 # wait until empty (≤ 16 h)
+bash cluster/collect.sh         # -> $RUNS/atlas_collect_<date>.tgz; send this file back
+```
+
+- What runs: DR, PLR, Robust PLR, ACCEL, minimax and SFL, 10 seeds each, 30k updates (paper).
+  Then each agent is falsified with the random sampler (the unbiased control) and the
+  cross-entropy sampler.
+- Result: `python -m atlas.prelim $RUNS/maze_falsify` prints failure rates per algorithm and ends
+  with the H2 verdict.
+- **Logs:** `runs/slurm/<job>_<jobid>_<task>.out` (always under the repository, even when `RUNS`
+  is elsewhere).
+- **Task index:** the first line of each log names the task's algorithm and seed. Task `i` is
+  algorithm `ALGOS[i / 10]`, seed `i % 10`; the order is in each `.sbatch` header.
+- **Falsification output:** `$RUNS/<env>_falsify/<algo>/s<seed>/<space>_<sampler>_r<fseed>/summary.json`.
+
+**5. Later: full smoke test (before Kinetix and JaxNav).**
 
 ```bash
 bash cluster/submit.sh smoke
@@ -209,19 +228,16 @@ Go ahead only if all of these hold:
 - the **SFL probe** gives the SFL limit. Set it to ~1.5× that probe's `full_run_h`, e.g.
   `export SFL_TIME=30:00:00` (default 24 h).
 
-**5. Full run (after the pilot and smoke test).**
+**6. Later: Kinetix and JaxNav.**
 
 ```bash
-bash cluster/submit.sh all      # or one part at a time: bash cluster/submit.sh 1 | 2 | 3
+bash cluster/submit.sh 2        # Kinetix
+bash cluster/submit.sh 3        # JaxNav
 ```
 
-- **Logs:** `runs/slurm/<job>_<jobid>_<task>.out` (always under the repository, even when `RUNS`
-  is elsewhere).
-- **Task index:** the first line of each log names the task's algorithm and seed. Task `i` is
-  algorithm `ALGOS[i / 10]`, seed `i % 10`; the order is in each `.sbatch` header.
-- **Falsification output:** `$RUNS/<env>_falsify/<algo>/s<seed>/<space>_ce_r<fseed>/summary.json`.
+Do not use `submit.sh all` once Maze has run: it would train Maze again.
 
-**6. If a training task fails or times out.** Falsification waits on training with `afterok`, so
+**7. If a training task fails or times out.** Falsification waits on training with `afterok`, so
 a single failed training task leaves that part's whole falsify array pending forever (reason
 `DependencyNeverSatisfied`). To recover:
 
@@ -232,13 +248,12 @@ sbatch $SBATCH_ARGS --array=0-<N-1> --dependency=afterok:<new train jobid> clust
 ```
 
 - `<part>` is `1_maze`, `2_kinetix` or `3_jaxnav`; `N` is 60, 50 or 60.
-- **Pilot:** first export `RUNS=$RUNS/pilot NSEEDS=3 SAMPLERS="random ce" ALGOS="dr plr rplr accel"`; then `<part>` is `1_maze` and `N` is 12.
 - A rerun restarts training from scratch. For a timeout, add a larger `--time=` to the rerun.
 - **Kinetix SFL:** its array numbers seeds 0-9, so rerun with
   `ALGOS=sfl sbatch $SBATCH_ARGS --export=ALL --time=$SFL_TIME --array=<seed> cluster/2_kinetix/train.sbatch`.
 - **Kinetix falsify:** the falsify array still uses the full 0-49 numbering.
 
-**7. Collect and send back.**
+**8. Collect and send back** (after each environment, or once at the end).
 
 ```bash
 bash cluster/collect.sh     # -> $RUNS/atlas_collect_<date>.tgz
@@ -262,7 +277,8 @@ Send that one file back. It holds:
 
 **Shared falsification settings.**
 - The spec is "the agent solves the level in at least 5 of 10 attempts".
-- Each trained agent gets 2 spaces × the cross-entropy sampler × 3 falsifier seeds.
+- Each trained agent gets 2 spaces × the cross-entropy sampler × 3 falsifier seeds. Maze also runs
+  the random sampler as the unbiased control (`SAMPLERS`).
 - Levels that cannot be certified solvable are recorded as invalid, never as failures.
 - Record format: [docs/failure_records.md](../docs/failure_records.md).
 
