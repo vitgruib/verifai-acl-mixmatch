@@ -17,12 +17,9 @@ batches 1-18 and protocol remain the record in `docs/library_log.md`).
    score the algorithm assigned the failing levels during training, how often it ever sampled
    that region, regret-estimate error, unsolvable-level share), not just a story.
 3. **Use the exact environments they tested on**, in the papers' conventions, verified against
-   each paper before claiming. Start with what exists in the repo:
-   - Grid mazes with the literature's held-out mazes (`acl_bench/envs/maze.py`,
-     `maze_layouts.HELD_OUT`, from DCD): PAIRED, PLR, Robust PLR, ACCEL, SFL all use them.
-   - Then, in rough order of cost: CarRacing with the F1 held-out tracks (Robust PLR / DCD),
-     BipedalWalker incl. hardcore (ACCEL), then JaxNav / XLand-MiniGrid (SFL) if feasible.
-   Note any deviation from a paper's setup (budget, network, observation) explicitly.
+   each paper before claiming: Maze (DCD held-out mazes), Kinetix, JaxNav, run with the papers'
+   own code via `cluster/README.md`. CarRacing and BipedalWalker were dropped for cost
+   (2026-10-06). Note any deviation from a paper's setup (budget, network, observation) explicitly.
 4. **Succeed by combining falsifiers with existing PLR techniques**: e.g. falsifier-found levels
    fed into the PLR/SFL replay buffer, falsifier as the level generator with learnability or
    regret as its objective, spec-constrained validity instead of regret to exclude unsolvable

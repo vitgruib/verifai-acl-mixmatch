@@ -9,8 +9,8 @@ explain why with diagnostics, and fix the failures with falsifier + PLR.
 |---|---|
 | [docs/ued_atlas.md](docs/ued_atlas.md) | algorithm registry, paper-exact settings, plan, results |
 | [docs/failure_records.md](docs/failure_records.md) | the failure-record schema and a diagnosis checklist |
-| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (4 parts, one per environment: Maze, CarRacing, Bipedal, JaxNav) |
-| [docs/handoff.md](docs/handoff.md) | current state, running jobs, next steps |
+| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (3 parts: Maze, Kinetix, JaxNav) |
+| [docs/handoff.md](docs/handoff.md) | current state, what it is waiting on |
 | [docs/literature.md](docs/literature.md) | papers and lineage |
 | [docs/library_log.md](docs/library_log.md), [docs/protocol.md](docs/protocol.md) | the previous goal (agnostic curriculum wrapper): batches, verdicts, the staged protocol |
 
@@ -22,7 +22,7 @@ atlas/                     the failure atlas (new)
   maze/policy.py           loads a JaxUED checkpoint and rolls it out (JAX)
   maze/context.py          where a level sits vs training (DR kNN, PLR buffer score/age)
   maze/falsify.py          VerifAI samplers -> levels -> rollouts -> records
-cluster/                   SLURM suite: env.sh, setup/, maze/, carracing/, bipedal/, sfl/, collect.sh
+cluster/                   SLURM suite: env.sh, setup/, 1_maze/, 2_kinetix/, 3_jaxnav/, submit.sh, collect.sh
 acl_bench/                 the earlier classic-control benchmark and curriculum library (below)
 results/atlas/             atlas prelim scripts, logs, tables
 runs/, third_party/        large outputs and upstream clones (gitignored)
