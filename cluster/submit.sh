@@ -1,5 +1,6 @@
 #!/bin/bash
 # One command per part. Prints every sbatch line it runs; DRY_RUN=1 prints without submitting.
+#   bash cluster/submit.sh pilot      # FIRST: Maze H2 pilot, 4 algos x 3 seeds at full budget (12 GPU + 12 CPU tasks), into $RUNS/pilot
 #   bash cluster/submit.sh smoke      # ~1 h sanity check of all 3 parts (tiny budgets; train -> falsify), Kinetix probe up to 3 h
 #   bash cluster/submit.sh 1          # Maze: train (60 tasks) -> falsify (60 tasks, after train)
 #   bash cluster/submit.sh 2          # Kinetix: train (50 GPU tasks) -> falsify (50 CPU tasks, after train)
@@ -32,6 +33,12 @@ chain() {  # chain <part dir> <algos>: train array -> falsify array (afterok)
   ALGOS="$2" sb --export=ALL --array=0-$(count "$2") --dependency=afterok:$j cluster/$1/falsify.sbatch
 }
 
+pilot() {  # pre-registered H2 test (docs/library_log.md, batch 20); random sampler is the unbiased control
+  export RUNS=$RUNS/pilot NSEEDS=3 SAMPLERS="random ce"; mkdir -p "$RUNS"
+  ALGOS="dr plr rplr accel" part1
+  echo "pilot submitted; when done: python -m atlas.prelim $RUNS/maze_falsify (H2 verdict printed last)" >&2
+}
+
 smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs under $RUNS/smoke
   local S="learning.NUM_ENVS=16 learning.NUM_ENVS_FROM_SAMPLED=8 learning.NUM_ENVS_TO_GENERATE=8 learning.NUM_STEPS=32 learning.TOTAL_TIMESTEPS=4096 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=2 BATCH_SIZE=64 NUM_BATCHES=1 ROLLOUT_STEPS=50 NUM_TO_SAVE=32"
   local R=$RUNS
@@ -59,7 +66,7 @@ smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs unde
 }
 
 case ${1:-} in
-  smoke) smoke;; 1) part1;; 2) part2;; 3) part3;;
+  pilot) pilot;; smoke) smoke;; 1) part1;; 2) part2;; 3) part3;;
   all) part1; part2; part3;;
-  *) sed -n '2,8p' "$0"; exit 2;;
+  *) sed -n '2,9p' "$0"; exit 2;;
 esac
