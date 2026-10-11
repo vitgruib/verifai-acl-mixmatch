@@ -145,9 +145,11 @@ Maze caveat: SFL's own maze settings (60 walls, its PPO) differ from JaxUED's (2
    mechanism plus the diagnostic behind it.
 6. **(Later) Fix**: falsifier + PLR, compared at equal steps and an equal evaluation falsifier.
 
-Order: maze (all algorithms) -> CarRacing F1 -> BipedalWalker -> XLand / JaxNav.
+Scope (2026-10-06): Maze, Kinetix, JaxNav. CarRacing, BipedalWalker and XLand were dropped; the cluster suite is in `cluster/README.md`.
 
 ## 4. Compute: what needs the supercomputer
+
+*Superseded 2026-10-06: the planning estimate below predates the scope cut. Current costs are in `cluster/README.md`.*
 
 Measured here (10-core Mac, torch CPU, MLP maze): about 18k steps/s per worker, i.e. DR 5.12M
 in 280 s; our SFL-style scouting costs about 9x DR wall-clock.
