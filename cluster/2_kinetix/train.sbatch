@@ -1,6 +1,6 @@
 #!/bin/bash
 # PART 2 - Kinetix (FLAIROx, ICLR 2025): train on the S-size symbolic entity env, random levels,
-# evaluated on the 10 hand-designed S levels. Upstream scripts and configs, plus our bug-fix patch.
+# evaluated on the 10 hand-designed S levels. Upstream scripts and configs, plus my bug-fix patch.
 # DR, PLR, Robust PLR, ACCEL via experiments/plr.py; SFL via experiments/sfl.py (Kinetix has no minimax).
 # One task = one (algo, seed). Default: 5 algos x 10 seeds = 50 tasks.
 #   sbatch --array=0-49 cluster/2_kinetix/train.sbatch

@@ -18,7 +18,7 @@ for p in gif minimax; do
     && git -C "$TP/jaxued" apply "$ATLAS/cluster/patches/jaxued_$p.patch" && echo "jaxued: $p patch applied" \
     || echo "jaxued: $p patch already applied"
 done
-# ACL27 changes to the other two repos (see cluster/DETAILS.md, "Our changes to paper code"):
+# ACL27 changes to the other two repos (see cluster/DETAILS.md, "My changes to paper code"):
 #   kinetix_acl27.patch: upstream bugs on jax 0.9 (SFL shard_map nesting, bool mask, jax.tree.tree_map,
 #     ACCEL create_empty_env signature); no behaviour change otherwise.
 #   sfl_minimax.patch: sfl/train/jaxnav_minimax.py (minimax adversary for single-agent JaxNav).

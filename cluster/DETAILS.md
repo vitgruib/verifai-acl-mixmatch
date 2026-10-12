@@ -1,12 +1,13 @@
 # UED failure atlas: cluster run (full details)
 
-The short Maze-only instructions are in [README.md](README.md).
+The short Maze-only instructions are in [README.md](README.md). I wrote this code with an AI coding
+agent (Claude Code).
 
 ## Summary
 
 **Question.** Unsupervised environment design (UED) methods such as PLR, Robust PLR, ACCEL and
 SFL train an RL agent on a self-generated curriculum of levels. Each method's paper reports that
-this improves robustness. We want to know **on which levels these agents still fail, and why**.
+this improves robustness. I want to know **on which levels these agents still fail, and why**.
 
 **What this run does.** It trains each UED method with its paper's own code, on three standard
 UED benchmarks (Maze, Kinetix, JaxNav), with 10 seeds each. It then audits every trained agent with
@@ -47,7 +48,7 @@ compare or to trust as a measure of where the agents fail:
   can come from the setup rather than the algorithm. The SFL paper also argues that PLR's
   scores track success rate rather than regret. That would undercut the mechanism the regret
   methods rely on, and it has not been checked on the levels where they fail.
-- **Our own first reimplementation was not a faithful recreation either.** It used:
+- **My own first reimplementation was not a faithful recreation either.** It used:
   - a memoryless MLP;
   - a 50× smaller budget;
   - levels encoded as a random seed.
@@ -60,7 +61,7 @@ compare or to trust as a measure of where the agents fail:
 
 1. **Recreates the papers' tests faithfully.** It trains every method with *its paper's own
    released code and configs*, unchanged except for documented bug fixes (appendix), at the
-   budgets listed under "What runs", with 10 seeds. A failure cannot then be blamed on our reimplementation.
+   budgets listed under "What runs", with 10 seeds. A failure cannot then be blamed on my reimplementation.
 2. **Replaces fixed or random test sets with a search for failures.** VerifAI's cross-entropy
    sampler looks for the levels each agent fails. Each failure must be *certified solvable*
    (an exact path, or a replayed solution), so it is a real gap in the agent, not an
@@ -102,7 +103,7 @@ setup (login node, once) ─► smoke test (~0.5–3 h) ─► per environment: 
 
 **Source of the estimates.**
 - **Falsification:** timed locally per level.
-- **GPU training:** not measured, since we have no local GPU. The smoke test's Kinetix probe
+- **GPU training:** not measured, since I have no local GPU. The smoke test's Kinetix probe
   measures it before Kinetix is submitted (step 5).
 
 ## How to run
@@ -119,7 +120,7 @@ Run every command from the repository root on the login node.
 
 ```bash
 git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas && cd atlas
-bash cluster/setup/clone.sh          # upstream repos at pinned commits + our patches
+bash cluster/setup/clone.sh          # upstream repos at pinned commits + my patches
 bash cluster/setup/setup_jax.sh      # .venv-jax      (Part 1 Maze)
 bash cluster/setup/setup_kinetix.sh  # .venv-kinetix  (Part 2 Kinetix)
 bash cluster/setup/setup_sfl.sh      # .venv-sfl      (Maze SFL cell, Part 3 JaxNav)
@@ -143,6 +144,10 @@ The dry run should show:
 - three train arrays (Maze 0-59, Kinetix 0-39, JaxNav 0-59);
 - a fourth Kinetix SFL array (0-9, `--time=24:00:00`);
 - one falsify array per part, each depending on its training.
+
+Steps 1, 3 and 4 in one command (what README.md runs): `bash cluster/run_maze.sh`. It submits the
+full Maze run behind the smoke test (`submit.sh maze`), so the full run starts only if every smoke
+job succeeds; otherwise SLURM cancels it.
 
 **3. Maze smoke test (~30 min).**
 
@@ -209,7 +214,7 @@ Do not use `submit.sh all` once Maze has run: it would train Maze again.
 
 **7. If a training task fails or times out.** Falsification waits on training with `afterok`, so
 a single failed training task leaves that part's whole falsify array pending forever (reason
-`DependencyNeverSatisfied`). To recover:
+`DependencyNeverSatisfied`; with `submit.sh maze` it is cancelled instead). To recover:
 
 ```bash
 scancel <falsify jobid>
@@ -300,7 +305,7 @@ CPU only, at tiny budgets, through the actual `.sbatch` scripts.
 - **Kinetix:** all 5 algorithms train and checkpoint. Every checkpoint loads in the falsifier,
   and replay-verified counterexamples were found in both spaces. This includes SFL at the
   paper's learnability settings.
-- **JaxNav:** SFL train → falsify. Our minimax port passes unit tests: action masking, geometry
+- **JaxNav:** SFL train → falsify. My minimax port passes unit tests: action masking, geometry
   against the env's collision map, and flood fill against a Python BFS on 300 levels. It trains
   and saves both networks.
 - **Submission:** `DRY_RUN=1 submit.sh all` and `smoke` produce the arrays and dependencies above.
@@ -333,7 +338,7 @@ CPU only, at tiny budgets, through the actual `.sbatch` scripts.
 | `env.sh` | paths, venv locations, pinned upstream commits; override any variable before running |
 | `1_maze/`, `2_kinetix/`, `3_jaxnav/` | `train.sbatch` and `falsify.sbatch` per environment; each header documents its settings |
 | `setup/` | `clone.sh` plus one venv script per codebase |
-| `patches/` | our changes to upstream code, applied by `clone.sh` |
+| `patches/` | my changes to upstream code, applied by `clone.sh` |
 | `tests/` | headless unit tests for the ported minimax cell |
 
 **Python environments.** There are three, because the codebases pin incompatible JAX versions:
@@ -352,7 +357,7 @@ upstream's container `nvcr.io/nvidia/jax:23.10-py3` also works.
 - Kinetix `80ee9c2`
 - sampling-for-learnability `8b14e2e`
 
-**Our changes to paper code.**
+**My changes to paper code.**
 - `jaxued_gif.patch`: logs videos as GIFs, so no ffmpeg is needed.
 - `jaxued_minimax.patch`: adds `maze_paired.py --minimax`, where the adversary reward is the
   negative student return. JaxUED ships no minimax baseline.
@@ -372,7 +377,7 @@ upstream's container `nvcr.io/nvidia/jax:23.10-py3` also works.
   - The protagonist, its update and the evaluation are the SFL repo's `jaxnav_plr` code,
     unchanged.
 - JaxNav sweep fixes:
-  - Upstream's ACCEL sweep has a typo (`use.USE_ACCEL`), so we pass `ued.USE_ACCEL=True`.
+  - Upstream's ACCEL sweep has a typo (`use.USE_ACCEL`), so I pass `ued.USE_ACCEL=True`.
   - Non-SFL runs use the single-agent eval set, since the default 4-agent set crashes with
     one agent.
 

@@ -1,5 +1,6 @@
 #!/bin/bash
 # One command per part. Prints every sbatch line it runs; DRY_RUN=1 prints without submitting.
+#   bash cluster/submit.sh maze       # maze-smoke, then 1 only if every smoke job succeeds
 #   bash cluster/submit.sh maze-smoke # FIRST: ~30 min tiny Maze train -> falsify check (2 GPU + 2 CPU tasks)
 #   bash cluster/submit.sh smoke      # ~1 h sanity check of all 3 parts (tiny budgets; train -> falsify), Kinetix probe up to 3 h
 #   bash cluster/submit.sh 1          # THEN: Maze: train (60 tasks) -> falsify (60 tasks, after train)
@@ -18,8 +19,8 @@ count() { set -- $1; echo $(( $# * NSEEDS - 1 )); }
 
 part1() {
   local A=${ALGOS:-"dr plr rplr accel minimax sfl"}
-  local j; j=$(ALGOS="$A" sb --export=ALL --array=0-$(count "$A") cluster/1_maze/train.sbatch)
-  ALGOS="$A" sb --export=ALL --array=0-$(count "$A") --dependency=afterok:$j cluster/1_maze/falsify.sbatch
+  local j; j=$(ALGOS="$A" sb --export=ALL ${GATE:-} --array=0-$(count "$A") cluster/1_maze/train.sbatch)
+  ALGOS="$A" sb --export=ALL ${KD:-} --array=0-$(count "$A") --dependency=afterok:$j cluster/1_maze/falsify.sbatch
 }
 part2() {  # SFL gets its own array: its learnability rollouts need a longer limit (SFL_TIME)
   local A=${ALGOS:-dr plr rplr accel sfl} B j d=""; B=$(echo " $A " | sed 's/ sfl / /; s/^ *//; s/ *$//')
@@ -42,12 +43,18 @@ smoke_maze() {  # tiny Maze chain: Robust PLR (JaxUED) and SFL (SFL repo) -> fal
   local j1 j2
   j1=$(ALGOS=rplr sb --export=ALL --time=00:30:00 --array=0 cluster/1_maze/train.sbatch)
   j2=$(ALGOS=sfl SFL_ARGS="$S learning.WARMUP_UPDATES=1" sb --export=ALL --time=00:30:00 --array=0 cluster/1_maze/train.sbatch)
-  ALGOS="rplr sfl" sb --export=ALL --time=00:30:00 --array=0-1 --dependency=afterok:$j1:$j2 cluster/1_maze/falsify.sbatch
+  ALGOS="rplr sfl" sb --export=ALL ${KD:-} --time=00:30:00 --array=0-1 --dependency=afterok:$j1:$j2 cluster/1_maze/falsify.sbatch
 }
 maze_smoke() {
   smoke_env
   smoke_maze
   echo "maze smoke submitted; check: ls $RUNS/maze_falsify/*/*/*/summary.json" >&2
+}
+maze() {  # smoke -> full run; KD cancels downstream jobs (not left pending) when a dependency fails
+  export KD=--kill-on-invalid-dep=yes
+  local j; j=$(smoke_env; smoke_maze)
+  GATE="$KD --dependency=afterok:$j" part1 >/dev/null
+  echo "maze smoke + full run submitted; when squeue is empty: bash cluster/collect.sh" >&2
 }
 
 smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs under $RUNS/smoke
@@ -73,7 +80,7 @@ smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs unde
 }
 
 case ${1:-} in
-  maze-smoke) maze_smoke;; smoke) smoke;; 1) part1;; 2) part2;; 3) part3;;
+  maze) maze;; maze-smoke) maze_smoke;; smoke) smoke;; 1) part1;; 2) part2;; 3) part3;;
   all) part1; part2; part3;;
-  *) sed -n '2,9p' "$0"; exit 2;;
+  *) sed -n '2,10p' "$0"; exit 2;;
 esac

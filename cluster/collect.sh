@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pack what we need back on the laptop: falsifier records, eval CSVs, final checkpoints only.
+# Pack what I need back on the laptop: falsifier records, eval CSVs, final checkpoints only.
 # Usage: bash cluster/collect.sh  ->  runs/atlas_collect_<date>.tgz
 set -euo pipefail
 source "$(dirname "$0")/env.sh"; cd "$RUNS"
