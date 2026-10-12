@@ -11,7 +11,7 @@ explain why with diagnostics, and fix the failures with falsifier + PLR.
 |---|---|
 | [docs/ued_atlas.md](docs/ued_atlas.md) | algorithm registry, paper-exact settings, plan, results |
 | [docs/failure_records.md](docs/failure_records.md) | the failure-record schema and a diagnosis checklist |
-| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (3 parts: Maze, Kinetix, JaxNav) |
+| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (Maze first; full details in cluster/DETAILS.md) |
 | [docs/handoff.md](docs/handoff.md) | current state, what it is waiting on |
 | [docs/literature.md](docs/literature.md) | papers and lineage |
 | [docs/library_log.md](docs/library_log.md), [docs/protocol.md](docs/protocol.md) | the previous goal (agnostic curriculum wrapper): batches, verdicts, the staged protocol |

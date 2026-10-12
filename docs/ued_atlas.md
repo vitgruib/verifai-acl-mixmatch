@@ -93,7 +93,7 @@ trains each cell where any paper's code can. Where none can, the cell is a port.
 | SFL | SFL repo (`minigrid_sfl`, JaxUED Maze env) | **port** | **port** | SFL repo |
 
 All 24 cells are covered (PAIRED dropped 2026-10-04: three networks, too slow). Their cluster
-jobs are in `cluster/README.md`. The four **port** cells are our own code, written and tested
+jobs are in `cluster/DETAILS.md`. The four **port** cells are our own code, written and tested
 2026-10-04: SFL's sampler inside DCD's PyTorch runner (CarRacing, Bipedal), a Bezier-track
 mutator for ACCEL on CarRacing, and a cell-by-cell PPO adversary for minimax on JaxNav
 (`cluster/patches/`, tests in `cluster/tests/`). Minimax learning check (JaxNav, 32 levels,
@@ -149,7 +149,7 @@ Scope (2026-10-06): Maze, Kinetix, JaxNav. CarRacing, BipedalWalker and XLand we
 
 ## 4. Compute: what needs the supercomputer
 
-*Superseded 2026-10-06: the planning estimate below predates the scope cut. Current costs are in `cluster/README.md`.*
+*Superseded 2026-10-06: the planning estimate below predates the scope cut. Current costs are in `cluster/DETAILS.md`.*
 
 Measured here (10-core Mac, torch CPU, MLP maze): about 18k steps/s per worker, i.e. DR 5.12M
 in 280 s; our SFL-style scouting costs about 9x DR wall-clock.

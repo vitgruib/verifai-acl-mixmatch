@@ -42,7 +42,7 @@ Full statement and success criterion: `.claude/commands/goal.md`.
 |---|---|
 | algorithm registry, paper settings, results | `docs/ued_atlas.md` |
 | failure-record schema, diagnosis checklist | `docs/failure_records.md` |
-| cluster run (compute, steps, recovery, validation) | `cluster/README.md` |
+| cluster run: short Maze steps / full details | `cluster/README.md` / `cluster/DETAILS.md` |
 | falsifiers per env | `atlas/{maze,kinetix,jaxnav}/` |
 | previous goal (curriculum library, batches 1-18, closed with no confirmed arm) | `docs/library_log.md`, `docs/protocol.md` |
 
