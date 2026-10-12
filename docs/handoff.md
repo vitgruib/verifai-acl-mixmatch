@@ -13,7 +13,7 @@ Full statement and success criterion: `.claude/commands/goal.md`.
 - Local work is done. The cluster suite (`cluster/README.md`) is built and tested headless at
   tiny budgets: 3 parts (1 Maze, 2 Kinetix, 3 JaxNav), DR / PLR / Robust PLR / ACCEL / SFL,
   10 seeds, then a `ce` falsifier with certified-solvable failures.
-- **Waiting on:** the professor running Maze in full on the cluster (`cluster/run_maze.sh`: setup, smoke test, then
+- **Waiting on:** the professor running Maze in full, on a SLURM cluster or one GPU computer (`cluster/run_maze.sh`: setup, smoke test, then
   the full run: 6 algorithms x 10 seeds, 60 GPU jobs). It tests H2, pre-registered as batch 20 in
   `docs/library_log.md`. Kinetix and JaxNav (`submit.sh smoke`, `2`, `3`) come after. Only the
   cluster can verify the CUDA venv builds, GPU training speed and falsification rates on fully

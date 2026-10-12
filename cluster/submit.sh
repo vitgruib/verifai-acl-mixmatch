@@ -8,12 +8,53 @@
 #   bash cluster/submit.sh 3          # JaxNav: train (60 tasks) -> falsify (60 tasks, after train)
 #   bash cluster/submit.sh all        # 1-3
 # Extra sbatch flags (partition, account, ...) go in SBATCH_ARGS, e.g. SBATCH_ARGS="-p gpu -A lab".
+# LOCAL=1 runs everything on this machine instead (no SLURM; see sb_local).
 set -euo pipefail
 cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p runs/slurm
 NSEEDS=${NSEEDS:-10}
 sb() {  # sbatch wrapper -> prints job id
-  echo "sbatch ${SBATCH_ARGS:-} $*" >&2
-  if [ -n "${DRY_RUN:-}" ]; then echo DRYRUN; else sbatch --parsable ${SBATCH_ARGS:-} "$@"; fi
+  echo "${LOCAL:+[local] }sbatch ${SBATCH_ARGS:-} $*" >&2
+  if [ -n "${DRY_RUN:-}" ]; then echo DRYRUN
+  elif [ -n "${LOCAL:-}" ]; then sb_local "$@"
+  else sbatch --parsable ${SBATCH_ARGS:-} "$@"; fi
+}
+# LOCAL=1 (no SLURM): sb runs the script here and returns when it is done, so dependencies hold by
+# order. Array tasks share this machine: one per GPU (scripts with --gres=gpu), otherwise one per
+# cpus-per-task cores. Logs land in runs/slurm as under SLURM; each finished task prints an ETA.
+# An explicit --time (the smoke test) is enforced with timeout(1) when available.
+hms() { local IFS=:; set -- $1; echo $(( 10#$1 * 3600 + 10#$2 * 60 + 10#$3 )); }
+clock() { date -d "@$1" '+%a %d %b %H:%M' 2>/dev/null || date -r "$1" '+%a %d %b %H:%M'; }
+sb_local() {
+  local a=0 t="" f="" x
+  for x; do case $x in --array=*) a=${x#--array=};; --time=*) t=${x#--time=};; esac; f=$x; done
+  local name c slots tmo="" tasks n k=0 st tmp pids=""
+  name=$(sed -n 's/^#SBATCH --job-name=//p' "$f"); c=$(sed -n 's/^#SBATCH --cpus-per-task=//p' "$f")
+  if grep -q '^#SBATCH --gres=gpu' "$f"; then
+    slots=$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | tr -d ' ' || true)
+    [ -n "$slots" ] || slots=cpu
+  else
+    slots=$(seq 1 $(( $(getconf _NPROCESSORS_ONLN) / ${c:-1} > 0 ? $(getconf _NPROCESSORS_ONLN) / ${c:-1} : 1 )) | sed 's/^/cpu/')
+  fi
+  [ -n "$t" ] && command -v timeout >/dev/null && tmo="timeout $(hms "$t")"
+  tasks=$(seq ${a%-*} ${a#*-}); n=$(echo $tasks | wc -w); st=$(date +%s); tmp=$(mktemp -d)
+  for s in $slots; do
+    ( j=0
+      for i in $tasks; do
+        [ $(( j++ % $(echo $slots | wc -w) )) -eq $k ] || continue
+        t0=$(date +%s); rc=0
+        ( case $s in cpu*) ;; *) export CUDA_VISIBLE_DEVICES=$s;; esac
+          export SLURM_ARRAY_TASK_ID=$i SLURM_CPUS_PER_TASK=${c:-1} SLURM_SUBMIT_DIR=$PWD
+          $tmo bash "$f" ) > "runs/slurm/${name}_${st}_$i.out" 2>&1 || rc=$?
+        echo "$i $rc" >> "$tmp/done"; now=$(date +%s); d=$(wc -l < "$tmp/done")
+        printf '%s  %s task %s %s in %d min (%d/%d done; this stage ends ~%s)\n' "$(date +%H:%M)" "$name" "$i" \
+          "$([ $rc = 0 ] && echo ok || echo "FAILED rc=$rc")" $(( (now - t0) / 60 )) $d $n \
+          "$(clock $(( now + (now - st) * (n - d) / d )))" >&2
+      done ) &
+    pids="$pids $!"; k=$((k + 1))
+  done
+  for x in $pids; do wait $x || true; done
+  echo "local$st"
+  ! awk '$2 != 0 {bad=1} END {exit !bad}' "$tmp/done"
 }
 count() { set -- $1; echo $(( $# * NSEEDS - 1 )); }
 

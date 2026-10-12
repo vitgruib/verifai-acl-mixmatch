@@ -151,6 +151,22 @@ run starts only if every smoke job succeeds (otherwise SLURM cancels it), and a 
 (`collect.sbatch`, `afterany`) packs the results into `maze_results.tgz` at the repo root,
 whatever the outcome.
 
+**Without SLURM** (one computer with NVIDIA GPUs), `run_maze.sh` detaches into the background
+(log: `run_maze.log`) and runs the same job scripts directly (`LOCAL=1`, `sb_local` in
+`submit.sh`): one training run per GPU at a time, falsification in parallel on 4 cores per run,
+logs in `runs/slurm` as under SLURM. Each finished run prints a measured ETA for its stage. A failed
+smoke test stops before the full run; a failed training run does not stop the others. Either way
+the logs are packed into `maze_results.tgz`. Without a GPU it refuses (`ALLOW_CPU=1` overrides;
+the local Mac measured 1.9 s/update, so about 16 h per run on CPU).
+
+**ETA source (one GPU).** JaxUED's paper (arXiv 2403.13091, Table 1; GPU not named) reports
+per-run wall time at the Maze budget used here: DR 1.5 h, PLR 1.5 h, Robust PLR 1.0 h, ACCEL 1.0 h,
+PAIRED 1.7 h (minimax runs the same script). 10 seeds each: about 67 h. SFL's Maze run (3e8 steps
+plus learnability rollouts) is not measured; 1-4 h per run gives 10-40 h. Falsification is about
+10 min per run on 4 cores. Total about 80-110 h, so about 4 days. On SLURM the runs go in
+parallel: the longest run (about 2 h) plus falsification, after queueing; the time limits cap it
+at 13.5 h (smoke 0.5 + training 12 + falsification 1).
+
 **3. Maze smoke test (~30 min).**
 
 ```bash
