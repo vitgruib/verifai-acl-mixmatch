@@ -36,7 +36,7 @@ chain() {  # chain <part dir> <algos>: train array -> falsify array (afterok)
 # Smoke settings: tiny SFL-repo budgets (S), one seed, 50 updates, 50-level falsification; outputs under $RUNS/smoke.
 S="learning.NUM_ENVS=16 learning.NUM_ENVS_FROM_SAMPLED=8 learning.NUM_ENVS_TO_GENERATE=8 learning.NUM_STEPS=32 learning.TOTAL_TIMESTEPS=4096 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=2 BATCH_SIZE=64 NUM_BATCHES=1 ROLLOUT_STEPS=50 NUM_TO_SAVE=32"
 smoke_env() {
-  export RUNS=$RUNS/smoke NSEEDS=1 NUM_UPDATES=50 JAXUED_ARGS="--eval_freq 10 --checkpoint_save_interval 1" BUDGET=50 FSEEDS=0 SAMPLERS=ce; mkdir -p "$RUNS"
+  export RUNS=$RUNS/smoke NSEEDS=1 NUM_UPDATES=50 JAXUED_ARGS="--eval_freq 10 --checkpoint_save_interval 1" BUDGET=50 FSEEDS=0 SAMPLERS="random ce"; mkdir -p "$RUNS"
 }
 smoke_maze() {  # tiny Maze chain: Robust PLR (JaxUED) and SFL (SFL repo) -> falsify
   local j1 j2

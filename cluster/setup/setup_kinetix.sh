@@ -12,6 +12,9 @@ pip install -q "jax[${JAX_EXTRA-cuda12}]==0.9.0" flax==0.12.6 optax==0.2.8 chex=
   jax2d==1.0.1 jaxgl==1.0.1 hydra-core==1.3.7 omegaconf==2.3.1 wandb==0.18.7
 # VerifAI/Scenic pull antlr4 4.13; omegaconf (hydra) needs 4.9, and Scenic only uses antlr for Webots.
 pip install -q verifai==2.2.0 scenic==3.1.1 dotmap==1.3.30
+# experiments/plr.py (DR, PLR, Robust PLR, ACCEL) imports jaxued, which Kinetix lists only as a dev extra.
+# The pinned clone, without deps, so it cannot change the jax/flax pins above.
+pip install -q --no-deps -e "$JAXUED_DIR"
 pip install -q antlr4-python3-runtime==4.9.3
 cd "$ATLAS"
-MPLBACKEND=Agg SDL_VIDEODRIVER=dummy python -c "import jax, kinetix, hydra, verifai, scenic, atlas.kinetix.falsify; print('ok', jax.__version__, jax.devices())"
+MPLBACKEND=Agg SDL_VIDEODRIVER=dummy python -c "import jax, kinetix, jaxued, hydra, verifai, scenic, atlas.kinetix.falsify; print('ok', jax.__version__, jax.devices())"

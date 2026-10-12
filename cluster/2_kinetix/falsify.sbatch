@@ -15,7 +15,7 @@
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 ALGOS=${ALGOS:-"dr plr rplr accel sfl"}; NSEEDS=${NSEEDS:-10}
-SPACES=${SPACES:-"pos phys"}; SAMPLERS=${SAMPLERS:-ce}
+SPACES=${SPACES:-"pos phys"}; SAMPLERS=${SAMPLERS:-"random ce"}  # ce searches for failures; random is the unbiased baseline (failure rates)
 BUDGET=${BUDGET:-1000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))

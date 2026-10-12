@@ -277,8 +277,9 @@ Send that one file back. It holds:
 
 **Shared falsification settings.**
 - The spec is "the agent solves the level in at least 5 of 10 attempts".
-- Each trained agent gets 2 spaces × the cross-entropy sampler × 3 falsifier seeds. Maze also runs
-  the random sampler as the unbiased control (`SAMPLERS`).
+- Each trained agent gets 2 spaces × 2 samplers × 3 falsifier seeds. The samplers are:
+  - cross-entropy, the search that finds failures;
+  - random, the unbiased baseline that gives failure rates and the H2 test.
 - Levels that cannot be certified solvable are recorded as invalid, never as failures.
 - Record format: [docs/failure_records.md](../docs/failure_records.md).
 
@@ -291,7 +292,7 @@ random, Halton and simulated annealing as the other baselines. Relative to rando
 | counterexample rate | 4.5× | 2.5× | 5.9× | 5.2× |
 
 Its cost is more samples spent on unsolvable levels (21% vs bandit 12% in `dr`). Caveat: the
-pilot was Maze only, with agents trained to 10% of budget. `SAMPLERS="ce mab"` re-adds the bandit.
+pilot was Maze only, with agents trained to 10% of budget. `SAMPLERS="random ce mab"` adds the bandit.
 
 **Budgets were cut deliberately.**
 - Kinetix trains for 201M rather than 1B+ steps; Maze and JaxNav use the papers' settings.
@@ -302,7 +303,26 @@ pilot was Maze only, with agents trained to 10% of budget. `SAMPLERS="ce mab"` r
   and 300M–2B step budgets were ~2/3 of the GPU hours). Kinetix replaces them as the
   general, physics-based benchmark.
 
-## Validation status (as of 2026-10-08)
+## Validation status (as of 2026-10-11)
+
+**2026-10-11 re-check from scratch.** Every venv was rebuilt from a fresh clone with the setup
+scripts (CPU builds), then tiny train → falsify chains ran through the `.sbatch` scripts with both
+samplers:
+- Maze: all 6 algorithms;
+- Kinetix: ACCEL;
+- JaxNav: SFL.
+
+All completed, and `atlas.prelim` and `collect.sh` ran on the output. The check found and fixed
+four bugs that would have failed jobs, or silently corrupted results, on the cluster:
+- `setup_jax.sh` lacked `moviepy`, so every JaxUED Maze job crashed at its first evaluation GIF.
+- `setup_kinetix.sh` lacked `jaxued`, so 40 of the 50 Kinetix jobs (all but SFL) crashed on import.
+- `setup_sfl.sh` let Scenic upgrade `antlr4`, which breaks Hydra, so every JaxNav job and the Maze SFL
+  jobs crashed. Its import check now exercises Hydra's parser.
+- The Maze falsifier loaded minimax checkpoints with PLR's network class. Minimax's student uses
+  `tanh` where PLR's uses `relu`, so its weights would have run through the wrong network. It now
+  uses `maze_paired.py`'s own class and the protagonist's weights.
+
+**Earlier checks (2026-10-08).**
 
 Every smoke-test line, and every training and falsification path, was run locally: headless,
 CPU only, at tiny budgets, through the actual `.sbatch` scripts.

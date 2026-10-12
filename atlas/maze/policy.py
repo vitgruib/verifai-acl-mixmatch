@@ -40,20 +40,27 @@ class Policy:
                 with open(meta) as f:
                     self.config.update(json.load(f))
             self.step, self.buffer = -1, None
+            Net = ActorCritic
             self.params = unflatten_dict(load_file(sft), sep=",")   # sfl train_utils.load_params
         else:
             with open(os.path.join(self.ckpt_dir, "config.json")) as f:
                 self.config = json.load(f)
+            Net = ActorCritic
             mgr = ocp.CheckpointManager(os.path.join(self.ckpt_dir, "models"),
                                         item_handlers=ocp.StandardCheckpointHandler())
             self.step = mgr.latest_step() if step == -1 else step
             ckpt = mgr.restore(self.step)
-            self.params = ckpt["params"]
-            self.buffer = _buffer(ckpt.get("sampler"))
+            if "pro_train_state" in ckpt:   # maze_paired.py (minimax): the student is the protagonist
+                self.params, self.buffer = ckpt["pro_train_state"]["params"], None
+                # its student net differs from maze_plr's (tanh after actor0, not relu)
+                from maze_paired import ActorCritic as Net
+            else:
+                self.params = ckpt["params"]
+                self.buffer = _buffer(ckpt.get("sampler"))
         self.env = Maze(max_height=13, max_width=13, agent_view_size=self.config["agent_view_size"],
                         normalize_obs=True)
         self.env_params = self.env.default_params
-        net = ActorCritic(self.env.action_space(self.env_params).n)
+        net = Net(self.env.action_space(self.env_params).n)
 
         class _TS:  # evaluate_rnn only needs .apply_fn and .params
             apply_fn, params = staticmethod(net.apply), self.params

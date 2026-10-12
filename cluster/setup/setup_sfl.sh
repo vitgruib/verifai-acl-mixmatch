@@ -15,4 +15,6 @@ pip install -q "jax[${JAX_EXTRA-cuda12}]==0.4.30" flax==0.8.5 chex==0.1.86 optax
   distrax==0.1.5 orbax-checkpoint==0.5.20 tensorflow-probability==0.24.0 "matplotlib<3.10"
 # VerifAI for Part 3 falsify (atlas.jaxnav.falsify); local smoke run with these on jax 0.4.30 (2026-10-05).
 pip install -q verifai==2.2.0 scenic==3.1.1 dotmap==1.3.30
-cd "$ATLAS"; MPLBACKEND=Agg python -c "import atlas.jaxnav.falsify, jax, sfl, jaxmarl, jaxued, distrax, wandb, safetensors; import verifai, scenic; print('ok', jax.__version__, jax.devices())"
+# VerifAI/Scenic pull antlr4 4.13; omegaconf (hydra, used by every SFL-repo script) needs 4.9.
+pip install -q antlr4-python3-runtime==4.9.3
+cd "$ATLAS"; MPLBACKEND=Agg python -c "import atlas.jaxnav.falsify, jax, hydra, omegaconf, sfl, jaxmarl, jaxued, distrax, wandb, safetensors; import verifai, scenic; omegaconf.OmegaConf.create({'a': '\${b}', 'b': 1}).a; print('ok', jax.__version__, jax.devices())"

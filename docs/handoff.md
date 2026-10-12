@@ -48,6 +48,6 @@ Full statement and success criterion: `.claude/commands/goal.md`.
 
 ## Standing rules
 
-Runs launch with `--allow-battery`. Keep shell commands short; do not retry-loop. `wip` is the
-working branch: commit and push `wip` after each tested change, then `git push origin wip:main`.
+Runs launch with `--allow-battery`. Keep shell commands short; do not retry-loop. Work on `main`
+(the GitHub default since 2026-10-11; `wip` is retired): commit and push after each tested change.
 Register each batch in `docs/library_log.md` before running it.

@@ -111,7 +111,9 @@ def main():
     ap.add_argument("--out", default="runs/maze")
     a = ap.parse_args()
     pol = Policy(a.ckpt, a.step)
-    ctx = TrainContext(pol.config["n_walls"], pol.buffer)
+    # minimax (maze_paired.py) has no DR generator, so no n_walls; it is compared against JaxUED's
+    # DR default (25, as maze_dr.py / maze_plr.py) like the other algorithms
+    ctx = TrainContext(pol.config.get("n_walls", 25), pol.buffer)
     for sampler in a.sampler:
         for seed in a.seed:
             args = argparse.Namespace(**{**vars(a), "sampler": sampler, "seed": seed})

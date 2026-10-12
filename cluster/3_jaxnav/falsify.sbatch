@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 ALGOS=${ALGOS:-"dr minimax plr rplr accel sfl"}; NSEEDS=${NSEEDS:-10}
-SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-ce}
+SPACES=${SPACES:-"dr seg"}; SAMPLERS=${SAMPLERS:-"random ce"}  # ce searches for failures; random is the unbiased baseline (failure rates)
 BUDGET=${BUDGET:-5000}; FSEEDS=${FSEEDS:-"0 1 2"}
 i=${SLURM_ARRAY_TASK_ID:-0}
 algo=$(pick $((i / NSEEDS)) $ALGOS); seed=$((i % NSEEDS))
@@ -20,7 +20,7 @@ ck=$RUNS/sfl/jaxnav_${algo}/s$seed                                 # model.safet
 echo "task=$i algo=$algo seed=$seed ckpt=$ck host=$(hostname)"
 run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 [ -n "${DRY_RUN:-}" ] || source "$SFL_VENV/bin/activate"
-# CPU only: one process per space x sampler (2 by default) on 4 CPUs; per-level cost is env + oracle, not the network.
+# CPU only: one process per space x sampler (4 by default) on 4 CPUs; per-level cost is env + oracle, not the network.
 export JAX_PLATFORMS=cpu
 export MPLBACKEND=Agg
 # one process per space x sampler, each pinned to its share of the allocated CPUs

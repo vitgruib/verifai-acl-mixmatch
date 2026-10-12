@@ -56,7 +56,7 @@ batches 1-18 and protocol remain the record in `docs/library_log.md`).
   running jobs with `pgrep -f "name[.]sh"` (plain `name.sh` also matches waiting shells).
 - Launch runs with `--allow-battery`; use `--resume` to continue interrupted runs.
 - Activate the venv first: `source .venv/bin/activate`.
-- Commit and push `wip` after each tested change, then `git push origin wip:main`.
+- Work on `main` (the GitHub default since 2026-10-11); commit and push it after each tested change.
 
 ## Current focus
 
