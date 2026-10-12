@@ -49,5 +49,5 @@ times out, see step 7 of [DETAILS.md](DETAILS.md).
 ---
 
 This code was written with an AI coding agent (Claude Code) under our direction.
-[DETAILS.md](DETAILS.md) explains why it can be trusted. It also covers the motivation, our changes
-to the papers' code, the validation, the later Kinetix and JaxNav runs, and the recovery steps.
+[DETAILS.md](DETAILS.md) covers the motivation, our changes to the papers' code, the later Kinetix
+and JaxNav runs, and the recovery steps.

@@ -32,38 +32,6 @@ falsification jobs.
 - Likely well under half the GPU figure.
 - Wall clock ≈ 28 h if the queue runs everything in parallel.
 
-## Why you can trust it
-
-This code was written with an AI coding agent (Claude Code) under our direction. It is built so
-that you can check it without trusting the agent.
-
-**What it can do to the cluster.**
-- **Bounded cost.** Every job has a SLURM time limit, so the worst case is the ceiling above.
-- **Nothing runs unseen.** `DRY_RUN=1` prints every `sbatch` line and submits nothing. A 30 min Maze
-  smoke test runs before anything large.
-- **Contained.** It writes only inside the repo and `$RUNS`. Compute nodes make no network
-  calls. No cluster script contains `sudo`, `rm -rf`, `curl`, `wget` or `ssh`. Details are under
-  "Isolation" in the appendix.
-- **Small enough to read.** Everything that runs on the cluster is 459 lines of shell in
-  `cluster/`.
-
-**Whether the results are right.**
-- **Training is the papers' code, not ours.** `clone.sh` checks out each upstream repo at a
-  pinned commit. Our only changes are four patches, 575 lines in total, listed in the appendix.
-  431 of those lines add the one cell no paper ships code for: minimax on JaxNav. To see
-  exactly what changed: `git -C third_party/<repo> diff`.
-- **Every failure carries a proof that the level is solvable**, checked independently of the
-  trained agent:
-  - Maze and JaxNav: a BFS path. `tests/test_atlas.py` replays these paths in the real JaxUED
-    env.
-  - Kinetix: an action sequence. It is replayed on every witness, and the physics is
-    deterministic.
-
-  So a reported failure cannot be an impossible level or an artefact of our agent code.
-- **What is not yet verified** is listed under "Validation status": GPU speed, the CUDA builds,
-  and results on fully trained agents. The smoke test checks the first two before the full
-  run.
-
 ## Why run this: the papers' tests have not been properly reproduced
 
 Each UED paper reports robustness with its own evaluation, and those evaluations are hard to
