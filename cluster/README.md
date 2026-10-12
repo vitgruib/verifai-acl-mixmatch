@@ -3,14 +3,8 @@
 On the login node:
 
 ```bash
-git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas && cd atlas
-SBATCH_ARGS="-p <gpu partition> -A <account>" bash cluster/run_maze.sh
+git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas
+bash atlas/cluster/run_maze.sh -p <gpu partition> -A <account>
 ```
 
-When `squeue -u $USER` is empty (about a day later):
-
-```bash
-bash cluster/collect.sh
-```
-
-Send me the `.tgz` file it prints.
+About a day later, send me `atlas/maze_results.tgz`.

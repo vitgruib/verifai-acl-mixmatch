@@ -1,6 +1,6 @@
 #!/bin/bash
 # One command per part. Prints every sbatch line it runs; DRY_RUN=1 prints without submitting.
-#   bash cluster/submit.sh maze       # maze-smoke, then 1 only if every smoke job succeeds
+#   bash cluster/submit.sh maze       # maze-smoke, then 1 only if every smoke job succeeds, then collect
 #   bash cluster/submit.sh maze-smoke # FIRST: ~30 min tiny Maze train -> falsify check (2 GPU + 2 CPU tasks)
 #   bash cluster/submit.sh smoke      # ~1 h sanity check of all 3 parts (tiny budgets; train -> falsify), Kinetix probe up to 3 h
 #   bash cluster/submit.sh 1          # THEN: Maze: train (60 tasks) -> falsify (60 tasks, after train)
@@ -53,8 +53,9 @@ maze_smoke() {
 maze() {  # smoke -> full run; KD cancels downstream jobs (not left pending) when a dependency fails
   export KD=--kill-on-invalid-dep=yes
   local j; j=$(smoke_env; smoke_maze)
-  GATE="$KD --dependency=afterok:$j" part1 >/dev/null
-  echo "maze smoke + full run submitted; when squeue is empty: bash cluster/collect.sh" >&2
+  j=$(GATE="$KD --dependency=afterok:$j" part1)
+  sb --export=ALL --dependency=afterany:$j cluster/collect.sbatch >/dev/null   # runs even if the run fails
+  echo "maze smoke + full run submitted; results -> ${OUT:-$ATLAS/maze_results.tgz}" >&2
 }
 
 smoke() {  # one seed, one or two algos per codebase, tiny budgets; outputs under $RUNS/smoke

@@ -10,3 +10,4 @@ runs/
 third_party/
 .venv-*/
 .cache/
+maze_results.tgz

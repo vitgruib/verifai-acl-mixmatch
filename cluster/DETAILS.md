@@ -145,9 +145,11 @@ The dry run should show:
 - a fourth Kinetix SFL array (0-9, `--time=24:00:00`);
 - one falsify array per part, each depending on its training.
 
-Steps 1, 3 and 4 in one command (what README.md runs): `bash cluster/run_maze.sh`. It submits the
-full Maze run behind the smoke test (`submit.sh maze`), so the full run starts only if every smoke
-job succeeds; otherwise SLURM cancels it.
+Steps 1-4 and 8 in one command (what README.md runs): `bash cluster/run_maze.sh <sbatch flags>`.
+It checks the flags with `sbatch --test-only`, sets up, then runs `submit.sh maze`: the full Maze
+run starts only if every smoke job succeeds (otherwise SLURM cancels it), and a final job
+(`collect.sbatch`, `afterany`) packs the results into `maze_results.tgz` at the repo root,
+whatever the outcome.
 
 **3. Maze smoke test (~30 min).**
 
