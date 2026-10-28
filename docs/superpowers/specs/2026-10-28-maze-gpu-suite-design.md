@@ -1,6 +1,6 @@
 # Maze GPU suite and CartPole bridge check: design
 
-Date: 2026-10-28. Status: draft for the user's approval. Extends
+Date: 2026-10-28. Status: approved by the user 2026-10-28. Extends
 `docs/superpowers/specs/2026-10-28-ued-generalization-suite-design.md` (the suite spec); everything
 not stated here follows it.
 
@@ -64,10 +64,12 @@ User decisions (2026-10-28):
 - Seeds 0-9 per method (60 runs). Reference agents: DR, seeds 100-109 (10 runs, never scored).
 - **One training box (suite spec):** 13x13 interior, up to 25 walls, 5x5 view, 250 steps. SFL's repo
   defaults to 60 walls; it is run at 25 (my call: the suite spec puts every method in one box).
-- **SFL compute (my call, check this):** SFL's scouting rollouts are not charged to its budget, as
-  in its paper. On the classic tasks they were charged (SFL then trained on half the steps, which
+- **SFL compute (user decision):** SFL gets full training time: its scouting rollouts are not
+  charged to its budget, as in its paper. On the classic tasks they were charged (SFL then trained on half the steps, which
   confounded its result). Here SFL trains for the same 245.76M steps as the others, and its extra
   scouting steps are reported next to the result. Charging them would mean patching the paper's code.
+  If SFL scores better than DR on the screen, it gets a finer follow-up test (the user's rule),
+  designed then, that separates the extra scouting compute from the level choice.
 
 **Exam (frozen before any scored grading, same recipe as the classic tasks).**
 - Random: 300 levels from JaxUED's 25-wall level generator, BFS-solvable only.

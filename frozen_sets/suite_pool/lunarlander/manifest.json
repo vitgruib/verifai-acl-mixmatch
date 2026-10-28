@@ -1,8 +1,8 @@
 {
   "sets": {
     "verifai": {
-      "n": 300000,
-      "sha256": "d616011e69478219d6efd268b389463dcf708a22ae86fefa0df67e04f827d6ae"
+      "n": 259300,
+      "sha256": "0fc99283e7baf1f312ac1d4a563d86c15ce38ae0f4e93f81705478e143fbde31"
     }
   }
 }
