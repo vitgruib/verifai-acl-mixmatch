@@ -6,9 +6,12 @@ Runs are where cluster/1_maze/train.sbatch puts them under --runs: JaxUED's
 maze_train/checkpoints/maze_<algo>_n30000/<seed> (orbax, graded at the final step its
 config.json implies, as atlas.maze.exam does) and SFL's sfl/maze_sfl/s<seed> (model.safetensors
 plus a config.json that must give `total_timesteps`). One row per (arm, seed, section):
-`check` = `steps` = `budget` = BUDGET, `n_checks` 1, `pass_rate` the share of levels solved in
+`check` = `budget` = BUDGET, `steps` the trained env steps (BUDGET, except SFL's rounds
+truncate it: 242,483,200), `n_checks` 1, `pass_rate` the share of levels solved in
 at least half of 10 plays, `play_rate` the mean solve rate, `scouted_steps` 0 except SFL's
 uncharged scouting (docs/maze_gpu_audit.md section 4-6), `wall_time_sec` the grading time.
+Each custom level's solve rate also goes to custom_cases.csv beside --out (arm, seed, case,
+solve_rate), for acl_bench.suite.analyze's per-case breakdown.
 
 Rows already in --out are kept and only missing ones are graded. The section digests graded
 are recorded beside --out (<name>.exam.json); a later exam whose section differs is refused.
@@ -30,6 +33,7 @@ from atlas.maze import exam, suite
 BUDGET = 245_760_000
 ARMS = {"DR": "dr", "PLR": "plr", "RPLR": "rplr", "ACCEL": "accel", "MINIMAX": "minimax", "SFL": "sfl"}
 SEEDS = range(10)
+CASE_COLUMNS = ["arm", "seed", "case", "solve_rate"]
 COLUMNS = ["arm", "seed", "section", "check", "n_questions", "pass_rate", "play_rate", "steps",
            "scouted_steps", "budget", "n_checks", "wall_time_sec"]
 # SFL repo defaults (minigrid-sfl.yaml, ippo-minigrid.yaml), Recipe A of the audit; config.json
@@ -44,7 +48,7 @@ def _load(run_dir: str, step: int):
 
 
 def _jaxued_run(runs: Path, arm: str, seed: int):
-    """-> (run dir, step to grade, scouted steps), or a problem string."""
+    """-> (run dir, step to grade, trained steps, scouted steps), or a problem string."""
     d = runs / "maze_train" / "checkpoints" / f"maze_{ARMS[arm]}_n30000" / str(seed)
     if not (d / "config.json").exists():
         return "missing"
@@ -56,7 +60,7 @@ def _jaxued_run(runs: Path, arm: str, seed: int):
     step = exam._final_step(cfg)
     if not (d / "models" / str(step)).is_dir():
         return f"no checkpoint at its final step {step} (training unfinished)"
-    return str(d), step, 0
+    return str(d), step, BUDGET, 0
 
 
 def _sfl_run(runs: Path, seed: int):
@@ -71,9 +75,11 @@ def _sfl_run(runs: Path, seed: int):
         return "config.json has no total_timesteps"
     if cfg["total_timesteps"] != BUDGET:
         return f"trains {cfg['total_timesteps']} env steps, not the budget {BUDGET}"
-    # scouting runs once per round, before each round's eval_freq updates
+    # scouting runs once per round, before each round's eval_freq updates; updates past the
+    # last whole round never run
     rounds = cfg["total_timesteps"] // cfg["num_steps"] // cfg["num_envs"] // cfg["eval_freq"]
-    return str(d), -1, rounds * cfg["num_batches"] * cfg["batch_size"] * cfg["rollout_steps"]
+    return (str(d), -1, rounds * cfg["eval_freq"] * cfg["num_steps"] * cfg["num_envs"],
+            rounds * cfg["num_batches"] * cfg["batch_size"] * cfg["rollout_steps"])
 
 
 def _check_exam(sets: dict, record: Path) -> None:
@@ -97,13 +103,23 @@ def _graded(out: Path) -> set:
         return {(r["arm"], int(r["seed"]), r["section"]) for r in reader}
 
 
-def _append(out: Path, row: dict) -> None:
+def _append(out: Path, rows: list, columns: list) -> None:
     new = not out.exists()
     with open(out, "a", newline="") as f:
-        w = csv.DictWriter(f, COLUMNS)
+        w = csv.DictWriter(f, columns)
         if new:
             w.writeheader()
-        w.writerow(row)
+        w.writerows(rows)
+
+
+def _drop_cases(path: Path, arm: str, seed: int) -> None:
+    """Remove a run's case rows left by a grading that stopped before its custom score row."""
+    if not path.exists():
+        return
+    with open(path, newline="") as f:
+        rows = [r for r in csv.DictReader(f) if (r["arm"], int(r["seed"])) != (arm, seed)]
+    path.unlink()
+    _append(path, rows, CASE_COLUMNS)
 
 
 def main(argv=None):
@@ -118,7 +134,7 @@ def main(argv=None):
     sets = suite.load_sets(a.exam)
     os.makedirs(out.parent, exist_ok=True)
     _check_exam(sets, out.with_suffix(".exam.json"))
-    done, problems = _graded(out), []
+    done, problems, cases = _graded(out), [], out.with_name("custom_cases.csv")
     for arm in a.arms:
         for seed in a.seeds:
             todo = [name for name in sets if (arm, seed, name) not in done]
@@ -128,15 +144,19 @@ def main(argv=None):
             if isinstance(run, str):
                 problems.append(f"{arm} {seed}: {run}")
                 continue
-            run_dir, step, scouted = run
+            run_dir, step, trained, scouted = run
             policy = _load(run_dir, step)
             for name in todo:
                 t0 = time.time()
                 rates = exam.solve_rates(policy, sets[name], label=f"{arm} {seed} {name}")
-                _append(out, {"arm": arm, "seed": seed, "section": name, "check": BUDGET,
-                              "n_questions": len(rates), "pass_rate": float((rates >= exam.TAU).mean()),
-                              "play_rate": float(rates.mean()), "steps": BUDGET, "scouted_steps": scouted,
-                              "budget": BUDGET, "n_checks": 1, "wall_time_sec": time.time() - t0})
+                if name == "custom":
+                    _drop_cases(cases, arm, seed)
+                    _append(cases, [{"arm": arm, "seed": seed, "case": case, "solve_rate": float(rate)}
+                                    for case, rate in zip(sets[name].labels, rates)], CASE_COLUMNS)
+                _append(out, [{"arm": arm, "seed": seed, "section": name, "check": BUDGET,
+                               "n_questions": len(rates), "pass_rate": float((rates >= exam.TAU).mean()),
+                               "play_rate": float(rates.mean()), "steps": trained, "scouted_steps": scouted,
+                               "budget": BUDGET, "n_checks": 1, "wall_time_sec": time.time() - t0}], COLUMNS)
             print(f"graded {arm} {seed}", flush=True)
     if problems:
         print(f"{len(problems)} runs not graded:\n  " + "\n  ".join(problems), file=sys.stderr, flush=True)

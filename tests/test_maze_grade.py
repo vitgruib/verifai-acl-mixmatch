@@ -24,13 +24,13 @@ class WallLimitAgent:
 
 
 def section(n_levels=4):
-    """Levels with 0, 1, ..., n_levels - 1 walls."""
+    """Levels with 0, 1, ..., n_levels - 1 walls, labelled case0, case1, ... (as custom's are)."""
     levels = []
     for k in range(n_levels):
         walls = np.zeros((13, 13), bool)
         walls[0, 1:1 + k] = True
         levels.append((walls, (6, 6), 0, (7, 6)))
-    return suite._from_levels(levels)
+    return suite._from_levels(levels, [f"case{k}" for k in range(n_levels)])
 
 
 def jaxued_run(runs, algo, seed, num_updates=30000, steps=(116, 118)):
@@ -94,12 +94,18 @@ def test_rows_match_suite_columns(tmp_path, exam_dir, loads):
         (arm, s) for arm in ("DR", "SFL") for s in ("random", "custom", "verifai"))
     for r in rows:
         assert int(r["seed"]) == 0
-        assert int(r["check"]) == int(r["steps"]) == int(r["budget"]) == BUDGET
+        assert int(r["check"]) == int(r["budget"]) == BUDGET
         assert int(r["n_checks"]) == 1 and int(r["n_questions"]) == 4
         # rates per level 1, 1, 0.3, 0.3
         assert float(r["pass_rate"]) == pytest.approx(0.5) and float(r["play_rate"]) == pytest.approx(0.65)
         # SFL Recipe A: 3750 // 100 = 37 rounds x 5 x 5000 levels x 2000 steps (docs/maze_gpu_audit.md)
         assert int(r["scouted_steps"]) == (1_850_000_000 if r["arm"] == "SFL" else 0)
+        # SFL trains 37 rounds x 100 updates x 256 steps x 256 envs; JaxUED the whole budget
+        assert int(r["steps"]) == (242_483_200 if r["arm"] == "SFL" else BUDGET)
+    cases = read(tmp_path / "custom_cases.csv")
+    assert [(c["arm"], c["seed"], c["case"], float(c["solve_rate"])) for c in cases if c["arm"] == "DR"] == [
+        ("DR", "0", "case0", 1.0), ("DR", "0", "case1", 1.0), ("DR", "0", "case2", 0.3), ("DR", "0", "case3", 0.3)]
+    assert {c["arm"] for c in cases} == {"DR", "SFL"} and len(cases) == 8
     assert sorted(loads) == sorted([(str(dr), 118), (str(sfl), -1)])
 
 
@@ -119,6 +125,7 @@ def test_resume_appends_only_missing(tmp_path, loads):
     loads.clear()
     grade_cli(runs, exam, out, "--arms", "MINIMAX", "--seeds", "3")
     assert read(out) == rows and loads == []
+    assert [c["case"] for c in read(tmp_path / "custom_cases.csv")] == ["case0", "case1", "case2", "case3"]
 
 
 def test_missing_checkpoint_reported_nonzero_exit(tmp_path, exam_dir, loads, capsys):

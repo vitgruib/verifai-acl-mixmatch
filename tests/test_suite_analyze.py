@@ -139,3 +139,27 @@ def test_maze_requires_ten_seeds_and_accepts_minimax(tmp_path):
     pd.DataFrame(rows[3:]).to_csv(maze, index=False)       # drops DR seed 0
     with pytest.raises(SystemExit, match=r"maze.*DR.*random.*9 seeds.*need 10"):
         require_complete(load_scores(tmp_path))
+
+
+def test_main_runs_on_maze_with_per_case_custom_scores(tmp_path, monkeypatch, capsys):
+    from acl_bench.suite import analyze
+    arms = ("DR", "PLR", "RPLR", "ACCEL", "SFL", "MINIMAX")
+    rows = [{"arm": arm, "seed": seed, "section": section, "check": 100, "budget": 100,
+             "pass_rate": 0.3 + 0.01 * seed + (0.3 if arm == "PLR" else 0)}
+            for arm in arms for seed in range(10) for section in ("random", "verifai", "custom")]
+    (tmp_path / "maze").mkdir()
+    pd.DataFrame(rows).to_csv(tmp_path / "maze" / "scores.csv", index=False)
+    # "easy": PLR solves 0.9 of plays, the rest 0.2; "impossible": every agent 0.1
+    cases = [{"arm": arm, "seed": seed, "case": case, "solve_rate": rate}
+             for arm in arms for seed in range(10)
+             for case, rate in (("easy", 0.9 if arm == "PLR" else 0.2), ("impossible", 0.1))]
+    pd.DataFrame(cases).to_csv(tmp_path / "maze" / "custom_cases.csv", index=False)
+    monkeypatch.setattr(analyze, "RESULTS", tmp_path)
+    analyze.main(["--envs", "maze"])
+    screened = pd.read_csv(tmp_path / "analysis" / "screen.csv").set_index("method")
+    assert set(screened.index) == {"PLR", "RPLR", "ACCEL", "SFL", "MINIMAX"}
+    assert screened.loc["PLR", "improved"] and not screened.loc["MINIMAX", "improved"]
+    custom = pd.read_csv(tmp_path / "analysis" / "custom_maze.csv").set_index("case")
+    assert custom.loc["easy", "best"] == "PLR" and np.isclose(custom.loc["easy", "DR"], 0.2)
+    assert not custom.loc["easy", "no_agent_passes"] and custom.loc["impossible", "no_agent_passes"]
+    assert "## maze: custom cases no agent passes" in capsys.readouterr().out

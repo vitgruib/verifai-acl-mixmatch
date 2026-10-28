@@ -4,7 +4,8 @@
 
 Reads results/suite/<env>/scores.csv (one row per arm, seed and section; the final check is
 analysed) and writes screen.csv, table_<env>.csv, custom_<env>.csv and summary.md to
-results/suite/analysis/. The screen is one-sided Mann-Whitney U (method's VerifAI pass rate >
+results/suite/analysis/ (Maze's per-case custom scores come from results/suite/maze/custom_cases.csv,
+written by atlas.maze.grade). The screen is one-sided Mann-Whitney U (method's VerifAI pass rate >
 DR's) per method and task, Holm-corrected across the tests run (docs/library_log.md, batch 21).
 """
 from __future__ import annotations
@@ -98,6 +99,20 @@ def custom_breakdown(env_name: str, snapshots: Path | None = None, exam: Path | 
         if arm in (BASELINE, *METHODS):
             agents = load_run(path)
             per_arm.setdefault(arm, []).append(score(env, agents[max(agents)], custom))
+    return _breakdown(cases, per_arm)
+
+
+def maze_custom_breakdown(path: Path) -> pd.DataFrame:
+    """custom_breakdown from the per-case solve rates atlas.maze.grade writes (custom_cases.csv)."""
+    df = pd.read_csv(path)
+    df = df[df["arm"].isin((BASELINE, *METHODS))]
+    cases = list(dict.fromkeys(df["case"]))
+    wide = df.pivot_table(index=["arm", "seed"], columns="case", values="solve_rate")[cases]
+    return _breakdown(cases, {arm: sub.to_numpy() for arm, sub in wide.groupby(level="arm")})
+
+
+def _breakdown(cases: list, per_arm: dict) -> pd.DataFrame:
+    """per_arm: arm -> per-seed rows of per-case scores."""
     out = pd.DataFrame({"case": cases, **{arm: np.mean(v, axis=0) for arm, v in per_arm.items()}})
     arms = list(per_arm)
     top = out[arms].max(axis=1)
@@ -127,11 +142,11 @@ def summary(screened: pd.DataFrame, tables: pd.DataFrame, customs: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--envs", nargs="+", default=None)
     parser.add_argument("--allow-partial", action="store_true", help="preview with incomplete scores")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     scores = load_scores(RESULTS, args.envs)
     if not args.allow_partial:
         require_complete(scores)
@@ -142,7 +157,8 @@ def main():
     customs = {}
     for task in sorted(scores["task"].unique()):
         tables[tables["task"] == task].to_csv(out / f"table_{task}.csv", index=False)
-        customs[task] = custom_breakdown(task)
+        customs[task] = (maze_custom_breakdown(RESULTS / task / "custom_cases.csv") if task == "maze"
+                         else custom_breakdown(task))
         customs[task].to_csv(out / f"custom_{task}.csv", index=False)
     text = summary(screened, tables, customs)
     (out / "summary.md").write_text(text)
