@@ -25,7 +25,12 @@ ARMS: dict[str, LevelConfig] = {
     "REF": LevelConfig(**DR),
 }
 
-BUDGET: dict[str, int] = {}     # env steps per run, set from the calibration runs
+# Env steps per run. CartPole keeps the earlier study's calibrated length (acl_bench/study/arms.py).
+# LunarLander and FrozenLake: 3 DR seeds with 10-20 check-ins on a 100-question random section; the
+# budget is the first check-in after which the mean pass rate rises less than 0.02 over the next two.
+# LunarLander (to 20.48M): 0.36 at 8.2M, 0.63 at 10.2M, 0.69 at 11.26M, then 0.68, 0.61; 0.75 at 20.48M.
+# FrozenLake (to 2.05M): 0.51, 0.56, 0.63 at 614k, then 0.65, 0.63; 0.67 at 2.05M.
+BUDGET: dict[str, int] = {"cartpole": 614_400, "lunarlander": 11_264_000, "frozenlake": 614_400}
 
 # SFL's scouting per env, sized so that charged scouting takes about half of the budget
 # (mean scouted_steps / budget in 0.4-0.6 over 2 seeds at the full budget). Procedure: keep
@@ -36,10 +41,15 @@ BUDGET: dict[str, int] = {}     # env steps per run, set from the calibration ru
 #       --checks 1 --workers 2 --allow-battery --out <scratch> --exam <dir with the section>
 # CartPole (614_400 steps): sfl_n 20 at sfl_every 10 scouted 0.74; sfl_every 25/30/35/40 gave
 # 0.58/0.54/0.48/0.51 (2-seed means, noise about 0.03); 40 kept.
+# LunarLander (11_264_000 steps): sfl_n 100/50/20 at sfl_every 10 scouted 0.97/0.95/0.88 (long
+# episodes); sfl_n 20 at sfl_every 60/70/80 gave 0.52/0.48/0.42; 60 kept.
+# FrozenLake (614_400 steps): sfl_n 20/40/100 at sfl_every 10 scouted 0.16/0.26/0.48; 100 kept.
 # An env with no entry has no SFL arm: arm_config raises rather than fall back to LevelConfig's
 # defaults (sfl_n 1000, sfl_every 10), which spend nearly the whole budget scouting.
 SFL_SCOUT: dict[str, dict[str, int]] = {
     "cartpole": {"sfl_n": 20, "sfl_top": 10, "sfl_every": 40},
+    "lunarlander": {"sfl_n": 20, "sfl_top": 10, "sfl_every": 60},
+    "frozenlake": {"sfl_n": 100, "sfl_top": 10, "sfl_every": 10},
 }
 
 
