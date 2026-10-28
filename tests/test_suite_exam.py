@@ -43,7 +43,7 @@ def fake_world(monkeypatch, passes_by_task, width=1):
 def test_question_kept_only_when_three_of_ten_agents_fail(monkeypatch):
     fail, ok = 0, 10
     fake_world(monkeypatch, {1.0: [fail] * 3 + [ok] * 7, 2.0: [fail] * 2 + [ok] * 8})
-    s = verifai_section(fake_env(), list(range(10)), n_iters=2, starts=STARTS, min_fail_agents=3, seed=0)
+    s = verifai_section(fake_env(), list(range(10)), n_iters=2, starts=STARTS, min_fail_agents=3, seed=0, workers=1)
     assert set(s.params[:, 0]) == {1.0}
     assert len(s) == STARTS
     np.testing.assert_allclose(s.ref_fail_frac, 0.3)
@@ -52,7 +52,7 @@ def test_question_kept_only_when_three_of_ten_agents_fail(monkeypatch):
 def test_agent_fails_a_question_below_five_of_ten_plays(monkeypatch):
     # three agents pass 4 of 10 on task 1 (fail), but 5 of 10 on task 2 (pass)
     fake_world(monkeypatch, {1.0: [4] * 3 + [10] * 7, 2.0: [5] * 3 + [10] * 7})
-    s = verifai_section(fake_env(), list(range(10)), n_iters=2, starts=STARTS, min_fail_agents=3, seed=0)
+    s = verifai_section(fake_env(), list(range(10)), n_iters=2, starts=STARTS, min_fail_agents=3, seed=0, workers=1)
     assert set(s.params[:, 0]) == {1.0}
     scores = question_scores(fake_env(), 0, PairSet("x", np.repeat([1.0, 2.0], STARTS)[:, None], np.zeros((20, 1))))
     np.testing.assert_allclose(scores, [0.4, 0.5])
@@ -98,14 +98,14 @@ def test_build_exam_writes_all_three_sections(monkeypatch, tmp_path):
     fake_world(monkeypatch, {1.0: [0] * 3}, width=5)
     monkeypatch.setattr(exam, "exam_dir", lambda name: tmp_path)
     monkeypatch.setattr(cartpole, "sample_starts", lambda row, n, rng: np.zeros((n, 4)))
-    build_exam("cartpole", list(range(3)), n_iters=2, seed=0, min_fail_agents=3)
+    build_exam("cartpole", list(range(3)), n_iters=2, seed=0, min_fail_agents=3, workers=1)
     assert set(load_sets(str(tmp_path))) == {"random", "verifai", "custom"}
 
 
 def test_verifai_section_stops_with_counts_when_no_task_survives(monkeypatch):
     fake_world(monkeypatch, {1.0: [10] * 10})
     with pytest.raises(SystemExit, match="1 pooled"):
-        verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0)
+        verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0, workers=1)
 
 
 def test_reference_agents_require_exactly_ten_ref_runs(tmp_path):
@@ -140,5 +140,19 @@ def test_frozenlake_verifai_tasks_are_whole_maps_and_must_be_winnable(monkeypatc
 
     monkeypatch.setattr(exam, "search", fake_search)
     monkeypatch.setattr(exam, "grade", lambda e, a, p, s, extras=None: (np.zeros(len(p), dtype=bool), np.zeros(len(p))))
-    s = verifai_section(env, list(range(10)), n_iters=1, seed=0)
+    s = verifai_section(env, list(range(10)), n_iters=1, seed=0, workers=1)
     assert set(map(tuple, s.params)) == {(1.0, 7.0)}
+
+
+def test_verifai_section_is_the_same_with_two_workers_as_with_one():
+    import torch
+
+    from acl_bench.ppo import Agent
+    torch.manual_seed(0)
+    agents = [Agent(cartpole.OBS_DIM, cartpole.ACTION_DIM) for _ in range(3)]
+    serial = verifai_section(cartpole, agents, n_iters=4, min_fail_agents=1, seed=5, workers=1)
+    parallel = verifai_section(cartpole, agents, n_iters=4, min_fail_agents=1, seed=5, workers=2)
+    assert len(serial) > 0
+    np.testing.assert_array_equal(parallel.params, serial.params)
+    np.testing.assert_array_equal(parallel.s0, serial.s0)
+    np.testing.assert_array_equal(parallel.ref_fail_frac, serial.ref_fail_frac)
