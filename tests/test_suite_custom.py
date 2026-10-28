@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from acl_bench.envs import cartpole, frozenlake, lunarlander
-from acl_bench.suite.custom import custom_cases, custom_suite
+from acl_bench.suite.custom import custom_cases, custom_labels, custom_suite
 
 
 def test_cartpole_has_default_plus_six_per_swept_setting():
@@ -44,3 +44,26 @@ def test_suite_is_named_custom_and_reproducible():
     n = len(custom_cases(lunarlander))
     assert a.name == "custom" and len(a) == 10 * n
     assert a.digest() == b.digest()
+
+
+@pytest.mark.parametrize("env", [cartpole, lunarlander, frozenlake])
+def test_one_label_per_question(env):
+    assert len(custom_labels(env)) * 7 == len(custom_suite(env, starts=7).params)
+
+
+@pytest.mark.parametrize("env", [cartpole, lunarlander, frozenlake])
+def test_no_two_cases_are_identical(env):
+    rows = [tuple(p.items()) for _, p in custom_cases(env)]
+    assert len(rows) == len(set(rows))
+
+
+def test_frozenlake_swept_cases_keep_exactly_three_maps_except_hole_free():
+    labels = [label for label, _ in custom_cases(frozenlake) if not label.startswith("held_out")]
+    cases = {}
+    for label in labels:
+        cases.setdefault(label.rsplit("/", 1)[0], []).append(label)
+    counts = {case: len(maps) for case, maps in cases.items()}
+    assert counts.pop("hole_density:min+beyond(0)") == 1       # every seed gives the same empty map
+    assert set(counts.values()) == {3}
+    assert "hole_density:max+beyond(0.4)" in counts
+    assert "slip:max" not in counts and "default" in counts      # slip max is the default
