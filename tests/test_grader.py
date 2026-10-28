@@ -33,6 +33,8 @@ def cartpole_agent():
 
 @pytest.mark.parametrize("name", envs.NAMES)
 def test_physics_matches_gym_step_by_step(name):
+    if name == "lunarlander":
+        pytest.skip("Box2D pool: no settable state; covered in test_lunarlander.py")
     env = envs.get(name)
     params, s0 = random_pairs(env, 80, seed=0)
     rng = np.random.default_rng(1)
@@ -56,6 +58,8 @@ def test_physics_matches_gym_step_by_step(name):
 
 @pytest.mark.parametrize("name", [n for n in envs.NAMES if hasattr(envs.get(n), "reward")])
 def test_batched_reward_matches_gym(name):
+    if name == "lunarlander":
+        pytest.skip("Box2D pool: no settable state; covered in test_lunarlander.py")
     env = envs.get(name)
     params, s0 = random_pairs(env, 40, seed=3)
     rng = np.random.default_rng(4)
@@ -147,6 +151,8 @@ def test_pass_rule_and_bounds(name):
     full_steps, full_ended = rollout(env, agent, params, s0, extras=extras)
     if env.GOAL == "balance":
         expected = extras["streak"] >= env.HOLD_STEPS
+    elif env.GOAL == "return":
+        expected = extras["return"] >= env.RETURN_THRESHOLD
     else:
         expected = full_ended if env.GOAL == "reach" else full_steps == env.MAX_EPISODE_STEPS
     np.testing.assert_array_equal(success, expected)
