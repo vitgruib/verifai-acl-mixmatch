@@ -25,6 +25,7 @@ PARAM_BOUNDS = {
     "init_range": (0.05, 0.3),   # |initial state| ~ U(-init_range, init_range)
 }
 PARAM_ORDER = tuple(PARAM_BOUNDS)
+DEFAULTS = {"length": 0.5, "masspole": 0.1, "masscart": 1.0, "force_mag": 10.0, "init_range": 0.05}
 MAX_EPISODE_STEPS = 500
 OBS_DIM, ACTION_DIM = 4, 2
 GOAL = "survive"
@@ -36,6 +37,10 @@ TAU = 0.02
 THETA_THRESHOLD = 12 * 2 * np.pi / 360   # failure angle (0.2095 rad)
 X_THRESHOLD = 2.4
 _LENGTH, _MASSPOLE, _MASSCART, _FORCE, _INIT = range(5)
+
+
+def valid(params: dict) -> bool:
+    return all(v > 0 for v in params.values())
 
 
 class ParamCartPoleEnv(CartPoleEnv):
