@@ -1219,3 +1219,19 @@ carry the same defect.
   what was tested.
 - Grading, compute accounting and the analysis were re-checked: 18 section scores regraded from
   snapshots matched exactly.
+
+### Batch 21, amendment 3 (2026-10-28, before any LunarLander scored run): LunarLander budget doubled
+
+The user chose to double LunarLander's budget rather than drop it (amendment 1): 22,528,000 env
+steps per run (2 x 11,264,000), for the REF agents and every scored arm. The 10 REF agents are
+retrained at that budget on the same seeds (the 11.26M snapshots are kept, ungraded, in
+`results/suite/lunarlander/snapshots_11M/`) and the exam is rebuilt from them with the same seed
+(20261028) and search budget. The random and custom sections do not depend on the agents and come
+out identical (same digests). SFL keeps sfl_n 20 every 60, measured at 11.26M; its scouted share at
+the doubled budget is reported with the result. Everything else is unchanged: 20 seeds per arm,
+the same one-sided test, Holm over all 12 tests (amendment 1's 8 plus LunarLander's 4).
+
+**Go/no-go on the REF agents.** If at least 3 of the 10 REF agents at 22.5M still fail nearly
+every random question (question pass share below 0.2), the VerifAI section again does not measure
+DR's failures: LunarLander is then dropped and the scored runs are not launched. Estimated cost:
+about 10 hours of the Mac (REF about 1.5 hours, exam about 1 hour, scored runs about 7.5 hours).
