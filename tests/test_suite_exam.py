@@ -100,6 +100,7 @@ def test_build_exam_writes_all_three_sections(monkeypatch, tmp_path):
     monkeypatch.setattr(cartpole, "sample_starts", lambda row, n, rng: np.zeros((n, 4)))
     build_exam("cartpole", list(range(3)), n_iters=2, seed=0, min_fail_agents=3, workers=1)
     assert set(load_sets(str(tmp_path))) == {"random", "verifai", "custom"}
+    assert not (tmp_path / ".search_cache").exists()
 
 
 def test_verifai_section_stops_with_counts_when_no_task_survives(monkeypatch):
@@ -156,3 +157,15 @@ def test_verifai_section_is_the_same_with_two_workers_as_with_one():
     np.testing.assert_array_equal(parallel.params, serial.params)
     np.testing.assert_array_equal(parallel.s0, serial.s0)
     np.testing.assert_array_equal(parallel.ref_fail_frac, serial.ref_fail_frac)
+
+
+def test_rerun_with_a_search_cache_skips_the_searches(monkeypatch, tmp_path):
+    fake_world(monkeypatch, {1.0: [0] * 3 + [10] * 7, 2.0: [0] * 5 + [10] * 5})
+    first = verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0, workers=1, cache_dir=tmp_path)
+
+    def no_search(*args):
+        raise AssertionError("search ran despite the cache")
+
+    monkeypatch.setattr(exam, "search", no_search)
+    again = verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0, workers=1, cache_dir=tmp_path)
+    assert again.digest() == first.digest()

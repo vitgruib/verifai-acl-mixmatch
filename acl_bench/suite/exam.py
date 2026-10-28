@@ -21,9 +21,12 @@ import importlib
 import multiprocessing as mp
 import os
 import random
+import shutil
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from acl_bench import envs
 from acl_bench.exam.grader import grade
@@ -34,7 +37,8 @@ from acl_bench.suite.custom import MIN_OPTIMAL_SUCCESS, custom_labels, custom_su
 
 STARTS = 10
 N_REF = 10               # reference agents the pre-registered "3 of 10" rule assumes
-GRADE_CHUNK = 20_000     # rows per grade call, to bound the memory of FrozenLake's 232-wide states
+GRADE_CHUNK = 2_000      # rows per grade call: bounds memory (LunarLander keeps ~140 KB per live Box2D env,
+                         # so 2,000 rows ~ 0.3 GB per worker; FrozenLake's states are 232 wide)
 PASS_RATE = 0.5          # an agent passes a question at this share of its plays or more
 WORKERS = max(1, (os.cpu_count() or 1) - 2)
 
@@ -78,11 +82,28 @@ def random_section(env, n_questions: int = 300, starts: int = STARTS, seed: int 
     return _pairset("random", rows, s0s, starts)
 
 
-def _search_one(env, agent, n_iters: int, starts: int, seed: int, i: int, rng) -> PairSet:
+def _search_one(env, agent, n_iters: int, starts: int, seed: int, i: int) -> PairSet:
+    """Agent i's "ce" search, with its own sampler seed and its own start-state generator."""
     sampler_seed = int(np.random.SeedSequence([seed, i]).generate_state(1)[0])
     random.seed(sampler_seed)                         # Scenic / VerifAI draw from these globals
     np.random.seed(sampler_seed)
-    return search(env, "ce", [agent], n_iters, starts, rng)
+    return search(env, "ce", [agent], n_iters, starts, np.random.default_rng(np.random.SeedSequence([seed, i, 1])))
+
+
+def _cache_path(cache_dir, seed: int, i: int, n_iters: int, starts: int) -> Path:
+    return Path(cache_dir) / f"seed{seed}_agent{i}_iters{n_iters}_starts{starts}.npz"
+
+
+def _save_search(path: Path, pool: PairSet) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp.npz")                # a run killed mid-write leaves no half cache entry
+    np.savez(tmp, params=pool.params, s0=pool.s0, ref_fail_frac=pool.ref_fail_frac)
+    os.replace(tmp, path)
+
+
+def _load_search(path: Path) -> PairSet:
+    z = np.load(path)
+    return PairSet("SEARCH_ce", z["params"], z["s0"], z["ref_fail_frac"])
 
 
 def _pool_tasks(env, pools: list[PairSet], starts: int, rng):
@@ -100,16 +121,12 @@ def _pool_tasks(env, pools: list[PairSet], starts: int, rng):
 
 
 def _init_worker() -> None:
-    import torch
-    torch.set_num_threads(1)                          # spawned worker: keep torch to one thread
+    torch.set_num_threads(1)
 
 
 def _search_job(job):
-    env_name, agent, n_iters, starts, seed, i, state = job
-    rng = np.random.default_rng()
-    rng.bit_generator.state = state
-    pool = _search_one(importlib.import_module(env_name), agent, n_iters, starts, seed, i, rng)
-    return pool, rng.bit_generator.state
+    env_name, agent, n_iters, starts, seed, i = job
+    return _search_one(importlib.import_module(env_name), agent, n_iters, starts, seed, i)
 
 
 def _grade_job(job):
@@ -117,50 +134,38 @@ def _grade_job(job):
     return grade(importlib.import_module(env_name), agent, params, s0)[0]
 
 
-def _parallel_searches(env, agents: list, n_iters: int, starts: int, seed: int, rng, pool) -> list[PairSet]:
-    """The serial searches share `rng` in agent order. A search draws from it only through
-    `sample_starts`, `n_iters` times, and how much each call draws does not depend on the task,
-    so each search's start state is found by replaying those calls on a fixed row; every
-    search's end state is then checked against the next one's start."""
-    row = np.array([env.PARAM_BOUNDS[k][0] for k in env.PARAM_ORDER], dtype=np.float64)
-    states = []
-    for _ in agents:
-        states.append(rng.bit_generator.state)
-        for _ in range(n_iters):
-            env.sample_starts(row, starts, rng)
-    results = pool.map(_search_job, [(env.__name__, agent, n_iters, starts, seed, i, states[i])
-                                     for i, agent in enumerate(agents)])
-    for i, (_, end) in enumerate(results):
-        if end != (states[i + 1] if i + 1 < len(agents) else rng.bit_generator.state):
-            raise RuntimeError(f"search {i} drew from rng differently than the replay predicted")
-    return [p for p, _ in results]
-
-
-def _parallel_scores(env, agents: list, pairset: PairSet, starts: int, pool) -> list[np.ndarray]:
-    """`question_scores` of every agent, one job per (agent, chunk), the chunks those of
-    `question_scores` so every grade call sees the same batch as the serial code."""
-    step = GRADE_CHUNK // starts * starts
-    chunks = range(0, len(pairset), step)
-    flat = pool.map(_grade_job, [(env.__name__, a, pairset.params[i:i + step], pairset.s0[i:i + step])
-                                 for a in agents for i in chunks])
-    return [np.concatenate(flat[k * len(chunks):(k + 1) * len(chunks)]).reshape(-1, starts).mean(axis=1)
-            for k in range(len(agents))]
-
-
 def verifai_section(env, agents: list, n_iters: int, starts: int = STARTS, min_fail_agents: int = 3,
-                    seed: int = 0, workers: int = WORKERS) -> PairSet:
+                    seed: int = 0, workers: int = WORKERS, cache_dir=None) -> PairSet:
     """`workers` > 1 runs the searches and the regrade in a spawned process pool and gives the
-    same result as `workers` == 1, which runs everything in this process."""
+    same result as `workers` == 1, which runs everything in this process. With `cache_dir`, each
+    agent's search is saved as it finishes and reused by a rerun."""
+    torch.set_num_threads(1)                          # as in the workers, so both paths compute alike
     rng = np.random.default_rng(seed)
+    paths = [_cache_path(cache_dir, seed, i, n_iters, starts) if cache_dir else None for i in range(len(agents))]
+    pools = [_load_search(p) if p and p.exists() else None for p in paths]
+    todo = [i for i, pool in enumerate(pools) if pool is None]
+
+    def finished(i: int, pool: PairSet) -> None:
+        pools[i] = pool
+        if paths[i]:
+            _save_search(paths[i], pool)
+
     if workers > 1:
         for var in ("OMP_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
             os.environ.setdefault(var, "1")            # one thread per worker; inherited by spawned workers
-        with mp.get_context("spawn").Pool(workers, initializer=_init_worker) as pool:
-            pools = _parallel_searches(env, agents, n_iters, starts, seed, rng, pool)
+        # a worker that dies (e.g. killed for memory) raises BrokenProcessPool here instead of hanging
+        with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn"), initializer=_init_worker) as ex:
+            futures = {ex.submit(_search_job, (env.__name__, agents[i], n_iters, starts, seed, i)): i for i in todo}
+            for future in as_completed(futures):
+                finished(futures[future], future.result())
             rows, s0s, pooled = _pool_tasks(env, pools, starts, rng)
-            scores = _parallel_scores(env, agents, pooled, starts, pool)
+            step = GRADE_CHUNK // starts * starts       # question_scores' chunks: the same grade batches
+            graded = [[ex.submit(_grade_job, (env.__name__, a, pooled.params[j:j + step], pooled.s0[j:j + step]))
+                       for j in range(0, len(pooled), step)] for a in agents]
+            scores = [np.concatenate([f.result() for f in fs]).reshape(-1, starts).mean(axis=1) for fs in graded]
     else:
-        pools = [_search_one(env, agent, n_iters, starts, seed, i, rng) for i, agent in enumerate(agents)]
+        for i in todo:
+            finished(i, _search_one(env, agents[i], n_iters, starts, seed, i))
         rows, s0s, pooled = _pool_tasks(env, pools, starts, rng)
         scores = [question_scores(env, a, pooled, starts) for a in agents]
     fails = sum(s < PASS_RATE for s in scores)
@@ -176,11 +181,13 @@ def verifai_section(env, agents: list, n_iters: int, starts: int = STARTS, min_f
 def build_exam(env_name: str, ref_agents: list, n_iters: int, seed: int, min_fail_agents: int = 3,
                workers: int = WORKERS) -> None:
     env = envs.get(env_name)
+    cache = exam_dir(env_name) / ".search_cache"
     sets = {"random": random_section(env, seed=seed),
             "verifai": verifai_section(env, ref_agents, n_iters, min_fail_agents=min_fail_agents, seed=seed,
-                                       workers=workers),
+                                       workers=workers, cache_dir=cache),
             "custom": custom_suite(env, seed=seed)}
-    save_sets(sets, str(exam_dir(env_name)), extra={"custom_cases": custom_labels(env)})
+    save_sets(sets, str(exam_dir(env_name)), extra={"custom_cases": custom_labels(env), "torch_threads": 1})
+    shutil.rmtree(cache)
 
 
 def reference_agents(snapshots: Path) -> list:
