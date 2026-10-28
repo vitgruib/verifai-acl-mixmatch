@@ -352,3 +352,41 @@ def test_start_state_sfl_selects_and_replays_archived_states():
 def test_start_state_arms_train(arm):
     _, stats, _ = _short(arm)
     assert stats["scouted_steps"] > 0
+
+
+def _late_env():
+    """'survive' env whose level x in [0, 1] can fail only from step 5 on, then with
+    probability x per step: a scout cut short before step 5 sees every rollout pass."""
+    env = types.ModuleType("late")
+    env.PARAM_BOUNDS, env.PARAM_ORDER = {"x": (0.0, 1.0)}, ["x"]
+    env.OBS_DIM, env.ACTION_DIM, env.MAX_EPISODE_STEPS, env.GOAL = 1, 2, 10, "survive"
+    rng = np.random.default_rng(0)
+    env.sample_starts = lambda p, n, r: np.zeros((n, 1))
+    env.observe = lambda s: s
+
+    def step(s, a, p):
+        env._params = p
+        return s + 1
+    env.step = step
+    env.terminated = lambda s: (s[:, 0] >= 5) & (rng.uniform(size=len(s)) < env._params[:, 0])
+    return env
+
+
+def test_scout_cut_short_with_nothing_learnable_keeps_the_last_buffer():
+    env, bounds = _late_env(), np.array([[0.0, 1.0]])
+    lc = LevelConfig(sfl=True, sfl_n=50, sfl_k=4, sfl_top=5)
+    levels = LevelSampler(lc, bounds, np.random.default_rng(1))
+    prev = np.full((5, 1), 0.3)
+    levels.set_sfl(prev)
+    top, _, _ = sfl_select(env, make_agent(env, bounds, FastConfig()), levels, lc,
+                           np.random.default_rng(2), max_sim=3 * 50 * 4)
+    np.testing.assert_array_equal(top, prev)
+
+
+def test_full_scout_installs_its_own_buffer():
+    env, bounds = _late_env(), np.array([[0.0, 1.0]])
+    lc = LevelConfig(sfl=True, sfl_n=50, sfl_k=4, sfl_top=5)
+    levels = LevelSampler(lc, bounds, np.random.default_rng(1))
+    levels.set_sfl(np.full((5, 1), 0.3))
+    top, _, _ = sfl_select(env, make_agent(env, bounds, FastConfig()), levels, lc, np.random.default_rng(2))
+    assert not np.isin(top[:, 0], [0.3]).any()

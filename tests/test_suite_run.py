@@ -13,7 +13,7 @@ from acl_bench.plr.fast import FastConfig, train
 from acl_bench.plr.levels import LevelConfig, LevelSampler
 from acl_bench.snapshots import load_run
 from acl_bench.suite import run
-from acl_bench.suite.arms import ARMS
+from acl_bench.suite.arms import ARMS, SFL_SCOUT, arm_config
 from acl_bench.suite.exam import question_scores, random_section
 
 SECTIONS = ("random", "verifai", "custom")
@@ -183,5 +183,13 @@ def test_arms_are_configured_as_preregistered():
     assert ARMS["ACCEL"] == dataclasses.replace(ARMS["RPLR"], accel=True, mut_sigma=LevelConfig().mut_sigma)
     assert ARMS["SFL"].sfl and ARMS["SFL"].charge_scouting and ARMS["SFL"].replay_prob == 0.5
     assert ARMS["DR"] == ARMS["REF"] == LevelConfig(replay_prob=0.0)
+
+
+def test_sfl_scouting_is_sized_per_env_and_other_arms_are_not():
+    scout = {k: getattr(arm_config("SFL", "cartpole"), k) for k in ("sfl_n", "sfl_k", "sfl_top", "sfl_every")}
+    assert scout == {"sfl_k": 8, **SFL_SCOUT["cartpole"]}
+    assert arm_config("SFL", "cartpole") == dataclasses.replace(ARMS["SFL"], **SFL_SCOUT["cartpole"])
+    assert "lunarlander" not in SFL_SCOUT and arm_config("SFL", "lunarlander") == ARMS["SFL"]
+    assert all(arm_config(arm, "cartpole") == ARMS[arm] for arm in ARMS if arm != "SFL")
 
 

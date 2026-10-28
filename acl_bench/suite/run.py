@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from acl_bench import envs
-from acl_bench.suite.arms import ARMS, BUDGET
+from acl_bench.suite.arms import ARMS, BUDGET, arm_config
 
 
 def run_seed(arm: str, seed: int) -> int:
@@ -50,7 +50,7 @@ def job_fn(job):
     from acl_bench.snapshots import save_run
     from acl_bench.suite.exam import STARTS
     env_name, arm, seed, steps, n_checks, exam, out = job
-    env, sets, levels = envs.get(env_name), load_exam(exam), ARMS[arm]
+    env, sets, levels = envs.get(env_name), load_exam(exam), arm_config(arm, env_name)
     snapshots = {}
 
     def on_check(step, agent):

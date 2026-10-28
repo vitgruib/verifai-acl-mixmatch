@@ -348,9 +348,10 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     rews, vals, alives, terms = [], [], [], []
     r_step, r_term = REWARD.get(env.__name__.rsplit(".", 1)[-1], (0.0, 0.0))   # unused with env.reward
     xa, xc = agent.inputs
-    sim = 0                                        # environment steps simulated here
+    sim, cut = 0, False                            # environment steps simulated here
     for _ in range(env.MAX_EPISODE_STEPS):
         if sim + int(alive.sum()) > max_sim:
+            cut = True
             break
         sim += int(alive.sum())
         raw = env.observe(state).astype(np.float32)
@@ -417,6 +418,8 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     if pvl:
         score = score.reshape(lc.sfl_n, lc.sfl_k).mean(1)
     sim += sim_auto
+    if cut and not (score > 0).any():           # a truncated scout that found nothing: keep the last buffer
+        return prev, sim, getattr(levels, "sfl_weights", None)
     if lc.sfl_soft:
         keep = score > 0
         levels.sfl_top_starts = None if st_s is None else (st_s[keep], st_has[keep])
