@@ -32,7 +32,7 @@ import torch
 from acl_bench import envs
 from acl_bench.exam.grader import grade
 from acl_bench.exam.search import search
-from acl_bench.exam.sets import PairSet, save_sets
+from acl_bench.exam.sets import PairSet, load_sets, save_sets
 from acl_bench.snapshots import find_runs, load_run
 from acl_bench.suite.custom import MIN_OPTIMAL_SUCCESS, custom_labels, custom_suite
 
@@ -42,10 +42,35 @@ GRADE_CHUNK = 2_000      # rows per grade call: bounds memory (LunarLander keeps
                          # so 2,000 rows ~ 0.3 GB per worker; FrozenLake's states are 232 wide)
 PASS_RATE = 0.5          # an agent passes a question at this share of its plays or more
 WORKERS = max(1, (os.cpu_count() or 1) - 2)
+VERIFAI_MAX = 3000       # graded VerifAI questions; LunarLander keeps all ~30k found, ~45 min to grade per run
 
 
 def exam_dir(env_name: str) -> Path:
     return Path(__file__).resolve().parents[2] / "frozen_sets" / "suite" / env_name
+
+
+def pool_dir(env_name: str) -> Path:
+    """Every VerifAI question found, before the cap; kept for reference, never graded."""
+    return Path(__file__).resolve().parents[2] / "frozen_sets" / "suite_pool" / env_name
+
+
+def cap_questions(ps: PairSet, max_questions: int = VERIFAI_MAX, seed: int = 0, starts: int = STARTS) -> PairSet:
+    """A uniform random subset of whole questions, in their original order, when there are more
+    than `max_questions`."""
+    n = len(ps) // starts
+    if n <= max_questions:
+        return ps
+    keep = np.sort(np.random.default_rng(np.random.SeedSequence([seed, 2])).choice(n, max_questions, replace=False))
+    rows = (keep[:, None] * starts + np.arange(starts)).ravel()
+    frac = None if ps.ref_fail_frac is None else ps.ref_fail_frac[rows]
+    return PairSet(ps.name, ps.params[rows], ps.s0[rows], frac)
+
+
+def cap_existing(env_name: str, seed: int) -> None:
+    """Move a built exam's full VerifAI section to pool_dir and grade only its capped subset."""
+    full = load_sets(str(exam_dir(env_name)), names=["verifai"])["verifai"]
+    save_sets({"verifai": full}, str(pool_dir(env_name)))
+    save_sets({"verifai": cap_questions(full, seed=seed)}, str(exam_dir(env_name)), extra={"verifai_found": len(full) // STARTS})
 
 
 def _is_frozenlake(env) -> bool:
@@ -196,11 +221,14 @@ def build_exam(env_name: str, ref_agents: list, n_iters: int, seed: int, min_fai
                workers: int = WORKERS) -> None:
     env = envs.get(env_name)
     cache = exam_dir(env_name) / ".search_cache"
+    found = verifai_section(env, ref_agents, n_iters, min_fail_agents=min_fail_agents, seed=seed,
+                            workers=workers, cache_dir=cache)
+    save_sets({"verifai": found}, str(pool_dir(env_name)))
     sets = {"random": random_section(env, seed=seed),
-            "verifai": verifai_section(env, ref_agents, n_iters, min_fail_agents=min_fail_agents, seed=seed,
-                                       workers=workers, cache_dir=cache),
+            "verifai": cap_questions(found, seed=seed),
             "custom": custom_suite(env, seed=seed)}
-    save_sets(sets, str(exam_dir(env_name)), extra={"custom_cases": custom_labels(env), "torch_threads": 1})
+    save_sets(sets, str(exam_dir(env_name)), extra={"custom_cases": custom_labels(env), "torch_threads": 1,
+                                                    "verifai_found": len(found) // STARTS})
     shutil.rmtree(cache)
 
 
@@ -218,7 +246,13 @@ def main():
     parser.add_argument("--iters", type=int, default=3000, help="drawn tasks per reference agent")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=WORKERS, help="processes for the searches and the regrade")
+    parser.add_argument("--cap-existing", action="store_true",
+                        help="cap a built exam's VerifAI section to VERIFAI_MAX questions instead of building")
     args = parser.parse_args()
+    if args.cap_existing:
+        cap_existing(args.env, args.seed)
+        print(f"capped -> {exam_dir(args.env)}, full section -> {pool_dir(args.env)}")
+        return
     snapshots = Path("results") / "suite" / args.env / "snapshots"
     build_exam(args.env, reference_agents(snapshots), args.iters, args.seed, workers=args.workers)
     print(f"saved -> {exam_dir(args.env)}")

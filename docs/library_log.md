@@ -1142,3 +1142,22 @@ strong evidence against these methods here; a positive result could still be "no
 "better curriculum", which is why the random and custom sections are kept for the follow-up. SFL
 scouts far fewer candidates than in its paper because its scouting is charged to the same budget;
 that is a stated cost of equal compute.
+
+### Batch 21, amendment 1 (2026-10-28, before any scored run)
+
+**VerifAI section capped at 3,000 questions.** The exams found far more questions than expected
+(CartPole 11,689, FrozenLake 6,894, LunarLander 30,000, i.e. every task the search visited).
+Grading 30,000 LunarLander questions costs about 45 minutes per scored run, about 9.5 extra hours
+over 100 runs, which breaks the 12-hour share. Every task's graded VerifAI section is therefore a
+uniform random subset of 3,000 whole questions (seed 20261028), drawn before any scored run; the
+full sections are kept in `frozen_sets/suite_pool/<env>/` and are not graded. At 3,000 questions the
+sampling error of a section score is about 0.01, well below the spread between seeds. Seeds,
+budgets and the test are unchanged.
+
+**LunarLander on hold.** 6 of its 10 REF agents never learned the task at the calibrated budget
+(random-section question pass share 0.00, 0.81, 0.83, 0.12, 0.00, 0.72, 0.00, 0.00, 0.80, 0.00;
+the 3 calibration seeds had all taken off by 11.26M steps). With most reference agents failing
+everything, "at least 3 of 10 fail" keeps nearly any task, so its VerifAI section does not measure
+DR's failures. The LunarLander scored runs wait for a decision; CartPole (REF 0.81-0.99) and
+FrozenLake (REF 0.52-0.62) go ahead. The primary test's Holm correction is over the tests actually
+run (8 if LunarLander is dropped).

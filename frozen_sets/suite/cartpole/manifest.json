@@ -36,9 +36,10 @@
       "sha256": "ec1688668f80fb31b9992b1a05a9a86b8c287a3c203baae3fb131448d5fe44bf"
     },
     "verifai": {
-      "n": 116890,
-      "sha256": "e34e8d1fd13e3b79a43bbc4095cd2a2d8cdc68e89ca0374e06a4ed66d42b69fc"
+      "n": 30000,
+      "sha256": "6005a704bed6dbe9c7b13a0d0bdb51f4931ae5cbb766348997eeae89645ada22"
     }
   },
-  "torch_threads": 1
+  "torch_threads": 1,
+  "verifai_found": 11689
 }

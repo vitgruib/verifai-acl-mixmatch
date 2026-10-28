@@ -1,0 +1,29 @@
+{
+  "custom_cases": [
+    "default",
+    "gravity:max",
+    "gravity:max+10%",
+    "wind_power:max",
+    "wind_power:max+10%",
+    "wind_power:max+50%",
+    "turbulence_power:max",
+    "turbulence_power:max+10%",
+    "turbulence_power:max+50%"
+  ],
+  "sets": {
+    "custom": {
+      "n": 90,
+      "sha256": "cd6cd1fa9bb6e8bbdbaeb763d045e602991adce9e69a5bac39d8d0c8d4efd9cd"
+    },
+    "random": {
+      "n": 3000,
+      "sha256": "b24be448b9a2518c80a1bd8d115e495d051fd17efe4f5b474bb99e953a177d6e"
+    },
+    "verifai": {
+      "n": 30000,
+      "sha256": "4ef4834a854ff4af87da4940f7aa1dfcf17b66d8c37599807c99d95e0864d485"
+    }
+  },
+  "torch_threads": 1,
+  "verifai_found": 30000
+}

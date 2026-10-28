@@ -98,9 +98,11 @@ def test_build_exam_writes_all_three_sections(monkeypatch, tmp_path):
     fake_world(monkeypatch, {1.0: [0] * 3}, width=5)
     monkeypatch.setattr(exam, "_agent_digest", str)
     monkeypatch.setattr(exam, "exam_dir", lambda name: tmp_path)
+    monkeypatch.setattr(exam, "pool_dir", lambda name: tmp_path / "pool")
     monkeypatch.setattr(cartpole, "sample_starts", lambda row, n, rng: np.zeros((n, 4)))
     build_exam("cartpole", list(range(3)), n_iters=2, seed=0, min_fail_agents=3, workers=1)
     assert set(load_sets(str(tmp_path))) == {"random", "verifai", "custom"}
+    assert set(load_sets(str(tmp_path / "pool"))) == {"verifai"}
     assert not (tmp_path / ".search_cache").exists()
 
 
@@ -190,3 +192,22 @@ def test_cached_search_is_not_reused_for_an_agent_with_different_weights(monkeyp
     verifai_section(fake_env(), [old], n_iters=1, min_fail_agents=1, seed=0, workers=1, cache_dir=tmp_path)
     verifai_section(fake_env(), [retrained], n_iters=1, min_fail_agents=1, seed=0, workers=1, cache_dir=tmp_path)
     assert searched == [old, retrained]
+
+
+def test_cap_questions_keeps_whole_questions_and_their_fail_fractions():
+    params = np.repeat(np.arange(50.0)[:, None], 10, axis=0)
+    s0 = np.arange(500.0)[:, None]
+    frac = np.repeat(np.arange(50) / 100, 10)
+    capped = exam.cap_questions(PairSet("verifai", params, s0, frac), max_questions=20, seed=7)
+    q = capped.params[::10, 0].astype(int)
+    assert len(capped) == 200 and len(set(q)) == 20
+    assert (capped.params[:, 0] == np.repeat(q, 10)).all()
+    assert (capped.s0[:, 0] == (np.repeat(q, 10) * 10 + np.tile(np.arange(10), 20))).all()
+    assert np.allclose(capped.ref_fail_frac, np.repeat(q / 100, 10))
+    again = exam.cap_questions(PairSet("verifai", params, s0, frac), max_questions=20, seed=7)
+    assert again.digest() == capped.digest()
+
+
+def test_cap_questions_leaves_a_small_section_alone():
+    ps = PairSet("verifai", np.zeros((30, 2)), np.zeros((30, 4)), np.full(30, 0.3))
+    assert exam.cap_questions(ps, max_questions=20, seed=7) is ps
