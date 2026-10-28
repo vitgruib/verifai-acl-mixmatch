@@ -36,7 +36,8 @@ BUDGET: dict[str, int] = {}     # env steps per run, set from the calibration ru
 #       --checks 1 --workers 2 --allow-battery --out <scratch> --exam <dir with the section>
 # CartPole (614_400 steps): sfl_n 20 at sfl_every 10 scouted 0.74; sfl_every 25/30/35/40 gave
 # 0.58/0.54/0.48/0.51 (2-seed means, noise about 0.03); 40 kept.
-# An env with no entry runs LevelConfig's defaults (sfl_n 1000, sfl_top 100, sfl_every 10).
+# An env with no entry has no SFL arm: arm_config raises rather than fall back to LevelConfig's
+# defaults (sfl_n 1000, sfl_every 10), which spend nearly the whole budget scouting.
 SFL_SCOUT: dict[str, dict[str, int]] = {
     "cartpole": {"sfl_n": 20, "sfl_top": 10, "sfl_every": 40},
 }
@@ -44,6 +45,8 @@ SFL_SCOUT: dict[str, dict[str, int]] = {
 
 def arm_config(arm: str, env: str) -> LevelConfig:
     """The arm's settings on `env`: SFL takes that env's scouting size."""
-    if arm == "SFL" and env in SFL_SCOUT:
-        return dataclasses.replace(ARMS["SFL"], **SFL_SCOUT[env])
-    return ARMS[arm]
+    if arm != "SFL":
+        return ARMS[arm]
+    if env not in SFL_SCOUT:
+        raise KeyError(f"SFL has no SFL_SCOUT entry for {env}")
+    return dataclasses.replace(ARMS["SFL"], **SFL_SCOUT[env])

@@ -390,3 +390,14 @@ def test_full_scout_installs_its_own_buffer():
     levels.set_sfl(np.full((5, 1), 0.3))
     top, _, _ = sfl_select(env, make_agent(env, bounds, FastConfig()), levels, lc, np.random.default_rng(2))
     assert not np.isin(top[:, 0], [0.3]).any()
+
+
+def test_first_scout_cut_short_with_nothing_learnable_installs_nothing_and_sampling_goes_on():
+    env, bounds = _late_env(), np.array([[0.0, 1.0]])
+    lc = LevelConfig(sfl=True, sfl_n=50, sfl_k=4, sfl_top=5)
+    levels = LevelSampler(lc, bounds, np.random.default_rng(1))
+    top, _, w = sfl_select(env, make_agent(env, bounds, FastConfig()), levels, lc,
+                           np.random.default_rng(2), max_sim=3 * 50 * 4)
+    assert top is None and w is None
+    levels.set_sfl(top, w)
+    assert all(levels.pick()[2] == NEW for _ in range(200))   # still DR until a scout finds something

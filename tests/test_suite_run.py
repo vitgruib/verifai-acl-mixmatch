@@ -117,6 +117,13 @@ def test_pass_rate_counts_questions_passed_and_play_rate_counts_plays(monkeypatc
     assert run.section_scores(None, None, ps) == pytest.approx((2 / 3, 19 / 30))
 
 
+def test_sfl_on_an_env_without_scouting_size_stops_before_any_run(tmp_path):
+    with pytest.raises(SystemExit, match="SFL has no SFL_SCOUT entry for lunarlander"):
+        run.main(["--env", "lunarlander", "--arms", "DR", "SFL", "--seeds", "1", "--steps", "4096",
+                  "--allow-battery", "--out", str(tmp_path / "out"), "--exam", str(tmp_path / "exam")])
+    assert not (tmp_path / "out").exists()
+
+
 def test_without_an_exam_it_only_trains_and_saves(tmp_path):
     run.main(["--env", "cartpole", "--arms", "REF", "--seeds", "1", "--steps", "2048", "--workers", "1",
               "--allow-battery", "--min-battery-pct", "0", "--out", str(tmp_path / "out"),
@@ -189,7 +196,9 @@ def test_sfl_scouting_is_sized_per_env_and_other_arms_are_not():
     scout = {k: getattr(arm_config("SFL", "cartpole"), k) for k in ("sfl_n", "sfl_k", "sfl_top", "sfl_every")}
     assert scout == {"sfl_k": 8, **SFL_SCOUT["cartpole"]}
     assert arm_config("SFL", "cartpole") == dataclasses.replace(ARMS["SFL"], **SFL_SCOUT["cartpole"])
-    assert "lunarlander" not in SFL_SCOUT and arm_config("SFL", "lunarlander") == ARMS["SFL"]
+    for env in ("lunarlander", "frozenlake"):
+        with pytest.raises(KeyError, match=f"SFL has no SFL_SCOUT entry for {env}"):
+            arm_config("SFL", env)
     assert all(arm_config(arm, "cartpole") == ARMS[arm] for arm in ARMS if arm != "SFL")
 
 

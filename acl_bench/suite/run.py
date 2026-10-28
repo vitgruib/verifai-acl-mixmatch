@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from acl_bench import envs
-from acl_bench.suite.arms import ARMS, BUDGET, arm_config
+from acl_bench.suite.arms import ARMS, BUDGET, SFL_SCOUT, arm_config
 
 
 def run_seed(arm: str, seed: int) -> int:
@@ -123,6 +123,8 @@ def main(argv=None):
     steps = args.steps or BUDGET.get(args.env)
     if steps is None:
         raise SystemExit(f"{args.env} has no BUDGET entry yet; pass --steps")
+    if "SFL" in args.arms and args.env not in SFL_SCOUT:
+        raise SystemExit(f"SFL has no SFL_SCOUT entry for {args.env}; size its scouting first (arms.py)")
     if steps <= 0 or steps % (1024 * args.checks):
         raise SystemExit(f"--steps must be a positive multiple of 1024 x --checks, got {steps}")
     out = Path(args.out or os.path.join("results", "suite", args.env))
