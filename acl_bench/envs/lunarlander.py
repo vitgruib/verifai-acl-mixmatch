@@ -10,8 +10,10 @@ Box2D cannot be batched in NumPy, so the batched contract (`step`, `observe`, `t
 so it is self-describing and a play is reproducible from `(task, reset_seed)` alone, in any
 process (wind and turbulence are drawn from the env's own seeded generator). The first `step`
 builds the env and gives the row a process-local handle; a row whose episode terminated holds
-`-handle` and its env is freed. At most `MAX_LIVE` envs stay open: the oldest are closed, and
-stepping such a row raises. There is no `planning_cost`: continuous tasks are not certified.
+`-handle`; a finished or time-limited env is freed at once. Envs nobody has stepped for
+`IDLE_STEPS` calls are closed as abandoned. A state can be stepped only once: stepping an old
+`t > 0` row (restoring a mid-episode state) raises. There is no `planning_cost`: continuous
+tasks are not certified.
 """
 from __future__ import annotations
 
@@ -50,10 +52,13 @@ def make_env(params: dict) -> gym.Env:
 
 
 # ---------------------------------------------------------------- the pool
-MAX_LIVE = 8192                          # open Box2D worlds; the oldest are closed beyond this
-_LIVE: dict[int, list] = {}              # handle -> [env or None, last obs], oldest first
+IDLE_STEPS = 2 * MAX_EPISODE_STEPS       # step() calls after which an unstepped env counts as abandoned
+SWEEP_EVERY = 256
+_LIVE: dict[int, list] = {}              # handle -> [env, last obs, t, tick of last step]
 _HANDLES = itertools.count(1)
+_ticks = itertools.count(1)
 _last_reward: tuple | None = None        # (state, action, next state, reward) from the latest `reward` call
+_RESTORE = "LunarLander state cannot be restored mid-episode (only starts can be replayed)"
 
 
 def _new_env(task, seed: int):
@@ -62,9 +67,7 @@ def _new_env(task, seed: int):
 
 
 def _close(handle: int) -> None:
-    env = _LIVE.pop(handle)[0]
-    if env is not None:
-        env.close()
+    _LIVE.pop(handle)[0].close()
 
 
 def sample_starts(task: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
@@ -76,6 +79,10 @@ def sample_starts(task: np.ndarray, n: int, rng: np.random.Generator) -> np.ndar
 
 
 def _advance(state: np.ndarray, action: np.ndarray, params: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    tick = next(_ticks)
+    if tick % SWEEP_EVERY == 0:
+        for handle in [h for h, e in _LIVE.items() if tick - e[3] > IDLE_STEPS]:
+            _close(handle)
     nxt, reward = state.copy(), np.zeros(len(state))
     for i, row in enumerate(state):
         if row[0] < 0:
@@ -83,21 +90,19 @@ def _advance(state: np.ndarray, action: np.ndarray, params: np.ndarray) -> tuple
         if row[2] == 0:
             env, obs = _new_env(params[i], row[1])
             nxt[i, 0] = next(_HANDLES)
-            _LIVE[int(nxt[i, 0])] = [env, obs]
-            while len(_LIVE) > MAX_LIVE:
-                _close(next(iter(_LIVE)))
+            _LIVE[int(nxt[i, 0])] = [env, obs, 0, tick]
         handle = int(nxt[i, 0])
-        if handle not in _LIVE or _LIVE[handle][0] is None:
-            raise RuntimeError("LunarLander state cannot be restored mid-episode (only starts can be replayed)")
-        entry = _LIVE[handle]
+        entry = _LIVE.get(handle)
+        if entry is None or entry[2] != row[2]:
+            raise RuntimeError(_RESTORE)
         entry[1], reward[i], term, _, _ = entry[0].step(int(action[i]))
-        nxt[i, 2:4] = row[2] + 1, row[3] + reward[i]
+        entry[2] += 1
+        entry[3] = tick
+        nxt[i, 2:4] = entry[2], row[3] + reward[i]
         if term:
             nxt[i, 0] = -handle
+        if term or entry[2] >= MAX_EPISODE_STEPS:
             _close(handle)
-        elif nxt[i, 2] >= MAX_EPISODE_STEPS:
-            entry[0].close()
-            entry[0] = None
     return nxt, reward
 
 
@@ -125,7 +130,9 @@ def observe(state: np.ndarray) -> np.ndarray:
         if row[2] == 0:
             env, obs[i] = _new_env(row[4:], row[1])    # a start has no env yet; reset is deterministic
             env.close()
-        elif row[0] > 0:
+        elif row[0] > 0 and row[2] < MAX_EPISODE_STEPS:
+            if int(row[0]) not in _LIVE:
+                raise RuntimeError(_RESTORE)
             obs[i] = _LIVE[int(row[0])][1]
     return obs
 

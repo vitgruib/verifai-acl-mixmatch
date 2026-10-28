@@ -117,9 +117,51 @@ def test_two_rows_replaying_one_start_do_not_share_an_env():
     assert state[0, 3] == solo[0, 3] and state[0, 3] != state[1, 3]
 
 
-def test_abandoned_envs_are_closed_beyond_the_live_cap(monkeypatch):
-    monkeypatch.setattr(lunarlander, "MAX_LIVE", 3)
+def starts(n, seed=0):
     row = np.array([-10.0, 0.0, 0.0])
-    s0 = lunarlander.sample_starts(row, 6, np.random.default_rng(0))
-    lunarlander.step(s0, np.zeros(6, dtype=int), np.tile(row, (6, 1)))
-    assert len(lunarlander._LIVE) <= 3
+    return lunarlander.sample_starts(row, n, np.random.default_rng(seed)), np.tile(row, (n, 1))
+
+
+def test_a_running_batch_is_never_swept_as_idle(monkeypatch):
+    monkeypatch.setattr(lunarlander, "IDLE_STEPS", 2)
+    monkeypatch.setattr(lunarlander, "SWEEP_EVERY", 1)
+    state, params = starts(6)
+    for _ in range(3):
+        state = lunarlander.step(state, np.full(6, 2), params)
+    assert state[:, 2].tolist() == [3] * 6
+
+
+def test_envs_that_hit_the_time_limit_are_released(monkeypatch):
+    monkeypatch.setattr(lunarlander, "MAX_EPISODE_STEPS", 3)
+    before = len(lunarlander._LIVE)
+    state, params = starts(4)
+    for _ in range(3):
+        state = lunarlander.step(state, np.full(4, 2), params)
+    assert len(lunarlander._LIVE) == before
+
+
+def test_envs_nobody_steps_any_more_are_freed(monkeypatch):
+    monkeypatch.setattr(lunarlander, "IDLE_STEPS", 5)
+    monkeypatch.setattr(lunarlander, "SWEEP_EVERY", 1)
+    abandoned, params = starts(3)
+    abandoned = lunarlander.step(abandoned, np.full(3, 2), params)
+    running, params = starts(2, seed=1)
+    for _ in range(8):
+        running = lunarlander.step(running, np.full(2, 2), params)
+    assert not set(abandoned[:, 0].astype(int)) & set(lunarlander._LIVE)
+    assert set(running[:, 0].astype(int)) <= set(lunarlander._LIVE)
+
+
+def test_stepping_an_old_state_again_is_rejected():
+    state, params = starts(1)
+    one = lunarlander.step(state, np.array([2]), params)
+    lunarlander.step(one, np.array([2]), params)
+    with pytest.raises(RuntimeError, match="restored"):
+        lunarlander.step(one, np.array([2]), params)
+
+
+def test_observing_an_unknown_live_row_is_a_clear_error():
+    state, _ = starts(1)
+    state[0, 0], state[0, 2] = 10**9, 4
+    with pytest.raises(RuntimeError, match="restored"):
+        lunarlander.observe(state)
