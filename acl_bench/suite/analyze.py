@@ -25,6 +25,7 @@ from acl_bench.suite.exam import PASS_RATE, exam_dir, question_scores
 
 RESULTS = Path(__file__).resolve().parents[2] / "results" / "suite"
 ALPHA = 0.05
+N_SEEDS = 20
 BASELINE = "DR"
 METHODS = ("PLR", "RPLR", "ACCEL", "SFL")
 SECTIONS = ("random", "verifai", "custom")
@@ -43,6 +44,19 @@ def load_scores(results: Path = RESULTS, env_names=None) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+def require_complete(scores: pd.DataFrame, n_seeds: int = N_SEEDS) -> None:
+    """Stop unless every arm has exactly `n_seeds` seeds per section at its full budget."""
+    done = scores[scores["check"] == scores["budget"]]
+    counts = done.groupby(["task", "arm", "section"])["seed"].nunique()
+    for task in scores["task"].unique():
+        for arm in (BASELINE, *METHODS):
+            for section in SECTIONS:
+                n = counts.get((task, arm, section), 0)
+                if n != n_seeds:
+                    raise SystemExit(f"{task}: {arm} {section} has {n} seeds at full budget, need {n_seeds} "
+                                     "(--allow-partial to preview)")
+
+
 def screen(scores: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for task, sub in scores[scores["section"] == "verifai"].groupby("task"):
@@ -51,7 +65,8 @@ def screen(scores: pd.DataFrame) -> pd.DataFrame:
             x = sub[sub["arm"] == method]["pass_rate"]
             if len(x) and len(dr):
                 u, p = mannwhitneyu(x, dr, alternative="greater")
-                rows.append(dict(method=method, task=task, U=u, p=p, diff=x.mean() - dr.mean()))
+                rows.append(dict(method=method, task=task, U=u, p=p, diff=x.mean() - dr.mean(),
+                                 n_dr=len(dr), n_method=len(x)))
     out = pd.DataFrame(rows)
     adjusted = holm({f"{r.method}|{r.task}": r.p for r in out.itertuples()})
     out["holm_p"] = [adjusted[f"{r.method}|{r.task}"] for r in out.itertuples()]
@@ -71,7 +86,8 @@ def custom_breakdown(env_name: str, snapshots: Path | None = None, exam: Path | 
     snapshots = snapshots or RESULTS / env_name / "snapshots"
     env = envs.get(env_name)
     custom = load_sets(str(exam), names=["custom"])["custom"]
-    cases = json.load(open(exam / "manifest.json"))["custom_cases"]
+    with open(exam / "manifest.json") as f:
+        cases = json.load(f)["custom_cases"]
     per_arm: dict[str, list] = {}
     for arm, _, path in find_runs(str(snapshots)):
         if arm in (BASELINE, *METHODS):
@@ -79,7 +95,9 @@ def custom_breakdown(env_name: str, snapshots: Path | None = None, exam: Path | 
             per_arm.setdefault(arm, []).append(score(env, agents[max(agents)], custom))
     out = pd.DataFrame({"case": cases, **{arm: np.mean(v, axis=0) for arm, v in per_arm.items()}})
     arms = list(per_arm)
-    out["best"] = out[arms].idxmax(axis=1)
+    top = out[arms].max(axis=1)
+    out["best"] = ["=".join(arm for arm in arms if np.isclose(row[arm], t))
+                   for (_, row), t in zip(out.iterrows(), top)]
     # "No agent passes": no individual agent reaches PASS_RATE on the case.
     best_single = np.max([np.max(v, axis=0) for v in per_arm.values()], axis=0)
     out["no_agent_passes"] = best_single < PASS_RATE
@@ -87,7 +105,8 @@ def custom_breakdown(env_name: str, snapshots: Path | None = None, exam: Path | 
 
 
 def summary(screened: pd.DataFrame, tables: pd.DataFrame, customs: dict) -> str:
-    lines = ["# Batch 21 analysis", "", f"## Screen (one-sided Mann-Whitney, Holm over {len(screened)} tests, alpha {ALPHA})", "",
+    lines = ["# Batch 21 analysis", "", "Per-case custom scores are the mean share of plays passed, averaged over seeds.", "",
+             f"## Screen (one-sided Mann-Whitney, Holm over {len(screened)} tests, alpha {ALPHA})", "",
              "| method | task | diff | p | Holm p | improved |", "|---|---|---|---|---|---|"]
     lines += [f"| {r.method} | {r.task} | {r.diff:+.3f} | {r.p:.4f} | {r.holm_p:.4f} | {r.improved} |"
               for r in screened.itertuples()]
@@ -106,8 +125,11 @@ def summary(screened: pd.DataFrame, tables: pd.DataFrame, customs: dict) -> str:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--envs", nargs="+", default=None)
+    parser.add_argument("--allow-partial", action="store_true", help="preview with incomplete scores")
     args = parser.parse_args()
     scores = load_scores(RESULTS, args.envs)
+    if not args.allow_partial:
+        require_complete(scores)
     out = RESULTS / "analysis"
     out.mkdir(parents=True, exist_ok=True)
     screened, tables = screen(scores), table(scores)
