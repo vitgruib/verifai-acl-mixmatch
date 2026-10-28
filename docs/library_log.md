@@ -1080,3 +1080,65 @@ per-algorithm look, but that is descriptive. Also descriptive, not tested: falsi
 algorithm (DR as baseline), the papers' named held-out mazes, and ce vs random rate (H1). If H2 is
 refuted again, the atlas's "why" becomes generation coverage (`dr_knn`, `buf_knn`), not scoring, and
 the fix should target the proposer, not the score.
+
+## Batch 21 (registered 2026-10-28, before running): DR-falsified VerifAI screen on CartPole, LunarLander, FrozenLake
+
+**Question.** Does any UED method score above DR on the VerifAI section, which is built from DR's
+own failures? DR is at a disadvantage there by design, so the section works as a screen (user's
+decision): an improvement leads to follow-up testing, no improvement despite that disadvantage drops
+this line early. Spec: `docs/superpowers/specs/2026-10-28-ued-generalization-suite-design.md`.
+
+**Arms** (`acl_bench/suite/arms.py`, commit f8385ab). Same PPO agent and the same total env steps per
+arm; only the level picker differs. No VerifAI in training.
+- DR: uniform levels from the training box.
+- PLR: replay 0.8, MaxMC score, rank temperature 0.3, staleness 0.3, buffer 1000.
+- Robust PLR: PLR with gradients only on replayed levels.
+- ACCEL: Robust PLR plus edits of replayed levels (Gaussian noise of 0.05 x each range). On
+  FrozenLake edits keep the map seed and size, so they add or remove a few holes, or change slip.
+- SFL: replay 0.5, levels picked by learnability p(1-p) with 8 rollouts each; its scouting is
+  charged to the budget and sized to about half of it: CartPole 20 candidates every 40 updates
+  (measured 0.51 of the budget), LunarLander 20 every 60 (0.52), FrozenLake 100 every 10 (0.48);
+  top 10 kept.
+- REF: DR on separate seeds, used only to build the VerifAI section, never scored.
+
+**Budgets** (env steps per run). CartPole 614,400 (earlier study's calibration). LunarLander
+11,264,000 and FrozenLake 614,400: the first check-in after which 3 DR seeds' mean random-section
+pass rate rises less than 0.02 over the next two (LunarLander 0.69 at 11.26M, 0.75 at 20.5M;
+FrozenLake 0.63 at 614k, 0.67 at 2.05M).
+
+**Seeds.** 20 scored seeds per arm per task (arms DR, PLR, RPLR, ACCEL, SFL); 10 REF seeds per task.
+Seeds are hashed per arm, so REF never shares a seed with a scored run.
+
+**Exam** (frozen and checksummed in `frozen_sets/suite/<env>/` before any scored run). A question is
+one parameter setting played from 10 start states. An agent passes a question when it passes at
+least 5 of its 10 plays. A section's score is the share of its questions passed (the share of plays
+passed is kept as a second column).
+- Random: 300 questions uniform over the training box; FrozenLake keeps only maps with a path from
+  every start and an optimal success probability of at least 0.5.
+- VerifAI: VerifAI's cross-entropy sampler against each REF agent, 3000 drawn tasks each; every
+  distinct task found is replayed by all 10 REF agents on shared starts; a task is kept when at
+  least 3 of the 10 fail it. FrozenLake applies the same path and 0.5 optimal-success filter.
+- Custom: default case, then each setting alone at its min and max edge and 10% and 50% of the
+  range width past each edge, invalid values skipped, no corners (CartPole 25 cases, LunarLander
+  9). FrozenLake: the same for size, hole density (played at slip 0) and slip, with 3 winnable maps
+  each, plus the 4x4, 8x8 and single-safe-path maps.
+- FrozenLake's optimal success is the full-state optimum; the agent sees a 5x5 window, so its
+  achievable success can be lower.
+
+**Primary test.** For each method x task (PLR, RPLR, ACCEL, SFL x CartPole, LunarLander, FrozenLake
+= 12 tests): one-sided Mann-Whitney U across the 20 seeds, method's VerifAI-section score > DR's,
+Holm-corrected across the 12 at alpha = 0.05.
+
+**Decision.** Any Holm-significant improvement: follow-up testing on the random and custom sections,
+designed then. None: this line is dropped early.
+
+**Also reported, not tested.** Random and custom section scores per method (mean and spread over
+seeds); each custom case's score next to the best method's; custom cases no scored agent passes,
+flagged as possibly impossible.
+
+**Self-evaluation.** Falsifiable: 20 seeds per arm give a one-sided Mann-Whitney test power to see a
+large shift. The VerifAI section favors any method over DR by construction, so a null result is
+strong evidence against these methods here; a positive result could still be "not DR" rather than
+"better curriculum", which is why the random and custom sections are kept for the follow-up. SFL
+scouts far fewer candidates than in its paper because its scouting is charged to the same budget;
+that is a stated cost of equal compute.
