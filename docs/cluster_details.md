@@ -1,6 +1,6 @@
 # UED failure atlas: cluster run (full details)
 
-The short Maze-only instructions are in [README.md](README.md). I wrote this code with an AI coding
+The short Maze-only instructions are in [README.md](../README.md). I wrote this code with an AI coding
 agent (Claude Code).
 
 ## Summary
@@ -78,7 +78,7 @@ The atlas compares two numbers for each method:
 A method that looks robust by the first and still fails on certified-solvable levels is the
 finding. Each cluster of failures is then explained with the training logs: did the curriculum
 ever generate that region, and how did it score it? Full plan and literature:
-[docs/ued_atlas.md](../docs/ued_atlas.md).
+[docs/ued_atlas.md](ued_atlas.md).
 
 ## Pipeline and compute
 
@@ -145,7 +145,7 @@ The dry run should show:
 - a fourth Kinetix SFL array (0-9, `--time=24:00:00`);
 - one falsify array per part, each depending on its training.
 
-Steps 1-4 and 8 in one command (what README.md runs): `bash cluster/run_maze.sh <sbatch flags>`.
+Steps 1-4 and 8 in one command (what the top-level README runs): `bash cluster/run_maze.sh <sbatch flags>`.
 It checks the flags with `sbatch --test-only`, sets up, then runs `submit.sh maze`: the full Maze
 run starts only if every smoke job succeeds (otherwise SLURM cancels it), and a final job
 (`collect.sbatch`, `afterany`) packs the results into `maze_results.tgz` at the repo root,
@@ -274,7 +274,7 @@ Send that one file back. It holds:
   - cross-entropy, the search that finds failures;
   - random, the unbiased baseline that gives failure rates and the H2 test.
 - Levels that cannot be certified solvable are recorded as invalid, never as failures.
-- Record format: [docs/failure_records.md](../docs/failure_records.md).
+- Record format: [docs/failure_records.md](failure_records.md).
 
 **Why the cross-entropy sampler.** On a Maze pilot it beat VerifAI's bandit sampler, with
 random, Halton and simulated annealing as the other baselines. Relative to random sampling:

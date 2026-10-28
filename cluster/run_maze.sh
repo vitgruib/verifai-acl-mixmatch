@@ -1,11 +1,6 @@
 #!/bin/bash
-# The whole Maze run in one command: setup (~15 min), smoke test, the full run (only if the smoke
-# test succeeds), then the results packed into maze_results.tgz at the repo root.
-# - SLURM cluster (sbatch found): run on the login node; arguments are extra sbatch flags, e.g.
-#     bash cluster/run_maze.sh -p gpu -A lab
-#   The flags are checked with sbatch --test-only before setup.
-# - One computer (no sbatch): needs an NVIDIA GPU (ALLOW_CPU=1 overrides). It detaches and runs in
-#   the background; progress and ETA go to run_maze.log.
+# Full Maze run: setup, smoke test, full run, results packed into maze_results.tgz.
+# On SLURM, arguments are extra sbatch flags. Without SLURM it runs in the background on this machine.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 setup() { bash cluster/setup/clone.sh; bash cluster/setup/setup_jax.sh; bash cluster/setup/setup_sfl.sh; }
@@ -15,7 +10,7 @@ command -v "${PYBIN:-python3.11}" >/dev/null || { echo "Needs python3.11 (or PYB
 if command -v sbatch >/dev/null; then
   export SBATCH_ARGS="${SBATCH_ARGS:-} $*"
   mkdir -p runs/slurm
-  sbatch --test-only $SBATCH_ARGS cluster/1_maze/train.sbatch   # fail now, not after setup
+  sbatch --test-only $SBATCH_ARGS cluster/1_maze/train.sbatch   # catch bad flags before setup
   setup
   bash cluster/submit.sh maze
   echo
@@ -30,12 +25,12 @@ if [ -z "${RUN_MAZE_BG:-}" ]; then
   fi
   RUN_MAZE_BG=1 nohup bash "$PWD/cluster/run_maze.sh" "$@" > run_maze.log 2>&1 < /dev/null &
   echo "Running in the background. Progress and ETA: tail -f $PWD/run_maze.log"
-  echo "When it finishes (about 3-5 days on one GPU), send me: $out"
+  echo "When it finishes (about 4 days on one GPU), send me: $out"
   exit 0
 fi
 
 echo "start $(date)"
-nvidia-smi -L 2>/dev/null || export JAX_EXTRA=""   # CPU-only jax when there is no GPU
+nvidia-smi -L 2>/dev/null || export JAX_EXTRA=""
 setup
 if LOCAL=1 bash cluster/submit.sh maze; then
   echo "done $(date): send me $out"

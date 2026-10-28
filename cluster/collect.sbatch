@@ -1,6 +1,5 @@
 #!/bin/bash
-# Packs the results with collect.sh once the Maze run ends, whatever its outcome (submit.sh maze
-# submits it with afterany), into $OUT (default: $ATLAS/maze_results.tgz).
+# Packs the results once the Maze run ends, whether or not it succeeded.
 #SBATCH --job-name=atlas-collect
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G

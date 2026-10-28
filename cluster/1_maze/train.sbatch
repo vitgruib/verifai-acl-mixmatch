@@ -1,9 +1,5 @@
 #!/bin/bash
-# PART 1a - Maze: train every algorithm. One array task = one (algo, seed).
-# Default: 6 algos x 10 seeds = 60 tasks.   sbatch --array=0-59 cluster/1_maze/train.sbatch
-#   dr plr rplr accel minimax -> JaxUED examples (paper settings, 30k updates)
-#   sfl                       -> SFL repo's minigrid_sfl (same JaxUED Maze env and network)
-# DRY_RUN=1 prints the command instead of running it. JAXUED_ARGS / SFL_ARGS pass extra flags (smoke tests).
+# Maze training. One array task per (algo, seed): 6 algos x 10 seeds = 60 tasks.
 #SBATCH --job-name=atlas-1-maze-train
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
@@ -19,11 +15,10 @@ echo "task=$i algo=$algo seed=$seed host=$(hostname)"
 run() { if [ -n "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
 
 if [ "$algo" = sfl ]; then
-  # SFL saves to SAVE_PATH/<wandb run name>; offline runs are named None unless WANDB_NAME is set.
+  # SFL saves to SAVE_PATH/<wandb run name>, which is None offline unless WANDB_NAME is set
   out="$RUNS/sfl/maze_sfl"; export WANDB_NAME=s$seed
   [ -n "${DRY_RUN:-}" ] || { source "$SFL_VENV/bin/activate"; mkdir -p "$out"; cd "$SFL_DIR"; }
   run python sfl/train/minigrid_sfl.py SEED=$seed WANDB_MODE=offline SAVE_PATH="$out" ${SFL_ARGS:-}
-  # Metadata atlas/maze/policy.py reads beside model.safetensors.
   [ -n "${DRY_RUN:-}" ] || printf '{"seed": %d, "algo": "sfl", "sfl_commit": "%s"}\n' \
     "$seed" "$SFL_COMMIT" > "$out/s$seed/config.json"
   exit 0
@@ -31,8 +26,8 @@ fi
 
 case $algo in
   dr)      f=maze_dr.py;     x="";;
-  minimax) f=maze_paired.py; x="--minimax";;               # patches/jaxued_minimax.patch
-  rplr)    f=maze_plr.py;    x="";;                         # Robust PLR (no grads on new levels)
+  minimax) f=maze_paired.py; x="--minimax";;
+  rplr)    f=maze_plr.py;    x="";;  # Robust PLR
   plr)     f=maze_plr.py;    x="--exploratory_grad_updates";;
   accel)   f=maze_plr.py;    x="--use_accel";;
   *) echo "unknown algo $algo"; exit 2;;

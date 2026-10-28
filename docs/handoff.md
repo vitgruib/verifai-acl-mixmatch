@@ -10,7 +10,7 @@ Full statement and success criterion: `.claude/commands/goal.md`.
 
 ## Status
 
-- Local work is done. The cluster suite (`cluster/README.md`) is built and tested headless at
+- Local work is done. The cluster suite (`README.md`) is built and tested headless at
   tiny budgets: 3 parts (1 Maze, 2 Kinetix, 3 JaxNav), DR / PLR / Robust PLR / ACCEL / SFL,
   10 seeds, then a `ce` falsifier with certified-solvable failures.
 - **Waiting on:** the professor running Maze in full, on a SLURM cluster or one GPU computer (`cluster/run_maze.sh`: setup, smoke test, then
@@ -42,7 +42,7 @@ Full statement and success criterion: `.claude/commands/goal.md`.
 |---|---|
 | algorithm registry, paper settings, results | `docs/ued_atlas.md` |
 | failure-record schema, diagnosis checklist | `docs/failure_records.md` |
-| cluster run: short Maze steps / full details | `cluster/README.md` / `cluster/DETAILS.md` |
+| cluster run: short Maze steps / full details | `README.md` / `docs/cluster_details.md` |
 | falsifiers per env | `atlas/{maze,kinetix,jaxnav}/` |
 | previous goal (curriculum library, batches 1-18, closed with no confirmed arm) | `docs/library_log.md`, `docs/protocol.md` |
 

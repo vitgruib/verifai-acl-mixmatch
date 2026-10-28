@@ -1,153 +1,27 @@
-# VerifAI x UED: a failure atlas for curriculum algorithms
+# VerifAI × UED
 
-**To run the cluster suite, read [cluster/README.md](cluster/README.md).** It is self-contained.
+This trains six curriculum (UED) methods (DR, PLR, Robust PLR, ACCEL, minimax and SFL) on the
+Maze benchmark, 10 seeds each, using each paper's own code. Then it uses VerifAI to search for
+solvable mazes that each trained agent fails.
 
-**Current goal (2026-10-03):** document the published unsupervised-environment-design
-algorithms (DR, minimax, PLR, Robust PLR, ACCEL, SFL; PAIRED dropped 2026-10-04 as too slow), find where each fails using
-VerifAI falsification on the exact environments of their papers and with the papers' own code,
-explain why with diagnostics, and fix the failures with falsifier + PLR.
-
-| where | what |
-|---|---|
-| [docs/ued_atlas.md](docs/ued_atlas.md) | algorithm registry, paper-exact settings, plan, results |
-| [docs/failure_records.md](docs/failure_records.md) | the failure-record schema and a diagnosis checklist |
-| [cluster/README.md](cluster/README.md) | **how to run the suite on SLURM** (Maze first; full details in cluster/DETAILS.md) |
-| [docs/handoff.md](docs/handoff.md) | current state, what it is waiting on |
-| [docs/literature.md](docs/literature.md) | papers and lineage |
-| [docs/library_log.md](docs/library_log.md), [docs/protocol.md](docs/protocol.md) | the previous goal (agnostic curriculum wrapper): batches, verdicts, the staged protocol |
-
-```
-atlas/                     the failure atlas (new)
-  record.py                failure records: run.json, samples.jsonl, traces.npz, summary.json
-  prelim.py                rank falsifiers across runs (vs random; failure modes; H2 check)
-  maze/space.py            falsification spaces over JaxUED maze levels (dr, seg)
-  maze/policy.py           loads a JaxUED checkpoint and rolls it out (JAX)
-  maze/context.py          where a level sits vs training (DR kNN, PLR buffer score/age)
-  maze/falsify.py          VerifAI samplers -> levels -> rollouts -> records
-cluster/                   SLURM suite: env.sh, setup/, 1_maze/, 2_kinetix/, 3_jaxnav/, submit.sh, collect.sh
-acl_bench/                 the earlier classic-control benchmark and curriculum library (below)
-results/atlas/             atlas prelim scripts, logs, tables
-runs/, third_party/        large outputs and upstream clones (gitignored)
-```
-
-Quick check: `source .venv/bin/activate && python -m pytest tests/test_atlas.py`.
-
-## Earlier study: ACL x VerifAI on CartPole
-
-Does **automatic curriculum learning** help an RL agent generalize across task variants,
-and does it help more when paired with a **VerifAI sampler** that picks new tasks by
-where the agent is still learning? An ablation on CartPole with five physical task
-parameters (pole length and mass, cart mass, push force, start range), sampled through
-Scenic and VerifAI.
-
-**Result:** the **cross-entropy picker improves final performance**: final success on
-random questions rises from 0.906 to 0.961 (+0.055, p = 0.0003; Holm-adjusted p = 0.034
-across all 104 tests). Nothing else is detectable, and no method improved on the
-questions VerifAI discovered. Feedback for both components is learning-potential (PVL).
-Details in [docs/ablation.md](docs/ablation.md); interactive report (private until
-shared): https://claude.ai/artifact/TCcHBgEY9kiA8oDq4kdsNm
-
-### What is compared
-
-| method | picker (new tasks) | review pile (replay) |
-|---|---|---|
-| N | random | off |
-| A | random | on |
-| S_ce / S_mab / S_sa | cross-entropy / bandit / simulated annealing | off |
-| B_ce / B_mab / B_sa | same three | on |
-
-- **Review pile (ACL):** SIPACL's prioritized replay, `P(i) ~ 1/rank` by a
-  learning-potential score (positive value loss). Differences from SIPACL, including
-  truncation and sampler feedback: [docs/sipacl.md](docs/sipacl.md).
-- **Picker:** a VerifAI sampler behind Scenic's external-parameter API. **Feedback is the
-  same positive value loss** that ranks replay: after each new task, `rho = -z(PVL)/3`,
-  so the picker seeks tasks with high learning potential, *not* tasks the agent fails.
-  Failure-seeking feedback is not tested here.
-- **Exam:** two suites: **random** questions, and **VerifAI-discovered** questions (found
-  by falsification against plain-trained agents, each *proven* winnable). Per suite:
-  success and mean steps survived, each at the end of training and over the learning
-  curve: [docs/exam.md](docs/exam.md).
-
-### Layout
-
-```
-acl_bench/                 training
-  cartpole.py, .scenic     the task-parameterized environment and its sampled task box
-  sampling.py              Scenic/VerifAI samplers (random, ce, mab, sa)
-  scoring.py               task scores: pvl_gae (SIPACL), neg_return
-  acl.py                   the review pile (prioritized replay) and sampler feedback
-  ppo.py                   CleanRL-style PPO driven by the review pile
-  snapshots.py             save/load an agent at every check-in
-acl_bench/exam/            the exam
-  grader.py                batched physics + deterministic rollouts
-  sets.py                  locked sections: save, load (checksum-verified), grade
-  search.py                samplers hunting for questions the reference agents fail
-  feasibility.py           proofs: winnable (replayed plan) / impossible (interval reachability)
-  build.py                 search pools -> the VerifAI suite
-acl_bench/study/           the ablation
-  arms.py                  the 8 methods + reference agents
-  run.py                   train arms in parallel (independent seeds, safeguards)
-  regrade.py               grade saved snapshots on the exam
-  compare.py               group comparison, Holm correction, checkpoint grid
-  analyze.py               the analysis -> results/analysis/
-  safety.py                pause on battery, heat, low memory or disk
-frozen_sets/cartpole/      the locked exam: random and verifai suites
-frozen_sets/search/        raw search pools the exam was built from
-results/training.csv       training log: random-suite grades at every check-in, episodes, wall time
-results/grades.csv         every run graded on the full exam at 10 check-ins
-results/analysis/          per-run metrics, per-method summary, the 104 tests, report data
-results/calibration/       evidence for the training length and learning rate
-results/snapshots/         saved agents (not committed; ~1 GB)
-docs/                      ablation.md (study + results), exam.md, sipacl.md
-```
-
-### Running it
+## Running it
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-python -m acl_bench.study.run --arms N A B_ce --seeds 1-100 \
-    --out results/training.csv --snapshots results/snapshots   # train (resumable: --resume)
-python -m acl_bench.exam.search --snapshots results/snapshots   # search pools (needs REF runs)
-python -m acl_bench.exam.build                                  # exam sections from the pools
-python -m acl_bench.study.regrade --snapshots results/snapshots \
-    --n-checkpoints 10 --workers 8 --out results/grades.csv     # grade every saved run
-python -m acl_bench.study.analyze                               # tests + tables
+git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas
+bash atlas/cluster/run_maze.sh
 ```
 
-Every command is `python -m <module>` because the code is one package whose modules
-import each other as `acl_bench.<...>`. `-m` runs a module by its import name from the
-repository root, so those imports resolve; `python acl_bench/study/run.py` would put
-`acl_bench/study/` on the path instead and fail with `No module named 'acl_bench'`.
+When it's done, please send me `atlas/maze_results.tgz`.
 
-Long runs pause themselves on battery, heat, low memory or low disk; `touch results/STOP`
-stops training cleanly (`results/STOP_REGRADE` for grading).
+You need Linux with an NVIDIA GPU, `python3.11` and `git`. On a SLURM cluster, run it from the
+login node and add `-p <partition> -A <account>` if your cluster needs them.
 
-### Tests
+The script installs everything (about 15 minutes), runs a short test, and only starts the full
+run if the test passes.
 
-```bash
-python -m pytest tests                     # everything (~1 min)
-python -m pytest tests -v                  # one line per test, pass/fail
-python -m pytest tests/test_grader.py      # one file
-python -m pytest tests -k feasibility      # tests whose name matches
-python -m pytest tests -x --pdb            # stop at the first failure, open a debugger there
-python -m pytest tests --collect-only -q   # list what would run, without running it
-```
+## How long it takes
 
-pytest finds every `tests/test_*.py`, runs each `test_*` function in it, and builds
-anything a test names as an argument from the `@pytest.fixture` of that name. `-s`
-shows `print` output; `--durations=5` shows the slowest tests.
-
-| file | checks | code under test |
-|---|---|---|
-| `test_grader.py` | batched physics equals gymnasium's CartPole step by step; batched rollouts equal a one-at-a-time loop | `exam/grader.py` |
-| `test_sets.py` | the locked exam: checksums, sizes, the VerifAI suite's rule, a sample proven winnable | `frozen_sets/cartpole`, `exam/sets.py` |
-| `test_feasibility.py` | proofs are sound: interval step contains the true next state; certificates replay; impossible starts are caught | `exam/feasibility.py` |
-| `test_search_build.py` | the search records every question with the right fail share | `exam/search.py`, `exam/build.py` |
-| `test_sipacl_fidelity.py` | replay ranking, smoothing, placeholder and PVL match SIPACL's transcribed code | `acl.py`, `scoring.py` |
-| `test_seeding.py` | a seed fully determines a run; arms get independent seeds | `ppo.py`, `study/run.py` |
-| `test_snapshots.py` | saved agents regrade to exactly the live grades; checkpoint grid | `snapshots.py`, `study/regrade.py` |
-| `test_compare.py` | group comparison; Holm against a textbook example; final and curve metrics | `study/compare.py` |
-| `test_analyze.py` | the 13 comparisons and 8 metrics; the checkpoint grid refuses gaps | `study/analyze.py` |
-| `test_safety.py` | the watchdog pauses on each hazard; failed jobs are skipped, not fatal | `study/safety.py` |
+- **SLURM cluster:** a few hours once the jobs start, 14 hours at most.
+- **One computer with a GPU:** about 4 days (with N GPUs, about 4/N days). It runs in the
+  background, so just leave the computer on. `tail -f atlas/run_maze.log` shows progress and an
+  estimated finish time.
