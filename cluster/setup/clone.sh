@@ -28,5 +28,6 @@ apply_once() {  # repo patch
   fi
 }
 apply_once jaxued jaxued_accel_cap.patch   # ACCEL's edits capped at the 25-wall box (docs/maze_gpu_audit.md)
+apply_once jaxued jaxued_cartpole_bridge.patch   # gymnax PLR on our CartPole box and PPO (atlas/bridge)
 apply_once kinetix kinetix_acl27.patch
 apply_once sfl sfl_minimax.patch

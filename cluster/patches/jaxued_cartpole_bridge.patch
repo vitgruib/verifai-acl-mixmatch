@@ -1,0 +1,285 @@
+atlas CartPole bridge (atlas/bridge/cartpole_jaxued.py): train JaxUED's gymnax PLR script on the
+ACL27 CartPole with ACL27's PPO settings. Every deviation from upstream (JaxUED 0f8f128); each new
+option defaults to upstream behaviour, so upstream runs are unchanged:
+
+src/jaxued/environments/gymnax/cartpole.py
+  1. Level.init_range (default 0.05): reset draws each state component from U(-init_range,
+     init_range); upstream hard-codes 0.05. ACL27's start spread is a task parameter.
+  2. BOX + make_level_generator_box(): levels uniform in ACL27's box (length 0.25-1.5, masspole
+     0.05-0.5, masscart 0.5-2.0, force_mag 4-16, init_range 0.05-0.3; acl_bench/envs/cartpole.py
+     PARAM_BOUNDS), total_mass and polemass_length derived, gravity and tau at defaults.
+
+examples/gymnax/gymnax_plr.py
+  3. --env cartpole_acl27: CartPole with the box generator (eval levels stay upstream's).
+  4. --acl27_mlp: ActorCriticMLP, acl_bench/ppo.py Agent's network (separate actor and critic,
+     two 64-unit tanh layers each, orthogonal init sqrt(2) / 0.01 / 1.0), layers named after the
+     torch state-dict entries. Upstream's feed-forward net has one hidden layer per branch.
+  5. --no-clip_value: unclipped value loss (upstream clips it by clip_eps).
+  6. --no-anneal_lr: constant learning rate (upstream anneals linearly to 0).
+  7. --shuffle_samples: minibatches are random single steps of the rollout (feed-forward nets
+     only); upstream's minibatches are whole per-env trajectories (here 2 of the 8 envs each).
+  8. --params_out PATH: after training, saves the first repeat's params, the level buffer's
+     scores/size/episode_count and the DR/replay update counts to an npz.
+
+diff --git a/examples/gymnax/gymnax_plr.py b/examples/gymnax/gymnax_plr.py
+index 025db18..024569b 100644
+--- a/examples/gymnax/gymnax_plr.py
++++ b/examples/gymnax/gymnax_plr.py
+@@ -22,7 +22,7 @@ from jaxued.utils import compute_max_returns, max_mc, positive_value_loss
+ from jaxued.wrappers import AutoReplayWrapper
+ import chex
+ from enum import IntEnum
+-from jaxued.environments.gymnax.cartpole import CartPole, make_eval_levels_and_names as eval_levels_cp, make_level_generator as make_level_generator_cp
++from jaxued.environments.gymnax.cartpole import CartPole, make_eval_levels_and_names as eval_levels_cp, make_level_generator as make_level_generator_cp, make_level_generator_box as make_level_generator_cp_box
+ from jaxued.environments.gymnax.acrobot import Acrobot, make_eval_levels_and_names as eval_levels_acrobot, make_level_generator as make_level_generator_acrobot
+ 
+ 
+@@ -221,6 +221,8 @@ def update_actor_critic_rnn(
+     entropy_coeff: float,
+     critic_coeff: float,
+     update_grad: bool=True,
++    clip_value: bool=True,
++    shuffle_samples: bool=False,
+ ) -> Tuple[Tuple[chex.PRNGKey, TrainState], chex.ArrayTree]:
+     """This function takes in a rollout, and PPO hyperparameters, and updates the train state.
+ 
+@@ -237,6 +239,9 @@ def update_actor_critic_rnn(
+         entropy_coeff (float): 
+         critic_coeff (float): 
+         update_grad (bool, optional): If False, the train state does not actually get updated. Defaults to True.
++        clip_value (bool, optional): atlas patch: if False, the value loss is unclipped. Defaults to True.
++        shuffle_samples (bool, optional): atlas patch: if True (feed-forward networks only), minibatches are
++            random sets of single steps rather than whole environment trajectories. Defaults to False.
+ 
+     Returns:
+         Tuple[Tuple[chex.PRNGKey, TrainState], chex.ArrayTree]: It returns a new rng, the updated train_state, and the losses. The losses have structure (loss, (l_vf, l_clip, entropy))
+@@ -258,8 +263,11 @@ def update_actor_critic_rnn(
+                 A = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+                 l_clip = (-jnp.minimum(ratio * A, jnp.clip(ratio, 1 - clip_eps, 1 + clip_eps) * A)).mean()
+ 
+-                values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
+-                l_vf = 0.5 * jnp.maximum((values_pred - targets) ** 2, (values_pred_clipped - targets) ** 2).mean()
++                if clip_value:
++                    values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
++                    l_vf = 0.5 * jnp.maximum((values_pred - targets) ** 2, (values_pred_clipped - targets) ** 2).mean()
++                else:
++                    l_vf = 0.5 * ((values_pred - targets) ** 2).mean()
+ 
+                 loss = l_clip + critic_coeff * l_vf - entropy_coeff * entropy
+ 
+@@ -273,6 +281,18 @@ def update_actor_critic_rnn(
+ 
+         rng, train_state = carry
+         rng, rng_perm = jax.random.split(rng)
++        if shuffle_samples:
++            permutation = jax.random.permutation(rng_perm, n_steps * num_envs)
++            minibatches = (
++                init_hstate,
++                *jax.tree_util.tree_map(
++                    lambda x: jnp.take(x.reshape(-1, *x.shape[2:]), permutation, axis=0)
++                    .reshape(n_minibatch, -1, *x.shape[2:]),
++                    batch,
++                ),
++            )
++            train_state, losses = jax.lax.scan(update_minibatch, train_state, minibatches)
++            return (rng, train_state), losses
+         permutation = jax.random.permutation(rng_perm, num_envs)
+         minibatches = (
+             jax.tree_util.tree_map(
+@@ -386,6 +406,31 @@ class ActorCriticFF(nn.Module):
+         return None
+ 
+ 
++class ActorCriticMLP(nn.Module):
++    """atlas patch: the network of ACL27's PyTorch PPO (acl_bench/ppo.py `Agent`): separate actor and
++    critic, each two 64-unit tanh layers, orthogonal init (sqrt(2) hidden, 0.01 actor head, 1.0 critic
++    head). Layers are named after the torch state-dict entries (actor.0, actor.2, actor.4, ...)."""
++    action_dim: Sequence[int]
++
++    @nn.compact
++    def __call__(self, inputs, hidden):
++        x, _ = inputs
++
++        def mlp(name, out_dim, out_std):
++            h = x
++            for i in (0, 2):
++                h = nn.tanh(nn.Dense(LAYER_WIDTH, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0), name=f"{name}_{i}")(h))
++            return nn.Dense(out_dim, kernel_init=orthogonal(out_std), bias_init=constant(0.0), name=f"{name}_4")(h)
++
++        pi = distrax.Categorical(logits=mlp("actor", self.action_dim, 0.01))
++        critic = mlp("critic", 1, 1.0)
++        return hidden, pi, jnp.squeeze(critic, axis=-1)
++
++    @staticmethod
++    def initialize_carry(batch_dims):
++        return None
++
++
+ class ActorCriticContinuousRNN(nn.Module):
+     action_dim: Sequence[int]
+     # config: Dict
+@@ -553,8 +598,12 @@ def compute_score(config, dones, values, max_returns, advantages):
+ 
+ def main(config=None, project="JAXUED_TEST"):
+     is_continuous = config['env'] in ['pendulum']
++    assert not (config['shuffle_samples'] and config['use_rnn']), "--shuffle_samples needs a feed-forward network"
+     if config['use_rnn']:
+         ActorCritic = ActorCriticRNN if not is_continuous else ActorCriticContinuousRNN
++    elif config['acl27_mlp']:
++        assert not is_continuous, "--acl27_mlp is for discrete actions"
++        ActorCritic = ActorCriticMLP
+     else:
+         ActorCritic = ActorCriticFF if not is_continuous else ActorCriticContinuousFF
+ 
+@@ -602,9 +651,9 @@ def main(config=None, project="JAXUED_TEST"):
+         wandb.log(log_dict)
+     
+     # Setup the environment
+-    if config['env'] == 'cartpole':
++    if config['env'] in ('cartpole', 'cartpole_acl27'):
+         env = CartPole()
+-        sample_random_level = make_level_generator_cp()
++        sample_random_level = make_level_generator_cp() if config['env'] == 'cartpole' else make_level_generator_cp_box()
+         EVAL_LEVELS, EVAL_LEVEL_NAMES = eval_levels_cp()
+     elif config['env'] == 'acrobot':
+         env = Acrobot()
+@@ -652,7 +701,7 @@ def main(config=None, project="JAXUED_TEST"):
+         network_params = network.init(rng, init_x, ActorCritic.initialize_carry((config["num_train_envs"],)))
+         tx = optax.chain(
+             optax.clip_by_global_norm(config["max_grad_norm"]),
+-            optax.adam(learning_rate=linear_schedule, eps=1e-5),
++            optax.adam(learning_rate=linear_schedule if config["anneal_lr"] else config["lr"], eps=1e-5),
+             # optax.adam(learning_rate=config["lr"], eps=1e-5),
+         )
+         pholder_level = sample_random_level(jax.random.PRNGKey(0))
+@@ -721,6 +770,8 @@ def main(config=None, project="JAXUED_TEST"):
+                 config["entropy_coeff"],
+                 config["critic_coeff"],
+                 update_grad=config["exploratory_grad_updates"],
++                clip_value=config["clip_value"],
++                shuffle_samples=config["shuffle_samples"],
+             )
+             
+             metrics = {
+@@ -778,6 +829,8 @@ def main(config=None, project="JAXUED_TEST"):
+                 config["entropy_coeff"],
+                 config["critic_coeff"],
+                 update_grad=True,
++                clip_value=config["clip_value"],
++                shuffle_samples=config["shuffle_samples"],
+             )
+                             
+             metrics = {
+@@ -839,6 +892,8 @@ def main(config=None, project="JAXUED_TEST"):
+                 config["entropy_coeff"],
+                 config["critic_coeff"],
+                 update_grad=config["exploratory_grad_updates"],
++                clip_value=config["clip_value"],
++                shuffle_samples=config["shuffle_samples"],
+             )
+             
+             metrics = {
+@@ -979,6 +1034,17 @@ def main(config=None, project="JAXUED_TEST"):
+         if config["checkpoint_save_interval"] > 0:
+             checkpoint_manager.save(eval_step, args=ocp.args.StandardSave(runner_state[1]))
+             checkpoint_manager.wait_until_finished()
++    if config["params_out"]:
++        # atlas patch: the first repeat's final network params and level-buffer state, as a flat npz
++        from flax.traverse_util import flatten_dict
++        ts = jax.tree_util.tree_map(lambda x: np.asarray(x[0]), runner_state[1])
++        np.savez(
++            config["params_out"],
++            **flatten_dict(ts.params, sep="/"),
++            **{f"sampler/{k}": np.asarray(ts.sampler[k]) for k in ("scores", "size", "episode_count")},
++            num_dr_updates=ts.num_dr_updates,
++            num_replay_updates=ts.num_replay_updates,
++        )
+     return runner_state[1]
+ 
+ if __name__=="__main__":
+@@ -994,6 +1060,7 @@ if __name__=="__main__":
+     parser.add_argument("--checkpoint_to_eval", type=int, default=-1)
+     # === CHECKPOINTING ===
+     parser.add_argument("--checkpoint_save_interval", type=int, default=2)
++    parser.add_argument("--params_out", type=str, default=None)  # atlas patch
+     parser.add_argument("--max_number_of_checkpoints", type=int, default=60)
+     # === EVAL ===
+     parser.add_argument("--eval_freq", type=int, default=250)
+@@ -1015,6 +1082,9 @@ if __name__=="__main__":
+     group.add_argument("--gae_lambda", type=float, default=0.98)
+     group.add_argument("--entropy_coeff", type=float, default=1e-3)
+     group.add_argument("--critic_coeff", type=float, default=0.5)
++    group.add_argument("--clip_value", action=argparse.BooleanOptionalAction, default=True)  # atlas patch
++    group.add_argument("--anneal_lr", action=argparse.BooleanOptionalAction, default=True)  # atlas patch
++    group.add_argument("--shuffle_samples", action=argparse.BooleanOptionalAction, default=False)  # atlas patch
+     # === PLR ===
+     group.add_argument("--score_function", type=str, default="MaxMC", choices=["MaxMC", "pvl"])
+     group.add_argument("--exploratory_grad_updates", action=argparse.BooleanOptionalAction, default=False)
+@@ -1030,11 +1100,12 @@ if __name__=="__main__":
+     group.add_argument("--use_accel", action=argparse.BooleanOptionalAction, default=False)
+     group.add_argument("--num_edits", type=int, default=5)
+     # === ENV CONFIG ===
+-    group.add_argument("--env", type=str, default='cartpole', choices=['cartpole', 'acrobot', 'pendulum'])
++    group.add_argument("--env", type=str, default='cartpole', choices=['cartpole', 'cartpole_acl27', 'acrobot', 'pendulum'])
+     # === DR CONFIG ===
+     group.add_argument("--n_walls", type=int, default=25)
+     
+     group.add_argument("--use_rnn", action=argparse.BooleanOptionalAction, default=True)
++    group.add_argument("--acl27_mlp", action=argparse.BooleanOptionalAction, default=False)  # atlas patch
+     group.add_argument("--num_repeats", type=int, default=10) # how many parallel seeds to run at once.
+ 
+     config = vars(parser.parse_args())
+diff --git a/src/jaxued/environments/gymnax/cartpole.py b/src/jaxued/environments/gymnax/cartpole.py
+index 4de4c49..dbcba40 100644
+--- a/src/jaxued/environments/gymnax/cartpole.py
++++ b/src/jaxued/environments/gymnax/cartpole.py
+@@ -18,6 +18,7 @@ class Level:
+     length: float = 0.5
+     force_mag: float = 10.0
+     tau: float = 0.02
++    init_range: float = 0.05  # atlas patch: |initial state| ~ U(-init_range, init_range); upstream fixes 0.05
+ 
+ @struct.dataclass
+ class EnvState:
+@@ -76,7 +77,7 @@ class CartPole(UnderspecifiedEnv):
+     
+     def reset_env_to_level(self, rng: PRNGKey, level: Level, params: EnvParams) -> Tuple[Observation | EnvState]:
+         init_state = jax.random.uniform(
+-            rng, minval=-0.05, maxval=0.05, shape=(4,)
++            rng, minval=-level.init_range, maxval=level.init_range, shape=(4,)
+         )
+         state = EnvState(
+             x=init_state[0],
+@@ -152,3 +153,32 @@ def make_level_generator() -> Callable[[chex.PRNGKey], Level]:
+             polemass_length=length * mass,
+         ) # default
+     return sample
++
++
++# atlas patch: the ACL27 CartPole task box (acl_bench/envs/cartpole.py PARAM_BOUNDS).
++BOX = {
++    "length": (0.25, 1.5),
++    "masspole": (0.05, 0.5),
++    "masscart": (0.5, 2.0),
++    "force_mag": (4.0, 16.0),
++    "init_range": (0.05, 0.3),
++}
++
++
++def make_level_generator_box() -> Callable[[chex.PRNGKey], Level]:
++    """atlas patch: levels uniform in BOX (gravity and tau at their defaults)."""
++    lo = jnp.array([b[0] for b in BOX.values()])
++    hi = jnp.array([b[1] for b in BOX.values()])
++
++    def sample(rng: chex.PRNGKey) -> Level:
++        length, masspole, masscart, force_mag, init_range = jax.random.uniform(rng, (len(BOX),), minval=lo, maxval=hi)
++        return Level(
++            masscart=masscart,
++            masspole=masspole,
++            total_mass=masscart + masspole,
++            polemass_length=masspole * length,
++            length=length,
++            force_mag=force_mag,
++            init_range=init_range,
++        )
++    return sample
