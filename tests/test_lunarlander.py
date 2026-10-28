@@ -1,4 +1,9 @@
 """LunarLander: a pool of Gymnasium Box2D envs behind the batched env contract."""
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
@@ -69,11 +74,52 @@ def test_batched_step_and_reward_match_a_fresh_gym_env():
     assert (state[:, 2] > 0).all()
 
 
-def test_play_is_reproducible_from_its_start():
+def graded(s0, p):
     torch.manual_seed(0)
     agent = Agent(lunarlander.OBS_DIM, lunarlander.ACTION_DIM)
-    p = np.array([[-10.0, 15.0, 1.5]])
-    s0 = lunarlander.sample_starts(p[0], 1, np.random.default_rng(3))
-    a = grade(lunarlander, agent, p, s0, extras={})
-    b = grade(lunarlander, agent, p, s0, extras={})
-    assert a[0].tolist() == b[0].tolist() and a[1].tolist() == b[1].tolist()
+    extras = {}
+    success, steps = grade(lunarlander, agent, p, s0, extras=extras)
+    return success.tolist(), steps.tolist(), extras["return"].tolist()
+
+
+def test_play_is_reproducible_from_its_start():
+    p = np.array([[-10.0, 15.0, 1.5], [-3.0, 0.0, 0.0]])
+    s0 = np.concatenate([lunarlander.sample_starts(r, 1, np.random.default_rng(3)) for r in p])
+    first = graded(s0, p)
+    assert graded(s0, p) == first
+    assert min(first[2]) < 0                      # returns are real numbers, not all zero
+
+
+def test_play_is_reproducible_in_another_process(tmp_path):
+    p = np.array([[-10.0, 15.0, 1.5], [-3.0, 0.0, 0.0]])
+    s0 = np.concatenate([lunarlander.sample_starts(r, 1, np.random.default_rng(3)) for r in p])
+    np.savez(tmp_path / "q.npz", s0=s0, p=p)
+    script = (
+        "import json, sys, numpy as np\n"
+        "from tests.test_lunarlander import graded\n"
+        "d = np.load(sys.argv[1]); print(json.dumps(graded(d['s0'], d['p'])))\n")
+    out = subprocess.run([sys.executable, "-c", script, str(tmp_path / "q.npz")], check=True,
+                         capture_output=True, text=True, cwd=Path(__file__).parent.parent).stdout
+    assert json.loads(out.splitlines()[-1]) == list(graded(s0, p))
+
+
+def test_two_rows_replaying_one_start_do_not_share_an_env():
+    row = np.array([[-8.0, 5.0, 0.5]])
+    s0 = lunarlander.sample_starts(row[0], 1, np.random.default_rng(1))
+    both, params = np.concatenate([s0, s0]), np.concatenate([row, row])
+    state = both
+    for _ in range(5):
+        state = lunarlander.step(state, np.array([2, 0]), params)
+    solo = lunarlander.sample_starts(row[0], 1, np.random.default_rng(1))
+    solo = np.concatenate([solo, solo])
+    for _ in range(5):
+        solo = lunarlander.step(solo, np.array([2, 2]), params)
+    assert state[0, 3] == solo[0, 3] and state[0, 3] != state[1, 3]
+
+
+def test_abandoned_envs_are_closed_beyond_the_live_cap(monkeypatch):
+    monkeypatch.setattr(lunarlander, "MAX_LIVE", 3)
+    row = np.array([-10.0, 0.0, 0.0])
+    s0 = lunarlander.sample_starts(row, 6, np.random.default_rng(0))
+    lunarlander.step(s0, np.zeros(6, dtype=int), np.tile(row, (6, 1)))
+    assert len(lunarlander._LIVE) <= 3

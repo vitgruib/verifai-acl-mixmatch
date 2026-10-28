@@ -5,12 +5,13 @@ is a return: a question is passed by an episode return of at least `RETURN_THRES
 level Gymnasium calls solved.
 
 Box2D cannot be batched in NumPy, so the batched contract (`step`, `observe`, `terminated`,
-`reward`) runs on a pool of Gymnasium envs. A state row is `[pool_id, reset_seed, t, ret]`:
-`sample_starts` registers a start (task and seed) and the env is built, and reset with that
-seed, when first needed, so a play is reproducible from `(params, reset_seed)` (wind and
-turbulence are drawn from the env's own seeded generator). A row whose episode terminated
-holds `-pool_id - 1` and its env is freed. There is no `planning_cost`: continuous tasks are
-not certified. A row cannot be restored to a mid-episode state (`t > 0`) once stepped.
+`reward`) runs on a pool of Gymnasium envs. A state row is
+`[handle, reset_seed, t, ret, *task]`. A start (`sample_starts`) has handle 0: it names no env,
+so it is self-describing and a play is reproducible from `(task, reset_seed)` alone, in any
+process (wind and turbulence are drawn from the env's own seeded generator). The first `step`
+builds the env and gives the row a process-local handle; a row whose episode terminated holds
+`-handle` and its env is freed. At most `MAX_LIVE` envs stay open: the oldest are closed, and
+stepping such a row raises. There is no `planning_cost`: continuous tasks are not certified.
 """
 from __future__ import annotations
 
@@ -49,61 +50,54 @@ def make_env(params: dict) -> gym.Env:
 
 
 # ---------------------------------------------------------------- the pool
-class _Start:
-    """One registered start. `env` is None until needed and after the episode ends."""
-
-    def __init__(self, task: np.ndarray, seed: int):
-        self.task, self.seed = task, seed
-        self.env, self.obs, self.t = None, None, 0
-
-    def reset(self) -> None:
-        self.env = make_env(dict(zip(PARAM_ORDER, self.task))).unwrapped
-        self.obs, _ = self.env.reset(seed=self.seed)
-        self.t = 0
-
-    def at(self, t: int) -> _Start:
-        """This start's env, positioned at step `t` of its episode (only 0 can be re-made)."""
-        if t == 0 and (self.t != 0 or self.env is None):
-            self.reset()
-        elif self.t != t:
-            raise RuntimeError(f"LunarLander state at t={t} cannot be restored (pool is at t={self.t})")
-        return self
-
-
-_POOL: dict[int, _Start] = {}
-_IDS = itertools.count()
+MAX_LIVE = 8192                          # open Box2D worlds; the oldest are closed beyond this
+_LIVE: dict[int, list] = {}              # handle -> [env or None, last obs], oldest first
+_HANDLES = itertools.count(1)
 _last_reward: tuple | None = None        # (state, action, next state, reward) from the latest `reward` call
 
 
-def _start_of(row: np.ndarray) -> _Start:
-    pid = int(row[0])
-    return _POOL[pid if pid >= 0 else -pid - 1]
+def _new_env(task, seed: int):
+    env = make_env(dict(zip(PARAM_ORDER, task))).unwrapped
+    return env, env.reset(seed=int(seed))[0]
+
+
+def _close(handle: int) -> None:
+    env = _LIVE.pop(handle)[0]
+    if env is not None:
+        env.close()
 
 
 def sample_starts(task: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
     """`n` starting states for one task (a row in PARAM_ORDER): fresh reset seeds."""
-    state = np.zeros((n, 4))
-    for k, seed in enumerate(rng.integers(0, 2**31 - 1, size=n)):
-        pid = next(_IDS)
-        _POOL[pid] = _Start(np.array(task, dtype=np.float64), int(seed))
-        state[k, :2] = pid, seed
+    state = np.zeros((n, 4 + len(PARAM_ORDER)))
+    state[:, 1] = rng.integers(0, 2**31 - 1, size=n)
+    state[:, 4:] = task
     return state
 
 
-def _advance(state: np.ndarray, action: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _advance(state: np.ndarray, action: np.ndarray, params: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     nxt, reward = state.copy(), np.zeros(len(state))
     for i, row in enumerate(state):
         if row[0] < 0:
             continue
-        start = _start_of(row).at(int(row[2]))
-        start.obs, reward[i], term, _, _ = start.env.step(int(action[i]))
-        start.t += 1
-        nxt[i, 2:] = start.t, row[3] + reward[i]
+        if row[2] == 0:
+            env, obs = _new_env(params[i], row[1])
+            nxt[i, 0] = next(_HANDLES)
+            _LIVE[int(nxt[i, 0])] = [env, obs]
+            while len(_LIVE) > MAX_LIVE:
+                _close(next(iter(_LIVE)))
+        handle = int(nxt[i, 0])
+        if handle not in _LIVE or _LIVE[handle][0] is None:
+            raise RuntimeError("LunarLander state cannot be restored mid-episode (only starts can be replayed)")
+        entry = _LIVE[handle]
+        entry[1], reward[i], term, _, _ = entry[0].step(int(action[i]))
+        nxt[i, 2:4] = row[2] + 1, row[3] + reward[i]
         if term:
-            nxt[i, 0] = -row[0] - 1
-        if term or start.t >= MAX_EPISODE_STEPS:
-            start.env.close()
-            start.env = None
+            nxt[i, 0] = -handle
+            _close(handle)
+        elif nxt[i, 2] >= MAX_EPISODE_STEPS:
+            entry[0].close()
+            entry[0] = None
     return nxt, reward
 
 
@@ -111,7 +105,7 @@ def reward(state: np.ndarray, action: np.ndarray, params: np.ndarray) -> np.ndar
     """The reward of taking `action` in `state`. Box2D yields it only by stepping, so this
     steps the pool and keeps the result for the `step` call on the same arguments."""
     global _last_reward
-    nxt, r = _advance(state, action)
+    nxt, r = _advance(state, action, params)
     _last_reward = (state.copy(), np.array(action), nxt, r)
     return r
 
@@ -122,11 +116,18 @@ def step(state: np.ndarray, action: np.ndarray, params: np.ndarray) -> np.ndarra
     last, _last_reward = _last_reward, None
     if last is not None and np.array_equal(last[0], state) and np.array_equal(last[1], action):
         return last[2]
-    return _advance(state, action)[0]
+    return _advance(state, action, params)[0]
 
 
 def observe(state: np.ndarray) -> np.ndarray:
-    return np.stack([_start_of(row).at(int(row[2]) if row[0] >= 0 else _start_of(row).t).obs for row in state])
+    obs = np.zeros((len(state), OBS_DIM))
+    for i, row in enumerate(state):
+        if row[2] == 0:
+            env, obs[i] = _new_env(row[4:], row[1])    # a start has no env yet; reset is deterministic
+            env.close()
+        elif row[0] > 0:
+            obs[i] = _LIVE[int(row[0])][1]
+    return obs
 
 
 def terminated(state: np.ndarray) -> np.ndarray:
