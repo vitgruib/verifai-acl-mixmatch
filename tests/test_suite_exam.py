@@ -96,6 +96,7 @@ def test_exam_round_trips_with_checksums(tmp_path):
 
 def test_build_exam_writes_all_three_sections(monkeypatch, tmp_path):
     fake_world(monkeypatch, {1.0: [0] * 3}, width=5)
+    monkeypatch.setattr(exam, "_agent_digest", str)
     monkeypatch.setattr(exam, "exam_dir", lambda name: tmp_path)
     monkeypatch.setattr(cartpole, "sample_starts", lambda row, n, rng: np.zeros((n, 4)))
     build_exam("cartpole", list(range(3)), n_iters=2, seed=0, min_fail_agents=3, workers=1)
@@ -161,6 +162,7 @@ def test_verifai_section_is_the_same_with_two_workers_as_with_one():
 
 def test_rerun_with_a_search_cache_skips_the_searches(monkeypatch, tmp_path):
     fake_world(monkeypatch, {1.0: [0] * 3 + [10] * 7, 2.0: [0] * 5 + [10] * 5})
+    monkeypatch.setattr(exam, "_agent_digest", str)          # the fake agents are ints
     first = verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0, workers=1, cache_dir=tmp_path)
 
     def no_search(*args):
@@ -169,3 +171,22 @@ def test_rerun_with_a_search_cache_skips_the_searches(monkeypatch, tmp_path):
     monkeypatch.setattr(exam, "search", no_search)
     again = verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0, workers=1, cache_dir=tmp_path)
     assert again.digest() == first.digest()
+
+
+def test_cached_search_is_not_reused_for_an_agent_with_different_weights(monkeypatch, tmp_path):
+    import torch
+
+    from acl_bench.ppo import Agent
+    searched = []
+
+    def fake_search(env, name, agents, n_iters, starts_per_task, rng):
+        searched.append(agents[0])
+        return PairSet("SEARCH", np.ones((starts_per_task, 1)), np.zeros((starts_per_task, 1)), np.zeros(starts_per_task))
+
+    monkeypatch.setattr(exam, "search", fake_search)
+    monkeypatch.setattr(exam, "grade", lambda e, a, p, s, extras=None: (np.zeros(len(p), dtype=bool), np.zeros(len(p))))
+    torch.manual_seed(0)
+    old, retrained = Agent(cartpole.OBS_DIM, cartpole.ACTION_DIM), Agent(cartpole.OBS_DIM, cartpole.ACTION_DIM)
+    verifai_section(fake_env(), [old], n_iters=1, min_fail_agents=1, seed=0, workers=1, cache_dir=tmp_path)
+    verifai_section(fake_env(), [retrained], n_iters=1, min_fail_agents=1, seed=0, workers=1, cache_dir=tmp_path)
+    assert searched == [old, retrained]

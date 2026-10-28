@@ -17,6 +17,7 @@ the exam goes to frozen_sets/suite/<env>.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import multiprocessing as mp
 import os
@@ -90,8 +91,16 @@ def _search_one(env, agent, n_iters: int, starts: int, seed: int, i: int) -> Pai
     return search(env, "ce", [agent], n_iters, starts, np.random.default_rng(np.random.SeedSequence([seed, i, 1])))
 
 
-def _cache_path(cache_dir, seed: int, i: int, n_iters: int, starts: int) -> Path:
-    return Path(cache_dir) / f"seed{seed}_agent{i}_iters{n_iters}_starts{starts}.npz"
+def _agent_digest(agent) -> str:
+    """Names the agent's weights, so a retrained agent at the same index misses the cache."""
+    h = hashlib.sha256()
+    for tensor in agent.state_dict().values():
+        h.update(tensor.detach().cpu().numpy().tobytes())
+    return h.hexdigest()[:16]
+
+
+def _cache_path(cache_dir, seed: int, i: int, agent, n_iters: int, starts: int) -> Path:
+    return Path(cache_dir) / f"seed{seed}_agent{i}_{_agent_digest(agent)}_iters{n_iters}_starts{starts}.npz"
 
 
 def _save_search(path: Path, pool: PairSet) -> None:
@@ -141,7 +150,8 @@ def verifai_section(env, agents: list, n_iters: int, starts: int = STARTS, min_f
     agent's search is saved as it finishes and reused by a rerun."""
     torch.set_num_threads(1)                          # as in the workers, so both paths compute alike
     rng = np.random.default_rng(seed)
-    paths = [_cache_path(cache_dir, seed, i, n_iters, starts) if cache_dir else None for i in range(len(agents))]
+    paths = [_cache_path(cache_dir, seed, i, agent, n_iters, starts) if cache_dir else None
+             for i, agent in enumerate(agents)]
     pools = [_load_search(p) if p and p.exists() else None for p in paths]
     todo = [i for i, pool in enumerate(pools) if pool is None]
 
@@ -155,14 +165,18 @@ def verifai_section(env, agents: list, n_iters: int, starts: int = STARTS, min_f
             os.environ.setdefault(var, "1")            # one thread per worker; inherited by spawned workers
         # a worker that dies (e.g. killed for memory) raises BrokenProcessPool here instead of hanging
         with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn"), initializer=_init_worker) as ex:
-            futures = {ex.submit(_search_job, (env.__name__, agents[i], n_iters, starts, seed, i)): i for i in todo}
-            for future in as_completed(futures):
-                finished(futures[future], future.result())
-            rows, s0s, pooled = _pool_tasks(env, pools, starts, rng)
-            step = GRADE_CHUNK // starts * starts       # question_scores' chunks: the same grade batches
-            graded = [[ex.submit(_grade_job, (env.__name__, a, pooled.params[j:j + step], pooled.s0[j:j + step]))
-                       for j in range(0, len(pooled), step)] for a in agents]
-            scores = [np.concatenate([f.result() for f in fs]).reshape(-1, starts).mean(axis=1) for fs in graded]
+            try:
+                futures = {ex.submit(_search_job, (env.__name__, agents[i], n_iters, starts, seed, i)): i for i in todo}
+                for future in as_completed(futures):
+                    finished(futures[future], future.result())
+                rows, s0s, pooled = _pool_tasks(env, pools, starts, rng)
+                step = GRADE_CHUNK // starts * starts       # question_scores' chunks: the same grade batches
+                graded = [[ex.submit(_grade_job, (env.__name__, a, pooled.params[j:j + step], pooled.s0[j:j + step]))
+                           for j in range(0, len(pooled), step)] for a in agents]
+                scores = [np.concatenate([f.result() for f in fs]).reshape(-1, starts).mean(axis=1) for fs in graded]
+            except Exception:                            # surface it now, not after the queued jobs
+                ex.shutdown(cancel_futures=True)
+                raise
     else:
         for i in todo:
             finished(i, _search_one(env, agents[i], n_iters, starts, seed, i))
