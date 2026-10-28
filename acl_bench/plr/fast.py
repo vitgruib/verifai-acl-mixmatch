@@ -276,8 +276,9 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         el.backward()
                         ens_opt.step()
 
-        if cfg.levels.sfl and it % cfg.levels.sfl_every == 0:
-            room = cfg.steps - (it + 1) * K * T - scouted if charge else np.inf
+        room = cfg.steps - (it + 1) * K * T - scouted if charge else np.inf
+        # a scout whose first step does not fit in the budget left is skipped: the buffer stays
+        if cfg.levels.sfl and it % cfg.levels.sfl_every == 0 and room >= cfg.levels.sfl_n * cfg.levels.sfl_k:
             top, sim, w = sfl_select(env, agent, levels, cfg.levels, env_rng, room)
             levels.set_sfl(top, w, getattr(levels, "sfl_top_starts", None))
             scouted += sim
