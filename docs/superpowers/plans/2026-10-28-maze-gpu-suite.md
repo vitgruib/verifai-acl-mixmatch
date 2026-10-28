@@ -19,6 +19,7 @@
 - `results/suite/maze/scores.csv` columns exactly as the classic suite: arm, seed, section, check, n_questions, pass_rate, play_rate, steps, scouted_steps, budget, n_checks, wall_time_sec. Arms DR, PLR, RPLR, ACCEL, SFL, MINIMAX.
 - Bridge: JaxUED `examples/gymnax/gymnax_plr.py` on CartPole with our box (length 0.25-1.5, masspole 0.05-0.5, masscart 0.5-2.0, force_mag 4-16, init_range 0.05-0.3), our PPO (8 envs x 128 steps = 1024 samples/update, 4 minibatches, 4 epochs, lr 3e-4, Adam eps 1e-5, gamma 0.99, lambda 0.95, clip 0.2, max grad norm 0.5, the 64-64 tanh MLP of `acl_bench/ppo.py`; entropy and value coefficients copied from `acl_bench/plr/fast.py`), our replay (replay 0.8, MaxMC, temperature 0.3, staleness 0.3, buffer 1000), 614,400 steps; arms DR (replay 0), PLR, RPLR; 20 seeds; no ACCEL. Graded by our PyTorch grader on `frozen_sets/suite/cartpole`. Reading: passes if every arm's mean is within 0.10 of batch 21's on VerifAI and random, and DR > PLR and DR > RPLR on VerifAI.
 - The papers' code changes only through documented patches in `cluster/patches/`.
+- Target machine (user, 2026-10-28): the professor's computer, NVIDIA GPU(s), no SLURM. The README covers only that case; the existing SLURM path stays in the code, untested and unmentioned. With one GPU the 70 Maze runs take days, so local mode runs several jobs per GPU (`JOBS_PER_GPU`, default chosen from the smoke test's measured GPU memory and speed, `XLA_PYTHON_CLIENT_MEM_FRACTION` set per job) and the README states the expected time for 1, 2 and 4 GPUs.
 - No GPU here: every path is verified on the Mac CPU (`ALLOW_CPU=1`, JAX CPU build) at tiny budgets. Never claim GPU behaviour was tested.
 - While the LunarLander pipeline runs (`results/suite/pipeline_ll.sh`), do not edit `acl_bench/plr/`, `acl_bench/suite/run.py`, `exam.py`, `arms.py`, `acl_bench/envs/`, or `acl_bench/exam/` (spawned workers import them). `acl_bench/suite/analyze.py` is safe.
 
@@ -135,7 +136,7 @@ Pre-existing code the results rest on gets its own gate, before any costly step.
 
 - [ ] **Step 1:** Training array: 6 scored methods x seeds 0-9 plus REF = DR seeds 100-109 (70 tasks); SFL with 25 walls and 245,760,000 steps; one GPU per task; time limits per method.
 - [ ] **Step 2:** Stages with dependencies: smoke test (DR, RPLR, SFL, 1 seed, 50 updates; then exam build with `--iters 20` on 10 copies of the smoke DR checkpoint, and grading) -> training array and bridge array (60 tasks, CPU or GPU) -> exam (after the 10 REF tasks) -> grade (after training and exam) -> bridge grading and compare -> collect.
-- [ ] **Step 3:** Local mode keeps the existing round-robin over every GPU `nvidia-smi` lists; prints the GPU count and an estimated finish time from the smoke test's measured speed.
+- [ ] **Step 3:** Local mode keeps the existing round-robin over every GPU `nvidia-smi` lists; adds `JOBS_PER_GPU` concurrent jobs per GPU (see Global Constraints); prints the GPU count and an estimated finish time from the smoke test's measured speed.
 - [ ] **Step 4:** `collect` packs `results/suite/maze/`, `results/suite/cartpole_jaxued/`, `frozen_sets/suite/maze/`, `frozen_sets/suite_pool/maze/`, final checkpoints, configs and logs into `maze_results.tgz`.
 - [ ] **Step 5:** Commit.
 
@@ -151,6 +152,6 @@ Pre-existing code the results rest on gets its own gate, before any costly step.
 **Files:**
 - Modify: `README.md` (replace), `docs/library_log.md` (batch 22), `docs/cluster_details.md` (one line at the top saying it describes the earlier atlas run and pointing to the README)
 
-- [ ] **Step 1:** README, plain and short, in the current README's voice (no mention of how the code was written): what it runs (Maze suite + CartPole bridge check, one paragraph); how to see your GPUs (`nvidia-smi -L`; `sinfo -o "%P %G"`); the one command; how long, by number of GPUs, and how to watch progress; what to send back. A numbered "what the script does" list that includes the bridge check as its own step.
+- [ ] **Step 1:** README, plain and short, in the current README's voice (no mention of how the code was written): what it runs (Maze suite + CartPole bridge check, one paragraph); how to see your GPUs (`nvidia-smi -L`; `sinfo -o "%P %G"`); the one command; how long on 1, 2 and 4 GPUs, that it runs in the background and survives closing the terminal, how to watch progress and how to restart after a reboot (rerun the same command; it resumes); what to send back. No SLURM instructions. A numbered "what the script does" list that includes the bridge check as its own step.
 - [ ] **Step 2:** Batch 22 pre-registration in `docs/library_log.md`: the Maze screen (one-sided Mann-Whitney per method vs DR on VerifAI, 10 seeds, Holm over Maze's 5 tests; descriptive with the classic tasks), SFL full training and the user's follow-up rule, the bridge reading.
 - [ ] **Step 3:** Commit.
