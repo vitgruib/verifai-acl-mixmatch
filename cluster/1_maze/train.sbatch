@@ -26,7 +26,7 @@ fi
 
 case $algo in
   dr)      f=maze_dr.py;     x="";;
-  minimax) f=maze_paired.py; x="--minimax";;
+  minimax) f=maze_paired.py; x="--minimax --adv_num_steps 28";;  # goal, dir, agent + 25 wall toggles: the 25-wall box
   rplr)    f=maze_plr.py;    x="";;  # Robust PLR
   plr)     f=maze_plr.py;    x="--exploratory_grad_updates";;
   accel)   f=maze_plr.py;    x="--use_accel";;

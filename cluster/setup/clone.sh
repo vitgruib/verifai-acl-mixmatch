@@ -27,5 +27,6 @@ apply_once() {  # repo patch
     echo "ERROR: $2 neither applies nor is already applied to $TP/$1"; exit 1
   fi
 }
+apply_once jaxued jaxued_accel_cap.patch   # ACCEL's edits capped at the 25-wall box (docs/maze_gpu_audit.md)
 apply_once kinetix kinetix_acl27.patch
 apply_once sfl sfl_minimax.patch

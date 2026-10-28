@@ -1,0 +1,31 @@
+--- a/examples/maze_plr.py
++++ b/examples/maze_plr.py
+@@ -394,6 +394,19 @@
+     else:
+         raise ValueError(f"Unknown score function: {config['score_function']}")
+ 
++def cap_walls(mutate_level, max_walls: int):
++    """atlas patch: keeps ACCEL's edits inside the training box (at most `max_walls` walls).
++    Upstream's wall flips add a wall more often than they remove one, so a buffer lineage drifts
++    far past the generator's wall count. Edits are applied one at a time (the same distribution
++    as upstream's batch of edits) and an edit that would leave more than `max_walls` walls is skipped."""
++    def mutate(rng, level, num_edits):
++        def edit(level, rng):
++            child = mutate_level(rng, level, 1)
++            over = child.wall_map.sum() > max_walls
++            return jax.tree_util.tree_map(lambda p, c: jnp.where(over, p, c), level, child), None
++        return jax.lax.scan(edit, level, jax.random.split(rng, num_edits))[0]
++    return mutate
++
+ def main(config=None, project="JAXUED_TEST"):
+     tags = []
+     if not config["exploratory_grad_updates"]:
+@@ -459,7 +472,7 @@
+     env_renderer = MazeRenderer(env, tile_size=8)
+     env = AutoReplayWrapper(env)
+     env_params = env.default_params
+-    mutate_level = make_level_mutator_minimax(100)
++    mutate_level = cap_walls(make_level_mutator_minimax(100), config["n_walls"])
+ 
+     # And the level sampler    
+     level_sampler = LevelSampler(
