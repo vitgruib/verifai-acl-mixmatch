@@ -2,10 +2,11 @@
 adds the border). Pure numpy, so it runs without JAX.
 
 A space maps a point of a VerifAI box (`bounds`, a dict name -> (lo, hi)) to a level:
-(walls (13, 13) bool, agent (x, y), agent_dir, goal (x, y)). Two spaces:
+(walls (13, 13) bool, agent (x, y), agent_dir, goal (x, y)). The spaces:
 
   dr   the training distribution's own knobs: wall count, a wall seed, agent, goal and
        direction. Wall positions come from the seed, so that dimension is not smooth.
+  dr25 dr restricted to JaxUED's 25-wall training box (the Maze exam's VerifAI search).
   seg  structured walls: up to 10 straight segments (x, y, orientation, length) plus agent,
        goal and direction. Smooth in every dimension, and reaches corridor and room
        layouts that uniform random walls almost never produce.
@@ -25,6 +26,7 @@ _POS = {"agent_x": (0, N), "agent_y": (0, N), "goal_x": (0, N), "goal_y": (0, N)
 N_SEG = 10
 SPACES = {
     "dr": {"n_walls": (0, 61), "wall_seed": (0, 1e6), **_POS},
+    "dr25": {"n_walls": (0, 26), "wall_seed": (0, 1e6), **_POS},
     "seg": {"n_seg": (0, N_SEG + 1), **{f"s{i}_{k}": b for i in range(N_SEG)
             for k, b in (("x", (0, N)), ("y", (0, N)), ("o", (0, 2)), ("len", (1, N)))}, **_POS},
 }
@@ -37,7 +39,7 @@ def _i(v, hi):
 def build(space: str, p: dict):
     """Point -> (walls, agent, agent_dir, goal, invalid_reason or None)."""
     walls = np.zeros((N, N), dtype=bool)
-    if space == "dr":
+    if space in ("dr", "dr25"):
         cells = np.random.default_rng(int(p["wall_seed"])).permutation(N * N)
         walls.flat[cells[:_i(p["n_walls"], 61)]] = True
     elif space == "seg":

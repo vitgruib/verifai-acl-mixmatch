@@ -1,0 +1,12 @@
+{
+  "sets": {
+    "custom": {
+      "n": 14,
+      "sha256": "0ab2d86d58f00881eccdd5549140a290585686199abf15f4d8a7094b4908ecbf"
+    },
+    "random": {
+      "n": 300,
+      "sha256": "2b4e5c569f3ce7e8404105d0a1f8bdf26e8172e17a23461ec81ddc7cd1a0201d"
+    }
+  }
+}
