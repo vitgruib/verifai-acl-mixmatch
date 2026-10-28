@@ -37,6 +37,9 @@ PARAM_BOUNDS = {
     "layout_seed": (0, 1_000_000),
 }
 PARAM_ORDER = tuple(PARAM_BOUNDS)
+# ACCEL edits keep the map's seed and size: holes are seeded uniforms < hole_density, so a
+# nudged density adds or removes a few holes, while a new seed would draw a whole new map.
+MUTATE_FIXED = ("layout_seed", "size")
 DEFAULTS = {"size": 8, "hole_density": 0.2, "slip": 0.67}
 MAX_SIZE, VIEW = 15, 5
 MAX_EPISODE_STEPS = 100

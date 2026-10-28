@@ -52,7 +52,8 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     torch.manual_seed(cfg.seed)
     env_rng, shuffle_rng = np.random.default_rng(env_ss), np.random.default_rng(sh_ss)
     bounds = np.array([env.PARAM_BOUNDS[k] for k in env.PARAM_ORDER], dtype=np.float64)
-    levels = LevelSampler(cfg.levels, bounds, np.random.default_rng(lv_ss))
+    fixed = [env.PARAM_ORDER.index(k) for k in getattr(env, "MUTATE_FIXED", ())]
+    levels = LevelSampler(cfg.levels, bounds, np.random.default_rng(lv_ss), fixed)
     r_step, r_term = REWARD.get(env_name, (0.0, 0.0))    # unused for an env with its own `reward`
     has_reward, balance = hasattr(env, "reward"), env.GOAL == "balance"
     regret, pending = cfg.levels.score == "regret", []
@@ -128,10 +129,11 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
     checks, stats = [], {"episodes": 0, "replays": 0}
     every = cfg.steps // n_checks
     if on_check:
-        checks.append({"step": 0, **on_check(0, agent)})
+        checks.append({"step": 0, "scouted_steps": 0, **on_check(0, agent)})
 
-    # With charge_scouting, SFL's scouting rollouts count against the budget: training stops
-    # when training + scouting steps reach it, and check-ins fall on that total.
+    # With charge_scouting, SFL's scouting rollouts count against the budget: a scout stops
+    # where the budget runs out, training stops when no rollout fits in what is left, and
+    # check-ins fall on the training + scouting total.
     charge = cfg.levels.charge_scouting
     n_iter = cfg.steps // (K * T)
     scouted, next_check = 0, every
@@ -275,15 +277,17 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                         ens_opt.step()
 
         if cfg.levels.sfl and it % cfg.levels.sfl_every == 0:
-            top, sim, w = sfl_select(env, agent, levels, cfg.levels, env_rng)
+            room = cfg.steps - (it + 1) * K * T - scouted if charge else np.inf
+            top, sim, w = sfl_select(env, agent, levels, cfg.levels, env_rng, room)
             levels.set_sfl(top, w, getattr(levels, "sfl_top_starts", None))
             scouted += sim
 
         done_steps = (it + 1) * K * T
         consumed = done_steps + (scouted if charge else 0)
-        last = it == n_iter - 1 or consumed >= cfg.steps
+        last = it == n_iter - 1 or consumed + K * T > cfg.steps
         if on_check and (consumed >= next_check or last):
-            checks.append({"step": min(consumed, cfg.steps), **on_check(consumed, agent)})
+            sc = scouted + (cur.sim_steps if cur is not None else 0)
+            checks.append({"step": min(consumed, cfg.steps), "scouted_steps": sc, **on_check(consumed, agent)})
             while next_check <= consumed:
                 next_check += every
         if last:
@@ -295,12 +299,15 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
 
 
 @torch.no_grad()
-def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random.Generator):
+def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random.Generator,
+               max_sim: float = np.inf):
     """SFL's buffer: the `sfl_top` of `sfl_n` random levels by p(1 - p), p = the share of
     `sfl_k` stochastic-policy rollouts that pass. With `lc.sfl_score == "pvl"` the same
     scouted levels are ranked by PVL instead (mean over the k rollouts of the episode's
     mean positive GAE advantage under the current critic): SFL's search with PLR's score.
-    Returns (levels, simulated steps, replay weights or None for uniform)."""
+    The scouting rollouts stop before simulating more than `max_sim` steps (charged scouting
+    at the end of the budget; the extra rollouts of halving, bisect, ghost and verify are not
+    capped). Returns (levels, simulated steps, replay weights or None for uniform)."""
     sim_auto = _auto_intensity(env, agent, levels, lc, rng) if lc.sfl_auto > 0 else 0
     cand = np.stack([levels.draw_new() for _ in range(lc.sfl_n)])
     hist = getattr(levels, "sfl_hist", [])
@@ -342,6 +349,8 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     xa, xc = agent.inputs
     sim = 0                                        # environment steps simulated here
     for _ in range(env.MAX_EPISODE_STEPS):
+        if sim + int(alive.sum()) > max_sim:
+            break
         sim += int(alive.sum())
         raw = env.observe(state).astype(np.float32)
         logits = agent.actor(torch.as_tensor(xa(raw, params)))

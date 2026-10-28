@@ -98,8 +98,9 @@ class LevelConfig:
 
 
 class LevelSampler:
-    def __init__(self, cfg: LevelConfig, bounds: np.ndarray, rng: np.random.Generator):
+    def __init__(self, cfg: LevelConfig, bounds: np.ndarray, rng: np.random.Generator, fixed=()):
         self.cfg, self.bounds, self.rng = cfg, bounds, rng
+        self.fixed = list(fixed)             # parameter indices an ACCEL edit never changes
         n = cfg.buffer
         self.params = np.zeros((n, len(bounds)))
         self.scores = np.zeros(n)
@@ -166,7 +167,9 @@ class LevelSampler:
 
     def _mutate(self, params: np.ndarray) -> np.ndarray:
         lo, hi = self.bounds[:, 0], self.bounds[:, 1]
-        return np.clip(params + self.rng.normal(0, self.cfg.mut_sigma, len(lo)) * (hi - lo), lo, hi)
+        noise = self.rng.normal(0, self.cfg.mut_sigma, len(lo)) * (hi - lo)
+        noise[self.fixed] = 0.0
+        return np.clip(params + noise, lo, hi)
 
     # ---------------------------------------------------------------- scoring
     def score(self, rewards, values, next_value, gamma, lam, success: bool, slot: int,
