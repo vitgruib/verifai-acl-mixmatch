@@ -1,6 +1,6 @@
 # UED generalization suite: design
 
-Date: 2026-10-28. Status: draft, awaiting the user's approval.
+Date: 2026-10-28. Status: approved by the user 2026-10-28 (2-day total compute limit).
 
 ## Intent
 
@@ -54,6 +54,12 @@ at a disadvantage there by design. That is the point: it acts as a falsifier in 
 - Hardware: the user's Mac (Apple M5, 10 cores, 24 GB). CPU only. Runs follow the existing safety
   guard (`acl_bench/study/safety.py`: pause on battery, heat, low memory or disk; launch with
   `--allow-battery` per the user's standing preference).
+- **Total compute: 2 days of the Mac, wall clock (user's limit)**, covering calibration, timing,
+  reference agents, exam building and scored runs. Split (my call): about 12 hours for the classic
+  tasks, about 36 hours for Maze. The classic estimate comes from the CartPole study (261 runs in
+  4.7 hours, about 1 minute per run with runs in parallel); LunarLander is unmeasured and is timed
+  first. If a measured cost breaks the split, the builder reports it to the user before cutting
+  seeds or budget.
 - Fair compute: equal total environment steps per method, counting every step a method spends,
   including SFL's scouting rollouts and ACCEL's edit evaluations.
 - Seeds: 20 per method on CartPole, LunarLander, FrozenLake; 3 per method on Maze. Plus separate
@@ -97,18 +103,17 @@ On the classic tasks the papers give no settings. Use the Maze settings scaled t
 scaling in the pre-registration.
 
 **Maze agent and budget.** The papers use an LSTM agent (256 units, conv encoder) and about 250M
-steps. **Each Maze run gets at most half a day on the Mac (user's limit)**, measured under the
-concurrency the runs actually use. First time the PyTorch Maze on this Mac. If the paper budget
-fits in half a day, use it. If not, the budget is what fits in half a day, and the shortfall
-against the paper is reported with the results: batch 19 found the methods don't separate at 10%
-of the budget, so a large shortfall weakens the Maze results.
+steps. Maze gets whatever is left of the 2-day total (see Constraints), about 36 hours of the Mac.
+Its 23 runs (18 scored + 5 reference) run in parallel waves, so the per-run budget is set by timing
+the PyTorch Maze under that concurrency: the paper budget if it fits, otherwise what fits. Any
+shortfall against the paper is reported with the results: batch 19 found the methods don't
+separate at 10% of the budget, so a large shortfall weakens the Maze results.
 
 **Maze reference agents (my call):** 5 instead of 10, keeping a question if at least 2 of the 5 fail
-it (40%, as with 4 of 10). Maze total: 18 scored + 5 reference runs at half a day each, about 6
-days with 2 runs at a time.
+it (40%, as with 4 of 10).
 
-**Order (my call):** the classic tasks are built and run first, then Maze. Their screen result
-arrives in days, and the user can decide whether Maze is still worth its week.
+**Order (my call):** the classic tasks are built and run first, then Maze. Their screen result comes
+first, and the user can decide whether Maze is still worth its share of the budget.
 
 **Fidelity check (my call): a soft check, not a gate.** After the first DR and Robust PLR Maze
 runs, compare their named-maze solve rates with the published ones and report the comparison to
