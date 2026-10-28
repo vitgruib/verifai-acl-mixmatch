@@ -1173,14 +1173,16 @@ this line is dropped early for these tasks.
 
 | VerifAI pass rate (mean over 20 seeds) | DR | PLR | RPLR | ACCEL | SFL |
 |---|---|---|---|---|---|
-| CartPole | 0.570 | 0.470 | 0.469 | 0.448 | 0.332 |
-| FrozenLake | 0.141 | 0.056 | 0.043 | 0.066 | 0.054 |
+| CartPole | 0.570 | 0.470 | 0.469 | 0.535 | 0.332 |
+| FrozenLake | 0.141 | 0.056 | 0.043 | 0.032 | 0.054 |
+
+(ACCEL from the corrected rerun, amendment 2 below; the first ACCEL runs scored 0.448 and 0.066.)
 
 **Also reported, not tested.**
-- Random section: DR highest on both (CartPole 0.94, others 0.70-0.91; FrozenLake 0.59, others
-  0.42-0.57).
-- Custom section: CartPole DR 0.91 (others 0.70-0.88); FrozenLake DR 0.29, below PLR 0.42,
-  RPLR 0.39 and SFL 0.35 (ACCEL 0.13). That FrozenLake custom gap is the only place a UED method
+- Random section: DR highest on both (CartPole 0.94, others 0.70-0.88; FrozenLake 0.59, others
+  0.41-0.57).
+- Custom section: CartPole DR 0.91 (others 0.70-0.87); FrozenLake DR 0.29, below PLR 0.42,
+  RPLR 0.39 and SFL 0.35 (ACCEL 0.23). That FrozenLake custom gap is the only place a UED method
   is ahead, and it is descriptive only.
 - Seed spread is wide for the replay methods on CartPole (std 0.2-0.4 vs DR's 0.14): some seeds fail
   to learn the broad task at the shared budget.
@@ -1192,3 +1194,28 @@ this line is dropped early for these tasks.
 **Reading.** The VerifAI section was built from separate DR agents' failures, so it was expected to
 favour any method over DR; instead DR leads, and it also leads in distribution. At this budget the
 UED methods give up broad-task performance without fixing the regions where DR fails.
+
+### Batch 21, amendment 2 (2026-10-28, after the first result): ACCEL rerun after a sampler fix
+
+A whole-branch validity review found that the ACCEL arm stopped drawing fresh random levels once
+the buffer filled (`acl_bench/plr/levels.py`: a due new level was always replaced by a queued edit,
+and every replay queued one). FrozenLake ACCEL seed 1 trained on 108 distinct maps against DR's
+42,394, so the first ACCEL rows did not test ACCEL. Fixed in 563f0c1 to JaxUED's schedule (replay
+p/(1+p), edit p/(1+p), new (1-p)/(1+p); 4/9, 4/9, 1/9 at p = 0.8; FrozenLake seed 1 now trains on
+9,081 maps). DR, PLR, RPLR and SFL pick exactly the same levels as before (seeded digest test), so
+only ACCEL was rerun (20 seeds per task, same seeds and budget). The invalid rows are kept in
+`results/suite/<env>/scores_accel_invalid.csv`. The screen stays negative (ACCEL one-sided p 0.90 on
+CartPole, 1.00 on FrozenLake; Holm p 1.0). Earlier batches' `accel` arms used the same sampler and
+carry the same defect.
+
+**Caveats from the review, part of the reading.**
+- PLR and RPLR use JaxUED's Maze defaults. On FrozenLake MaxMC keeps a level's best-ever return, so
+  one lucky success on a high-slip 4x4 map ranks it first for good: 7-35% of all episodes (by seed)
+  go to one map. On CartPole the undiscounted best return dominates the score (correlation 0.996),
+  so never-solved levels are never prioritised. The negative result is for these settings, not
+  for PLR in general.
+- SFL's scouting is charged, so it trains on about half the steps (CartPole mean 319k, FrozenLake
+  323k of 614k). Its deficit is confounded with fewer updates; "SFL's curriculum is worse" is not
+  what was tested.
+- Grading, compute accounting and the analysis were re-checked: 18 section scores regraded from
+  snapshots matched exactly.

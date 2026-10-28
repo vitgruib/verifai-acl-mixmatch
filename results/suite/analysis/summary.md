@@ -8,18 +8,18 @@ Per-case custom scores are the mean share of plays passed, averaged over seeds.
 |---|---|---|---|---|---|
 | PLR | cartpole | -0.100 | 0.9571 | 1.0000 | False |
 | RPLR | cartpole | -0.101 | 0.9261 | 1.0000 | False |
-| ACCEL | cartpole | -0.123 | 0.9831 | 1.0000 | False |
+| ACCEL | cartpole | -0.036 | 0.9030 | 1.0000 | False |
 | SFL | cartpole | -0.239 | 0.9991 | 1.0000 | False |
 | PLR | frozenlake | -0.084 | 0.9961 | 1.0000 | False |
 | RPLR | frozenlake | -0.097 | 0.9987 | 1.0000 | False |
-| ACCEL | frozenlake | -0.074 | 0.9955 | 1.0000 | False |
+| ACCEL | frozenlake | -0.109 | 1.0000 | 1.0000 | False |
 | SFL | frozenlake | -0.087 | 0.9943 | 1.0000 | False |
 
 ## cartpole: pass rate, mean +- std over 20 seeds
 
 | arm | random | verifai | custom |
 |---|---|---|---|
-| ACCEL | 0.910 +- 0.214 | 0.448 +- 0.222 | 0.878 +- 0.173 |
+| ACCEL | 0.884 +- 0.251 | 0.535 +- 0.198 | 0.844 +- 0.219 |
 | DR | 0.940 +- 0.135 | 0.570 +- 0.188 | 0.910 +- 0.104 |
 | PLR | 0.876 +- 0.265 | 0.470 +- 0.219 | 0.872 +- 0.182 |
 | RPLR | 0.826 +- 0.344 | 0.469 +- 0.250 | 0.854 +- 0.232 |
@@ -29,7 +29,7 @@ Per-case custom scores are the mean share of plays passed, averaged over seeds.
 
 | arm | random | verifai | custom |
 |---|---|---|---|
-| ACCEL | 0.420 +- 0.048 | 0.066 +- 0.045 | 0.134 +- 0.088 |
+| ACCEL | 0.411 +- 0.087 | 0.032 +- 0.025 | 0.229 +- 0.138 |
 | DR | 0.589 +- 0.058 | 0.141 +- 0.094 | 0.286 +- 0.135 |
 | PLR | 0.568 +- 0.037 | 0.056 +- 0.033 | 0.424 +- 0.109 |
 | RPLR | 0.543 +- 0.030 | 0.043 +- 0.025 | 0.386 +- 0.101 |
