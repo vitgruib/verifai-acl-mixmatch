@@ -1,5 +1,6 @@
 """The suite runner: arms, per-section score rows, charged SFL scouting, resume, snapshots."""
 import dataclasses
+import hashlib
 import shutil
 
 import numpy as np
@@ -10,7 +11,7 @@ from acl_bench import envs
 from acl_bench.envs import cartpole, frozenlake
 from acl_bench.exam.sets import load_sets, save_sets
 from acl_bench.plr.fast import FastConfig, train
-from acl_bench.plr.levels import LevelConfig, LevelSampler
+from acl_bench.plr.levels import REPLAY, LevelConfig, LevelSampler
 from acl_bench.snapshots import load_run
 from acl_bench.suite import run
 from acl_bench.suite.arms import ARMS, SFL_SCOUT, arm_config
@@ -181,6 +182,52 @@ def test_other_envs_mutate_every_parameter():
     sampler = LevelSampler(ARMS["ACCEL"], bounds, np.random.default_rng(0))
     parent = bounds.mean(axis=1)
     assert (sampler._mutate(parent) != parent).all()
+
+
+def _simulate_picks(arm, n, fixed=()):
+    """n sequential pick/report rounds on a 3-parameter box with made-up outcomes:
+    [(params, slot, mode, buffer size at the pick)]."""
+    sampler = LevelSampler(ARMS[arm], np.array([[0.0, 1.0]] * 3), np.random.default_rng(0), fixed=fixed)
+    sampler.set_sfl(np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]))
+    outcome = np.random.default_rng(1)
+    picks = []
+    for _ in range(n):
+        p, slot, mode = sampler.pick()
+        picks.append((p, slot, mode, sampler.size))
+        sampler.report(p, slot, mode, outcome.uniform(), outcome.uniform(), bool(outcome.uniform() < 0.5))
+    return picks, sampler.min_fill
+
+
+def _pick_digest(picks):
+    h = hashlib.sha256()
+    for p, slot, mode, _ in picks:
+        h.update(np.round(p, 12).tobytes())
+        h.update(np.int64([slot, mode]).tobytes())
+    return h.hexdigest()[:16]
+
+
+def _accel_shares(picks, min_fill):
+    """Shares of replays, children and fresh draws among the picks made once the buffer is
+    filled. Parameter 0 never mutates, so a child repeats a seen value of it; a fresh draw
+    (uniform) does not."""
+    seen, kinds = set(), []
+    for p, _, mode, size in picks:
+        if size >= min_fill:
+            kinds.append("replay" if mode == REPLAY else "child" if p[0] in seen else "fresh")
+        seen.add(p[0])
+    return {k: kinds.count(k) / len(kinds) for k in ("replay", "child", "fresh")}
+
+
+def test_accel_keeps_drawing_fresh_levels_after_the_buffer_fills():
+    shares = _accel_shares(*_simulate_picks("ACCEL", 30000, fixed=(0,)))
+    assert shares == pytest.approx({"replay": 4 / 9, "child": 4 / 9, "fresh": 1 / 9}, abs=0.02)
+
+
+@pytest.mark.parametrize("arm,digest", [("DR", "f1bde3a585a2948b"), ("PLR", "b7ed588b58de8a94"),
+                                        ("RPLR", "b7ed588b58de8a94"), ("SFL", "1640a807ec08d826")])
+def test_non_accel_pick_sequences_are_unchanged_by_the_accel_fix(arm, digest):
+    picks, _ = _simulate_picks(arm, 3000)
+    assert _pick_digest(picks) == digest
 
 
 def test_arms_are_configured_as_preregistered():

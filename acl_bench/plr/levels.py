@@ -22,6 +22,7 @@ score_ema=0.2, buffer=5000, admit="fifo", min_fill=1)`.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
@@ -83,8 +84,9 @@ class LevelConfig:
     oracle: str = ""
     replay_start: bool = False     # a replay also repeats the episode's starting state
     # ACCEL (Parker-Holder et al. 2022): every replayed level spawns an edited child
-    # (Gaussian noise of `mut_sigma` x each range, clipped to the box); the next new levels
-    # are those children, scored and admitted like any new level.
+    # (Gaussian noise of `mut_sigma` x each range, clipped to the box); once the buffer is
+    # filled, picks are replays, children and fresh levels in the proportions p : p : 1 - p
+    # (p = replay_prob), children scored and admitted like any new level.
     accel: bool = False
     mut_sigma: float = 0.05
     n_value_ens: int = 0           # > 0: train this many extra critics for the vds score
@@ -115,6 +117,9 @@ class LevelSampler:
         self.fifo = 0
         self.clock = 0
         self.min_fill = cfg.min_fill or max(1, n // 10)
+        # ACCEL's edits, oldest first. Children are made (one per replay) as fast as they are
+        # used, so the queue length only drifts; a buffer's worth bounds how stale a child gets.
+        self.children = deque(maxlen=n)
         self.tracker = None
         if cfg.score == "learn_bucket":            # learnability pooled per parameter bucket
             from acl_bench.plr.picker import BucketLearnability
@@ -157,12 +162,19 @@ class LevelSampler:
                 return levels[i].copy(), -1, REPLAY
             self.next_start = None
             return self.draw_new(), -1, NEW
-        if self.size >= self.min_fill and self.rng.uniform() < self.cfg.replay_prob:
-            i = int(self.rng.choice(self.size, p=self.replay_probs()))
-            return self.params[i].copy(), i, REPLAY
-        children = self.__dict__.get("children")
-        if children:
-            return children.pop(0), -1, NEW
+        if self.size >= self.min_fill:
+            u, p = self.rng.uniform(), self.cfg.replay_prob
+            if self.cfg.accel:
+                # JaxUED's ACCEL (examples/maze_plr.py) follows every replay step with a step on
+                # edits of the replayed levels, and otherwise replays with prob p or draws new.
+                # Picking per episode, take that chain's stationary mix: replay p / (1 + p),
+                # edit p / (1 + p), new (1 - p) / (1 + p); an edit with none queued draws new.
+                p = p / (1 + p)
+                if p <= u < 2 * p and self.children:
+                    return self.children.popleft(), -1, NEW
+            if u < p:
+                i = int(self.rng.choice(self.size, p=self.replay_probs()))
+                return self.params[i].copy(), i, REPLAY
         return self.draw_new(), -1, NEW
 
     def _mutate(self, params: np.ndarray) -> np.ndarray:
@@ -254,9 +266,7 @@ class LevelSampler:
             self.wins[slot] += success
             self.tries[slot] += 1
             if self.cfg.accel:
-                children = self.__dict__.setdefault("children", [])
-                children.append(self._mutate(self.params[slot]))
-                del children[:-64]                  # newest 64: replays can outpace new draws
+                self.children.append(self._mutate(self.params[slot]))
             return
         if self.cfg.replay_prob <= 0:
             return
