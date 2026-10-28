@@ -54,3 +54,11 @@ def test_checksum_detects_tampering(sets, tmp_path):
     np.savez(tmp_path / "random.npz", **z)
     with pytest.raises(ValueError):
         load_sets(str(tmp_path))
+
+
+def test_saved_sections_are_compressed_so_wide_sparse_states_stay_small(tmp_path):
+    from acl_bench.exam.sets import PairSet
+    ps = PairSet("wide", np.zeros((10_000, 4)), np.zeros((10_000, 232)))   # 18.9 MB as raw float64
+    save_sets({"wide": ps}, str(tmp_path))
+    assert os.path.getsize(tmp_path / "wide.npz") < 1_000_000
+    assert load_sets(str(tmp_path))["wide"].digest() == ps.digest()

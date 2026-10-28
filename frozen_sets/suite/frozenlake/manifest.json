@@ -1,0 +1,62 @@
+{
+  "custom_cases": [
+    "default/map1",
+    "default/map2",
+    "default/map3",
+    "size:min/map1",
+    "size:min/map2",
+    "size:min/map3",
+    "size:max/map1",
+    "size:max/map2",
+    "size:max/map3",
+    "hole_density:min/map1",
+    "hole_density:min/map2",
+    "hole_density:min/map3",
+    "hole_density:max/map1",
+    "hole_density:max/map2",
+    "hole_density:max/map3",
+    "slip:min/map1",
+    "slip:min/map2",
+    "slip:min/map3",
+    "size:max+beyond(11)/map1",
+    "size:max+beyond(11)/map2",
+    "size:max+beyond(11)/map3",
+    "size:max+beyond(15)/map1",
+    "size:max+beyond(15)/map2",
+    "size:max+beyond(15)/map3",
+    "hole_density:max+beyond(0.32)/map1",
+    "hole_density:max+beyond(0.32)/map2",
+    "hole_density:max+beyond(0.32)/map3",
+    "hole_density:max+beyond(0.4)/map1",
+    "hole_density:max+beyond(0.4)/map2",
+    "hole_density:max+beyond(0.4)/map3",
+    "hole_density:min+beyond(0.08)/map1",
+    "hole_density:min+beyond(0.08)/map2",
+    "hole_density:min+beyond(0.08)/map3",
+    "hole_density:min+beyond(0)/map1",
+    "slip:max+beyond(0.73)/map1",
+    "slip:max+beyond(0.73)/map2",
+    "slip:max+beyond(0.73)/map3",
+    "slip:max+beyond(0.9)/map1",
+    "slip:max+beyond(0.9)/map2",
+    "slip:max+beyond(0.9)/map3",
+    "held_out:4x4",
+    "held_out:8x8",
+    "held_out:single_path_8x8"
+  ],
+  "sets": {
+    "custom": {
+      "n": 430,
+      "sha256": "d9ed42d58c7216183d76651ff5aee5d2ee2dd5656bbae630151d56efcb1c9ff3"
+    },
+    "random": {
+      "n": 3000,
+      "sha256": "5787556f5ef1bb49546c4930218f293fa5feda570033cf8c46a70d5593ea564b"
+    },
+    "verifai": {
+      "n": 68940,
+      "sha256": "3a0d9ef10861d029b63d9f989dd94ccbfae6e778cadbc0e18df776bfc6511a8a"
+    }
+  },
+  "torch_threads": 1
+}

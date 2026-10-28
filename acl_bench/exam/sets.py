@@ -71,7 +71,7 @@ def save_sets(sets: dict[str, PairSet], directory: str, extra: dict | None = Non
         arrays = dict(params=ps.params, s0=ps.s0)
         if ps.ref_fail_frac is not None:
             arrays["ref_fail_frac"] = ps.ref_fail_frac
-        np.savez(os.path.join(directory, f"{name}.npz"), **arrays)
+        np.savez_compressed(os.path.join(directory, f"{name}.npz"), **arrays)   # FrozenLake states are wide and sparse
         manifest["sets"].setdefault(name, {}).update({"n": len(ps), "sha256": ps.digest()})
     manifest.update(extra or {})
     json.dump(manifest, open(path, "w"), indent=2, sort_keys=True)

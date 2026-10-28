@@ -1,0 +1,44 @@
+{
+  "custom_cases": [
+    "default",
+    "length:min",
+    "length:min+10%",
+    "length:max",
+    "length:max+10%",
+    "length:max+50%",
+    "masspole:min",
+    "masspole:min+10%",
+    "masspole:max",
+    "masspole:max+10%",
+    "masspole:max+50%",
+    "masscart:min",
+    "masscart:min+10%",
+    "masscart:max",
+    "masscart:max+10%",
+    "masscart:max+50%",
+    "force_mag:min",
+    "force_mag:min+10%",
+    "force_mag:max",
+    "force_mag:max+10%",
+    "force_mag:max+50%",
+    "init_range:min+10%",
+    "init_range:max",
+    "init_range:max+10%",
+    "init_range:max+50%"
+  ],
+  "sets": {
+    "custom": {
+      "n": 250,
+      "sha256": "b06f76bd2eb8b7708f857db1b61b24da17c8e6c8df0462f909bbc9896371e87d"
+    },
+    "random": {
+      "n": 3000,
+      "sha256": "ec1688668f80fb31b9992b1a05a9a86b8c287a3c203baae3fb131448d5fe44bf"
+    },
+    "verifai": {
+      "n": 116890,
+      "sha256": "e34e8d1fd13e3b79a43bbc4095cd2a2d8cdc68e89ca0374e06a4ed66d42b69fc"
+    }
+  },
+  "torch_threads": 1
+}
