@@ -1,0 +1,44 @@
+# Batch 21 analysis
+
+Per-case custom scores are the mean share of plays passed, averaged over seeds.
+
+## Screen (one-sided Mann-Whitney, Holm over 8 tests, alpha 0.05)
+
+| method | task | diff | p | Holm p | improved |
+|---|---|---|---|---|---|
+| PLR | cartpole | -0.100 | 0.9571 | 1.0000 | False |
+| RPLR | cartpole | -0.101 | 0.9261 | 1.0000 | False |
+| ACCEL | cartpole | -0.123 | 0.9831 | 1.0000 | False |
+| SFL | cartpole | -0.239 | 0.9991 | 1.0000 | False |
+| PLR | frozenlake | -0.084 | 0.9961 | 1.0000 | False |
+| RPLR | frozenlake | -0.097 | 0.9987 | 1.0000 | False |
+| ACCEL | frozenlake | -0.074 | 0.9955 | 1.0000 | False |
+| SFL | frozenlake | -0.087 | 0.9943 | 1.0000 | False |
+
+## cartpole: pass rate, mean +- std over 20 seeds
+
+| arm | random | verifai | custom |
+|---|---|---|---|
+| ACCEL | 0.910 +- 0.214 | 0.448 +- 0.222 | 0.878 +- 0.173 |
+| DR | 0.940 +- 0.135 | 0.570 +- 0.188 | 0.910 +- 0.104 |
+| PLR | 0.876 +- 0.265 | 0.470 +- 0.219 | 0.872 +- 0.182 |
+| RPLR | 0.826 +- 0.344 | 0.469 +- 0.250 | 0.854 +- 0.232 |
+| SFL | 0.698 +- 0.421 | 0.332 +- 0.254 | 0.698 +- 0.379 |
+
+## frozenlake: pass rate, mean +- std over 20 seeds
+
+| arm | random | verifai | custom |
+|---|---|---|---|
+| ACCEL | 0.420 +- 0.048 | 0.066 +- 0.045 | 0.134 +- 0.088 |
+| DR | 0.589 +- 0.058 | 0.141 +- 0.094 | 0.286 +- 0.135 |
+| PLR | 0.568 +- 0.037 | 0.056 +- 0.033 | 0.424 +- 0.109 |
+| RPLR | 0.543 +- 0.030 | 0.043 +- 0.025 | 0.386 +- 0.101 |
+| SFL | 0.541 +- 0.035 | 0.054 +- 0.041 | 0.351 +- 0.107 |
+
+## cartpole: custom cases no agent passes
+
+init_range:max+50%
+
+## frozenlake: custom cases no agent passes
+
+default/map1, default/map3, hole_density:max/map2, hole_density:max+beyond(0.32)/map2, slip:max+beyond(0.73)/map1, slip:max+beyond(0.73)/map3, slip:max+beyond(0.9)/map1, slip:max+beyond(0.9)/map2, slip:max+beyond(0.9)/map3, held_out:8x8, held_out:single_path_8x8

@@ -1161,3 +1161,34 @@ everything, "at least 3 of 10 fail" keeps nearly any task, so its VerifAI sectio
 DR's failures. The LunarLander scored runs wait for a decision; CartPole (REF 0.81-0.99) and
 FrozenLake (REF 0.52-0.62) go ahead. The primary test's Holm correction is over the tests actually
 run (8 if LunarLander is dropped).
+
+### Batch 21 result (2026-10-28): screen negative on CartPole and FrozenLake
+
+All 200 scored runs completed (5 arms x 20 seeds x 2 tasks, no failures); LunarLander still on hold
+(amendment 1). Output: `results/suite/analysis/`, from `python -m acl_bench.suite.analyze`.
+
+**Primary test: no improvement.** On the VerifAI section every method scores below DR on both
+tasks (8 tests, one-sided p 0.926-0.999, Holm p 1.0 for all). Per the pre-registered decision,
+this line is dropped early for these tasks.
+
+| VerifAI pass rate (mean over 20 seeds) | DR | PLR | RPLR | ACCEL | SFL |
+|---|---|---|---|---|---|
+| CartPole | 0.570 | 0.470 | 0.469 | 0.448 | 0.332 |
+| FrozenLake | 0.141 | 0.056 | 0.043 | 0.066 | 0.054 |
+
+**Also reported, not tested.**
+- Random section: DR highest on both (CartPole 0.94, others 0.70-0.91; FrozenLake 0.59, others
+  0.42-0.57).
+- Custom section: CartPole DR 0.91 (others 0.70-0.88); FrozenLake DR 0.29, below PLR 0.42,
+  RPLR 0.39 and SFL 0.35 (ACCEL 0.13). That FrozenLake custom gap is the only place a UED method
+  is ahead, and it is descriptive only.
+- Seed spread is wide for the replay methods on CartPole (std 0.2-0.4 vs DR's 0.14): some seeds fail
+  to learn the broad task at the shared budget.
+- Custom cases no scored agent passes (possibly impossible for these agents): CartPole
+  `init_range:max+50%`; FrozenLake 11 map cases, mostly slip 0.73 and 0.9, two default-slip maps,
+  and the held-out 8x8 and single-path 8x8 maps (the full-state optimum passes them; the 5x5 view
+  may not).
+
+**Reading.** The VerifAI section was built from separate DR agents' failures, so it was expected to
+favour any method over DR; instead DR leads, and it also leads in distribution. At this budget the
+UED methods give up broad-task performance without fixing the regions where DR fails.
