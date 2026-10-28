@@ -196,11 +196,13 @@ def train(env_name: str, env, cfg: FastConfig, n_checks: int = 10, on_check=None
                             nv = float(agent.critic(torch.as_tensor(c)))
                         if ep_max[k] < env.MAX_EPISODE_STEPS:
                             b_rew[t, k] += cfg.gamma * nv      # capped snippet: bootstrap, not terminal
+                    ret = float(sum(ep_r[k]))
                     if balance:
                         success = bool(streak[k] >= env.HOLD_STEPS)
+                    elif env.GOAL == "return":
+                        success = ret >= env.RETURN_THRESHOLD
                     else:
                         success = bool(term[k]) if env.GOAL == "reach" else not term[k]
-                    ret = float(sum(ep_r[k]))
                     if picker is not None:
                         picker.report(k, params[k], success)
                     snip = not term[k] and ep_max[k] < env.MAX_EPISODE_STEPS   # outcome unknown
@@ -333,8 +335,10 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     ended = np.zeros(len(params), dtype=bool)
     streak = np.zeros(len(params), dtype=int)
     pvl = lc.sfl_score == "pvl"
+    has_reward = hasattr(env, "reward")
+    ret = np.zeros(len(params))
     rews, vals, alives, terms = [], [], [], []
-    r_step, r_term = REWARD.get(env.__name__.rsplit(".", 1)[-1], (0.0, 0.0))
+    r_step, r_term = REWARD.get(env.__name__.rsplit(".", 1)[-1], (0.0, 0.0))   # unused with env.reward
     xa, xc = agent.inputs
     sim = 0                                        # environment steps simulated here
     for _ in range(env.MAX_EPISODE_STEPS):
@@ -345,7 +349,9 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
         if pvl:
             vals.append(agent.critic(torch.as_tensor(xc(raw, params))).squeeze(1).numpy())
             alives.append(alive.copy())
-            r_env = env.reward(state, a, params) if hasattr(env, "reward") else None
+        r_env = env.reward(state, a, params) if has_reward else None
+        if has_reward:
+            ret += np.where(alive, r_env, 0.0)
         state = np.where(alive[:, None], env.step(state, a, params), state)
         if env.GOAL == "balance":
             streak = np.where(env.upright(state), streak + 1, 0)
@@ -363,6 +369,8 @@ def sfl_select(env, agent, levels: LevelSampler, lc: LevelConfig, rng: np.random
     else:
         if env.GOAL == "balance":
             success = streak >= env.HOLD_STEPS
+        elif env.GOAL == "return":
+            success = ret >= env.RETURN_THRESHOLD
         else:
             success = ended if env.GOAL == "reach" else ~ended
         p = success.reshape(lc.sfl_n, lc.sfl_k).mean(1)
@@ -528,12 +536,15 @@ def _pass_rate(env, agent, cand: np.ndarray, k: int, rng: np.random.Generator):
     alive = np.ones(len(params), dtype=bool)
     ended = np.zeros(len(params), dtype=bool)
     streak = np.zeros(len(params), dtype=int)
+    ret = np.zeros(len(params))
     xa, _ = agent.inputs
     sim = 0
     for _ in range(env.MAX_EPISODE_STEPS):
         sim += int(alive.sum())
         logits = agent.actor(torch.as_tensor(xa(env.observe(state).astype(np.float32), params)))
         a = torch.multinomial(torch.softmax(logits, dim=1), 1).squeeze(1).numpy()
+        if env.GOAL == "return":
+            ret += np.where(alive, env.reward(state, a, params), 0.0)
         state = np.where(alive[:, None], env.step(state, a, params), state)
         if env.GOAL == "balance":
             streak = np.where(env.upright(state), streak + 1, 0)
@@ -544,6 +555,8 @@ def _pass_rate(env, agent, cand: np.ndarray, k: int, rng: np.random.Generator):
             break
     if env.GOAL == "balance":
         success = streak >= env.HOLD_STEPS
+    elif env.GOAL == "return":
+        success = ret >= env.RETURN_THRESHOLD
     else:
         success = ended if env.GOAL == "reach" else ~ended
     return success.reshape(len(cand), k).mean(1), sim

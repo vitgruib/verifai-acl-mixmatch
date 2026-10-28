@@ -1,4 +1,6 @@
 """Each environment's batched exam physics must agree with its real gymnasium env."""
+import types
+
 import numpy as np
 import pytest
 import torch
@@ -73,6 +75,25 @@ def test_balance_passes_only_on_a_final_upright_hold():
     streak = np.array([env.HOLD_STEPS, env.HOLD_STEPS - 1, 0])
     steps = np.full(3, env.MAX_EPISODE_STEPS)
     assert list(passed(env, steps, np.zeros(3, dtype=bool), streak=streak)) == [True, False, False]
+
+
+def test_return_goal_passes_on_threshold():
+    env = types.SimpleNamespace(GOAL="return", RETURN_THRESHOLD=2.0, MAX_EPISODE_STEPS=5)
+    ok = passed(env, steps=np.array([1, 3]), ended=np.array([True, True]), ret=np.array([1.0, 3.0]))
+    assert ok.tolist() == [False, True]
+
+
+def test_rollout_fills_return_for_env_with_reward():
+    env = types.SimpleNamespace(
+        GOAL="return", RETURN_THRESHOLD=2.0, MAX_EPISODE_STEPS=5,
+        observe=lambda s: s, step=lambda s, a, p: s + 1, reward=lambda s, a, p: np.ones(len(s)),
+        terminated=lambda s: s[:, 0] >= 3)
+    agent = types.SimpleNamespace(actor=lambda o: torch.zeros(len(o), 2))
+    extras = {}
+    steps, ended = rollout(env, agent, np.zeros((1, 1)), np.zeros((1, 1)), extras=extras)
+    assert steps.tolist() == [3] and ended.tolist() == [True]
+    assert extras["return"].tolist() == [3.0]            # the terminating step's reward counts
+    assert passed(env, steps, ended, ret=extras["return"]).tolist() == [True]
 
 
 def reference_steps(env, agent, row, s0):

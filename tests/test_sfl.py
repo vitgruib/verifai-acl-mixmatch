@@ -27,6 +27,38 @@ def _coin_env():
     return env
 
 
+def _return_env():
+    """'return' env whose level x in [0, 1] ends each step with probability x; reward 1 per
+    step, so a pass (return >= 2) means surviving step 1: p = 1 - x. Scouting that ignored
+    the return would read p = (1 - x)^3 over the 4-step cap and peak near x = 0.2."""
+    env = types.ModuleType("coin_return")
+    env.PARAM_BOUNDS, env.PARAM_ORDER = {"x": (0.0, 1.0)}, ["x"]
+    env.OBS_DIM, env.ACTION_DIM, env.MAX_EPISODE_STEPS = 1, 2, 4
+    env.GOAL, env.RETURN_THRESHOLD = "return", 2.0
+    rng = np.random.default_rng(0)
+    env.sample_starts = lambda p, n, r: np.zeros((n, 1))
+    env.observe = lambda s: s
+    env.reward = lambda s, a, p: np.ones(len(s))
+
+    def step(s, a, p):
+        env._params = p
+        return rng.uniform(size=(len(s), 1))
+    env.step = step
+    env.terminated = lambda s: s[:, 0] < env._params[:, 0]
+    return env
+
+
+def test_sfl_scouts_return_goal_with_env_reward():
+    env, n = _return_env(), 400
+    bounds = np.array([[0.0, 1.0]])
+    lc = LevelConfig(sfl=True, sfl_n=n, sfl_k=200, sfl_top=20)
+    levels = LevelSampler(lc, bounds, np.random.default_rng(1))
+    agent = make_agent(env, bounds, FastConfig())
+    top, sim, w = sfl_select(env, agent, levels, lc, np.random.default_rng(2))
+    assert sim > 0
+    assert abs(np.median(top) - 0.5) < 0.08
+
+
 def _select(tilt, n=400, k=400, top=20, **kw):
     env = _coin_env()
     bounds = np.array([[0.0, 1.0]])

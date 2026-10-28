@@ -3,7 +3,9 @@
   PARAM_BOUNDS, PARAM_ORDER   the task box Scenic/VerifAI sample (also in <env>.scenic)
   SCENIC_FILE                 that Scenic file
   MAX_EPISODE_STEPS, OBS_DIM, ACTION_DIM
-  GOAL                        "survive" (pass = never terminate) or "reach" (pass = terminate)
+  GOAL                        "survive" (pass = never terminate) or "reach" (pass = terminate);
+                              "balance" and "return" also need HOLD_STEPS / RETURN_THRESHOLD and,
+                              for "return", a batched reward(state, action, params)
   make_env(params)            the gymnasium env used for training
   sample_starts, step, observe, terminated
                               batched exam physics, checked against make_env (tests/test_grader.py)

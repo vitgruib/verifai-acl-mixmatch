@@ -8,7 +8,8 @@ terminated, or `max_steps` if it never did. Passing depends on the goal: a "surv
 question passes if `steps == max_steps` (CartPole: the pole is still up at the cap), a
 "reach" question if it terminated at all (Acrobot, MountainCar: the goal was reached), a
 "balance" question if the state is upright for each of the last `env.HOLD_STEPS` steps
-(Pendulum, which never terminates). An environment with a batched `reward` also gets
+(Pendulum, which never terminates), a "return" question if the episode return reaches
+`env.RETURN_THRESHOLD` (LunarLander). An environment with a batched `reward` also gets
 each question's return (Pendulum's continuous score).
 """
 from __future__ import annotations
@@ -52,7 +53,9 @@ def rollout(env, agent, params: np.ndarray, s0: np.ndarray, max_steps: int | Non
 
 
 def passed(env, steps: np.ndarray, ended: np.ndarray, max_steps: int | None = None,
-           streak: np.ndarray | None = None) -> np.ndarray:
+           streak: np.ndarray | None = None, ret: np.ndarray | None = None) -> np.ndarray:
+    if env.GOAL == "return":
+        return ret >= env.RETURN_THRESHOLD
     if env.GOAL == "balance":
         return streak >= env.HOLD_STEPS
     return ended if env.GOAL == "reach" else steps == (max_steps or env.MAX_EPISODE_STEPS)
@@ -62,4 +65,4 @@ def grade(env, agent, params: np.ndarray, s0: np.ndarray, extras: dict | None = 
     """(success, steps) per question; `extras` as in `rollout`."""
     extras = {} if extras is None else extras
     steps, ended = rollout(env, agent, params, s0, extras=extras)
-    return passed(env, steps, ended, streak=extras.get("streak")), steps
+    return passed(env, steps, ended, streak=extras.get("streak"), ret=extras.get("return")), steps
