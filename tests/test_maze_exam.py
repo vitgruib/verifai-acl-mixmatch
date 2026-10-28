@@ -47,21 +47,41 @@ def test_cap_is_seeded_subset():
     assert again.digest() == capped.digest()
 
 
+def trained_run(ref, seed, steps=(0, 2)):
+    """A JaxUED seed dir: config.json and the orbax step dirs it has written so far. With
+    num_updates 1000 and eval_freq 250 the run saves eval steps 0..3 every 2, so 2 is its last."""
+    d = ref / str(seed)
+    for step in steps:
+        (d / "models" / str(step)).mkdir(parents=True)
+    (d / "config.json").write_text(json.dumps(
+        {"seed": seed, "num_updates": 1000, "eval_freq": 250, "checkpoint_save_interval": 2}))
+
+
 def test_refuses_without_ten_reference_agents(tmp_path):
     ref = tmp_path / "maze_dr_ref"
     for s in range(100, 109):
-        (ref / str(s)).mkdir(parents=True)
+        trained_run(ref, s)
     with pytest.raises(SystemExit) as e:
         exam.main(["--ref-dir", str(ref), "--out", str(tmp_path / "out")])
-    assert "10" in str(e.value)
+    assert "10" in str(e.value) and "109" in str(e.value)
+    assert not (tmp_path / "out").exists()
+
+
+def test_refuses_reference_agent_short_of_its_final_step(tmp_path):
+    ref = tmp_path / "maze_dr_ref"
+    for s in range(100, 109):
+        trained_run(ref, s)
+    trained_run(ref, 109, steps=(0,))
+    with pytest.raises(SystemExit) as e:
+        exam.main(["--ref-dir", str(ref), "--out", str(tmp_path / "out")])
+    assert "109: no checkpoint at its final step 2" in str(e.value)
     assert not (tmp_path / "out").exists()
 
 
 def test_rerun_of_frozen_exam_does_nothing_and_other_refs_refuse(tmp_path, capsys):
     ref, out = tmp_path / "maze_dr_ref", tmp_path / "out"
     for s in range(100, 110):
-        (ref / str(s) / "models" / "30000").mkdir(parents=True)
-        (ref / str(s) / "config.json").write_text(json.dumps({"seed": s}))
+        trained_run(ref, s)
     custom = suite.custom_section()
     for name in ("random", "custom", "verifai"):
         suite.save_set(str(out), name, custom)
@@ -71,7 +91,7 @@ def test_rerun_of_frozen_exam_does_nothing_and_other_refs_refuse(tmp_path, capsy
     exam.main(["--ref-dir", str(ref), "--out", str(out)])
     assert "nothing to do" in capsys.readouterr().out
     assert {p.name: p.read_bytes() for p in out.iterdir()} == before
-    (ref / "105" / "models" / "40000").mkdir()
+    (ref / "105" / "models" / "4").mkdir()
     with pytest.raises(SystemExit, match="refusing"):
         exam.main(["--ref-dir", str(ref), "--out", str(out)])
     assert {p.name: p.read_bytes() for p in out.iterdir()} == before

@@ -29,7 +29,8 @@ from atlas.maze import oracle, space, suite
 from atlas.maze.falsify import make_scenario
 
 SPACE = "dr25"
-N_REF = 10
+REF_SEEDS = range(100, 110)
+N_REF = len(REF_SEEDS)
 PLAYS = 10
 TAU = 0.5
 CAP = 3000
@@ -89,12 +90,31 @@ def verifai_section(policies: list, iters: int = 3000, seed: int = suite.EXAM_SE
     return capped, full
 
 
-def _ref_dirs(root: str) -> list[str]:
-    seeds = sorted((d for d in os.listdir(root) if d.isdigit() and os.path.isdir(os.path.join(root, d))), key=int)
-    if len(seeds) != N_REF:
-        sys.exit(f"the VerifAI section needs exactly {N_REF} reference agents (seed dirs) in {root}; "
-                 f"found {len(seeds)}")
-    return [os.path.join(root, s) for s in seeds]
+def _final_step(cfg: dict) -> int:
+    """The last orbax step a finished JaxUED run writes: it saves eval steps
+    0 .. num_updates // eval_freq - 1, every checkpoint_save_interval-th one (maze_dr.py)."""
+    every = cfg["checkpoint_save_interval"]
+    return (cfg["num_updates"] // cfg["eval_freq"] - 1) // every * every
+
+
+def _ref_runs(root: str) -> list[tuple[str, int]]:
+    """-> (seed dir, final step) for each of REF_SEEDS; stops unless every run finished training."""
+    runs, problems = [], []
+    for s in REF_SEEDS:
+        d = os.path.join(root, str(s))
+        cfg_path = os.path.join(d, "config.json")
+        if not os.path.exists(cfg_path):
+            problems.append(f"{s}: missing")
+            continue
+        with open(cfg_path) as f:
+            step = _final_step(json.load(f))
+        if not os.path.isdir(os.path.join(d, "models", str(step))):
+            problems.append(f"{s}: no checkpoint at its final step {step} (training unfinished)")
+        runs.append((d, step))
+    if problems:
+        sys.exit(f"the VerifAI section needs all {N_REF} reference agents (seeds {REF_SEEDS[0]}-"
+                 f"{REF_SEEDS[-1]}) fully trained in {root}; " + "; ".join(problems))
+    return runs
 
 
 def _fingerprint(dirs: list[str]) -> dict:
@@ -118,7 +138,7 @@ def main(argv=None):
     if "verifai" in a.sections:
         if not a.ref_dir:
             ap.error("--ref-dir is required to build the VerifAI section")
-        refs = _ref_dirs(a.ref_dir)
+        refs = _ref_runs(a.ref_dir)
     frozen = suite.load_sets(a.out) if os.path.exists(os.path.join(a.out, "manifest.json")) else {}
     for name, build in (("random", suite.random_section), ("custom", suite.custom_section)):
         if name in a.sections and name not in frozen:
@@ -126,7 +146,7 @@ def main(argv=None):
             print(f"froze {name}", flush=True)
     if "verifai" not in a.sections:
         return
-    fp = _fingerprint(refs)
+    fp = _fingerprint([d for d, _ in refs])
     fp_path = os.path.join(a.out, "verifai_refs.json")
     if "verifai" in frozen:
         stored = None
@@ -139,7 +159,7 @@ def main(argv=None):
         print("exam already frozen; nothing to do", flush=True)
         return
     from atlas.maze.policy import Policy
-    capped, full = verifai_section([Policy(d) for d in refs], a.iters)
+    capped, full = verifai_section([Policy(d, step) for d, step in refs], a.iters)
     suite.save_set(a.pool_out, "verifai", full)
     with open(fp_path, "w") as f:
         json.dump(fp, f, indent=2, sort_keys=True)
