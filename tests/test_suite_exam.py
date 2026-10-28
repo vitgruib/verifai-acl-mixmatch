@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from acl_bench.envs import cartpole, frozenlake
 from acl_bench.exam.sets import PairSet, load_sets, save_sets
@@ -99,3 +100,45 @@ def test_build_exam_writes_all_three_sections(monkeypatch, tmp_path):
     monkeypatch.setattr(cartpole, "sample_starts", lambda row, n, rng: np.zeros((n, 4)))
     build_exam("cartpole", list(range(3)), n_iters=2, seed=0, min_fail_agents=3)
     assert set(load_sets(str(tmp_path))) == {"random", "verifai", "custom"}
+
+
+def test_verifai_section_stops_with_counts_when_no_task_survives(monkeypatch):
+    fake_world(monkeypatch, {1.0: [10] * 10})
+    with pytest.raises(SystemExit, match="1 pooled"):
+        verifai_section(fake_env(), list(range(10)), n_iters=2, seed=0)
+
+
+def test_reference_agents_require_exactly_ten_ref_runs(tmp_path):
+    with pytest.raises(SystemExit, match="exactly 10"):
+        exam.reference_agents(tmp_path)
+
+
+def test_regrade_is_chunked(monkeypatch):
+    sizes = []
+
+    def fake_grade(env, agent, params, s0, extras=None):
+        sizes.append(len(params))
+        return np.ones(len(params), dtype=bool), np.zeros(len(params))
+
+    monkeypatch.setattr(exam, "grade", fake_grade)
+    monkeypatch.setattr(exam, "GRADE_CHUNK", 30)
+    pairset = PairSet("x", np.zeros((100, 1)), np.zeros((100, 1)))
+    np.testing.assert_allclose(question_scores(fake_env(), 0, pairset), 1.0)
+    assert max(sizes) <= 30
+
+
+def test_frozenlake_verifai_tasks_are_whole_maps_and_must_be_winnable(monkeypatch):
+    env = SimpleNamespace(
+        PARAM_ORDER=("x", "layout_seed"), PARAM_BOUNDS={"x": (0, 3), "layout_seed": (0, 9)},
+        sample_starts=lambda row, n, rng: np.zeros((n, 1)),
+        certify_exact=lambda params, s0: np.ones(len(s0), dtype=bool),
+        optimal_success=lambda row: 0.9 if row[0] == 1.0 else 0.2)
+
+    def fake_search(env, name, agents, n_iters, starts_per_task, rng):
+        params = np.repeat([[1.0, 7.6], [2.0, 3.2]], starts_per_task, axis=0)
+        return PairSet("SEARCH", params, np.zeros((len(params), 1)), np.zeros(len(params)))
+
+    monkeypatch.setattr(exam, "search", fake_search)
+    monkeypatch.setattr(exam, "grade", lambda e, a, p, s, extras=None: (np.zeros(len(p), dtype=bool), np.zeros(len(p))))
+    s = verifai_section(env, list(range(10)), n_iters=1, seed=0)
+    assert set(map(tuple, s.params)) == {(1.0, 7.0)}
