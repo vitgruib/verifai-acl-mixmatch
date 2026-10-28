@@ -66,7 +66,6 @@ class Policy:
             apply_fn, params = staticmethod(net.apply), self.params
         self._ts = _TS
 
-        @jax.jit
         def _rollout(rng, level):
             k = jax.tree_util.tree_flatten(level)[0][0].shape[0]
             rng_reset, rng_run = jax.random.split(rng)
@@ -77,7 +76,9 @@ class Policy:
                 obs, state, self.env_params.max_steps_in_episode)
             mask = jnp.arange(self.env_params.max_steps_in_episode)[..., None] < lengths
             return (rewards * mask).sum(0), lengths, states.agent_pos
-        self._rollout = _rollout
+        self._rollout = jax.jit(_rollout)
+        # one key per level, so level i draws exactly what run() would with that level's seed
+        self._rollout_batch = jax.jit(jax.vmap(lambda seed, level: _rollout(jax.random.PRNGKey(seed), level)[0]))
 
     def run(self, walls, agent, agent_dir, goal, attempts: int, seed: int):
         """K stochastic attempts on one level -> (returns (K,), lengths (K,), agent_pos (T, K, 2))."""
@@ -87,6 +88,16 @@ class Policy:
         batch = jax.tree_util.tree_map(lambda x: jnp.repeat(jnp.asarray(x)[None], attempts, 0), lvl)
         r, l, pos = self._rollout(jax.random.PRNGKey(seed), batch)
         return np.asarray(r), np.asarray(l), np.asarray(pos)
+
+    def run_batch(self, walls, agent, agent_dir, goal, attempts: int, seeds):
+        """`attempts` plays on each of B levels in one call; level i's plays are run(level i,
+        attempts, seeds[i])'s. walls (B, 13, 13), agent and goal (B, 2), agent_dir and seeds (B,)
+        -> returns (B, attempts). Each new B or attempts compiles once."""
+        lvl = Level(wall_map=jnp.asarray(walls, bool), goal_pos=jnp.asarray(goal, jnp.uint32),
+                    agent_pos=jnp.asarray(agent, jnp.uint32), agent_dir=jnp.asarray(agent_dir, jnp.uint8),
+                    width=jnp.full(len(seeds), 13), height=jnp.full(len(seeds), 13))
+        batch = jax.tree_util.tree_map(lambda x: jnp.repeat(x[:, None], attempts, 1), lvl)
+        return np.asarray(self._rollout_batch(jnp.asarray(seeds, jnp.uint32), batch))
 
 
 def _buffer(sampler):

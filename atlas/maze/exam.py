@@ -34,6 +34,7 @@ N_REF = len(REF_SEEDS)
 PLAYS = 10
 TAU = 0.5
 CAP = 3000
+BATCH = 256   # levels per jitted rollout call
 SECTIONS = ("random", "custom", "verifai")
 
 
@@ -41,14 +42,21 @@ def _seed(*parts) -> int:
     return int(np.random.SeedSequence(list(parts)).generate_state(1)[0] % 2**31)
 
 
-def _level(ms, i):
-    return ms.walls[i], tuple(int(v) for v in ms.agent[i]), int(ms.agent_dir[i]), tuple(int(v) for v in ms.goal[i])
-
-
-def solve_rates(policy, ms: suite.MazeSet, plays: int = PLAYS, seed: int = suite.EXAM_SEED) -> np.ndarray:
-    """Fraction of `plays` stochastic episodes solved (return > 0) on each level of `ms`."""
-    return np.array([(policy.run(*_level(ms, i), plays, _seed(seed, i))[0] > 0).mean()
-                     for i in range(len(ms))])
+def solve_rates(policy, ms: suite.MazeSet, plays: int = PLAYS, seed: int = suite.EXAM_SEED,
+                batch: int = BATCH, label: str | None = None) -> np.ndarray:
+    """Fraction of `plays` stochastic episodes solved (return > 0) on each level of `ms`, played
+    `batch` levels per call; level i is played with seed _seed(seed, i), as policy.run would. The
+    last batch is padded with its final level so every call has one shape. With `label`, prints
+    levels done / total to stderr after each batch."""
+    n, rates = len(ms), []
+    for lo in range(0, n, batch):
+        idx = np.minimum(np.arange(lo, lo + batch), n - 1)
+        seeds = [_seed(seed, int(i)) for i in idx]
+        rets = policy.run_batch(ms.walls[idx], ms.agent[idx], ms.agent_dir[idx], ms.goal[idx], plays, seeds)
+        rates.append((rets[:n - lo] > 0).mean(1))
+        if label:
+            print(f"{label}: {min(lo + batch, n)}/{n} levels", file=sys.stderr, flush=True)
+    return np.concatenate(rates) if rates else np.zeros(0)
 
 
 def _search(policy, iters: int, seed: int) -> list:
@@ -77,7 +85,8 @@ def verifai_section(policies: list, iters: int = 3000, seed: int = suite.EXAM_SE
         for lv in _search(pol, iters, _seed(seed, 1, k)):
             pool.setdefault(lv[0].tobytes() + bytes([*lv[1], lv[2], *lv[3]]), lv)
     ms = suite._from_levels(list(pool.values()))
-    rates = np.stack([solve_rates(pol, ms, PLAYS, _seed(seed, 3, j)) for j, pol in enumerate(policies)])
+    rates = np.stack([solve_rates(pol, ms, PLAYS, _seed(seed, 3, j), label=f"regrade {j + 1}/{len(policies)}")
+                      for j, pol in enumerate(policies)])
     fails = (rates < TAU).sum(0)
     keep = fails >= min_fail
     full = suite.MazeSet(ms.walls[keep], ms.agent[keep], ms.agent_dir[keep], ms.goal[keep],

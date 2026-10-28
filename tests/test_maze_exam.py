@@ -18,6 +18,10 @@ class WallCountAgent:
         ret = 0.0 if np.asarray(walls).sum() >= self.limit else 1.0
         return np.full(attempts, ret), np.full(attempts, 10), np.zeros((250, attempts, 2))
 
+    def run_batch(self, walls, agent, agent_dir, goal, attempts, seeds):
+        return np.stack([self.run(walls[i], tuple(agent[i]), int(agent_dir[i]), tuple(goal[i]), attempts, s)[0]
+                         for i, s in enumerate(seeds)])
+
 
 def keys(ms):
     return {ms.walls[i].tobytes() + bytes([*ms.agent[i], ms.agent_dir[i], *ms.goal[i]])
@@ -95,3 +99,40 @@ def test_rerun_of_frozen_exam_does_nothing_and_other_refs_refuse(tmp_path, capsy
     with pytest.raises(SystemExit, match="refusing"):
         exam.main(["--ref-dir", str(ref), "--out", str(out)])
     assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+
+
+def untrained_checkpoint(tmp_path):
+    """A JaxUED seed dir holding a freshly initialised maze_plr ActorCritic at step 0."""
+    import jax
+    import jax.numpy as jnp
+    import orbax.checkpoint as ocp
+
+    from atlas.maze import policy
+    d = tmp_path / "run" / "0"
+    d.mkdir(parents=True)
+    (d / "config.json").write_text(json.dumps({"agent_view_size": 5}))
+    env = policy.Maze(max_height=13, max_width=13, agent_view_size=5, normalize_obs=True)
+    level = policy.Level(wall_map=jnp.zeros((13, 13), bool), goal_pos=jnp.array([1, 1], jnp.uint32),
+                         agent_pos=jnp.array([0, 0], jnp.uint32), agent_dir=jnp.uint8(0), width=13, height=13)
+    obs, _ = env.reset_to_level(jax.random.PRNGKey(0), level, env.default_params)
+    obs = jax.tree_util.tree_map(lambda x: x[None, None], obs)
+    params = policy.ActorCritic(7).init(jax.random.PRNGKey(0), (obs, jnp.zeros((1, 1), bool)),
+                                        policy.ActorCritic.initialize_carry((1,)))
+    mgr = ocp.CheckpointManager(str(d / "models"), item_handlers=ocp.StandardCheckpointHandler())
+    mgr.save(0, args=ocp.args.StandardSave({"params": params}))
+    mgr.wait_until_finished()
+    return policy.Policy(str(d), 0)
+
+
+def test_batched_solve_rates_equal_one_level_at_a_time(tmp_path):
+    pol = untrained_checkpoint(tmp_path)
+    levels = []
+    for k in range(6):                     # the goal 1-3 cells ahead: a random policy solves some plays
+        walls = np.zeros((13, 13), bool)
+        walls[5, :k] = True
+        levels.append((walls, (6, 6), 0, (7 + k % 3, 6)))
+    ms = suite._from_levels(levels)
+    one_at_a_time = np.array([(pol.run(*lv, 10, exam._seed(5, i))[0] > 0).mean() for i, lv in enumerate(levels)])
+    batched = exam.solve_rates(pol, ms, plays=10, seed=5, batch=4)   # 2 batches, the last padded
+    assert len(set(one_at_a_time)) > 1
+    assert np.array_equal(batched, one_at_a_time)

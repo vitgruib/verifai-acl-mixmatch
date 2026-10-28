@@ -26,8 +26,10 @@ from acl_bench.suite.exam import PASS_RATE, exam_dir, question_scores
 RESULTS = Path(__file__).resolve().parents[2] / "results" / "suite"
 ALPHA = 0.05
 N_SEEDS = 20
+TASK_SEEDS = {"maze": 10}
 BASELINE = "DR"
-METHODS = ("PLR", "RPLR", "ACCEL", "SFL")
+METHODS = ("PLR", "RPLR", "ACCEL", "SFL", "MINIMAX")
+TASK_ONLY = {"MINIMAX": "maze"}   # an arm scored on one task only
 SECTIONS = ("random", "verifai", "custom")
 
 
@@ -44,12 +46,15 @@ def load_scores(results: Path = RESULTS, env_names=None) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def require_complete(scores: pd.DataFrame, n_seeds: int = N_SEEDS) -> None:
-    """Stop unless every arm has exactly `n_seeds` seeds per section at its full budget."""
+def require_complete(scores: pd.DataFrame) -> None:
+    """Stop unless each task's arms have TASK_SEEDS (default N_SEEDS) seeds per section at full budget."""
     done = scores[scores["check"] == scores["budget"]]
     counts = done.groupby(["task", "arm", "section"])["seed"].nunique()
     for task in scores["task"].unique():
+        n_seeds = TASK_SEEDS.get(task, N_SEEDS)
         for arm in (BASELINE, *METHODS):
+            if TASK_ONLY.get(arm, task) != task:
+                continue
             for section in SECTIONS:
                 n = counts.get((task, arm, section), 0)
                 if n != n_seeds:

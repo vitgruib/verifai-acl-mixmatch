@@ -123,3 +123,19 @@ def test_incomplete_scores_stop_the_analysis_naming_the_gap(tmp_path):
     write_scores(tmp_path / "cartpole" / "scores.csv", drop=("SFL", 7))
     with pytest.raises(SystemExit, match=r"cartpole.*SFL.*random.*19"):
         require_complete(load_scores(tmp_path))
+
+
+def test_maze_requires_ten_seeds_and_accepts_minimax(tmp_path):
+    write_scores(tmp_path / "cartpole" / "scores.csv")
+    rows = [{"arm": arm, "seed": seed, "section": section, "check": 100, "budget": 100, "pass_rate": 0.5}
+            for arm in ("DR", "PLR", "RPLR", "ACCEL", "SFL", "MINIMAX") for seed in range(10)
+            for section in ("random", "verifai", "custom")]
+    maze = tmp_path / "maze" / "scores.csv"
+    maze.parent.mkdir()
+    pd.DataFrame(rows).to_csv(maze, index=False)
+    df = load_scores(tmp_path)
+    require_complete(df)
+    assert "MINIMAX" in set(screen(df)["method"])
+    pd.DataFrame(rows[3:]).to_csv(maze, index=False)       # drops DR seed 0
+    with pytest.raises(SystemExit, match=r"maze.*DR.*random.*9 seeds.*need 10"):
+        require_complete(load_scores(tmp_path))
