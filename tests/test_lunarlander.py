@@ -165,3 +165,15 @@ def test_observing_an_unknown_live_row_is_a_clear_error():
     state[0, 0], state[0, 2] = 10**9, 4
     with pytest.raises(RuntimeError, match="restored"):
         lunarlander.observe(state)
+
+
+def test_rows_paused_for_several_full_passes_are_still_there():
+    state, params = starts(2)
+    for _ in range(3):
+        state = lunarlander.step(state, np.full(2, 2), params)
+    other = np.zeros((1, 8))
+    other[0, 0] = -1                                  # finished: stepping it only advances the clock
+    for _ in range(5 * lunarlander.MAX_EPISODE_STEPS):
+        lunarlander.step(other, np.zeros(1, dtype=int), params[:1])
+    state = lunarlander.step(state, np.full(2, 2), params)
+    assert state[:, 2].tolist() == [4, 4]

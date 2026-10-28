@@ -11,8 +11,9 @@ so it is self-describing and a play is reproducible from `(task, reset_seed)` al
 process (wind and turbulence are drawn from the env's own seeded generator). The first `step`
 builds the env and gives the row a process-local handle; a row whose episode terminated holds
 `-handle`; a finished or time-limited env is freed at once. Envs nobody has stepped for
-`IDLE_STEPS` calls are closed as abandoned. A state can be stepped only once: stepping an old
-`t > 0` row (restoring a mid-episode state) raises. There is no `planning_cost`: continuous
+`IDLE_STEPS` calls (far longer than a paused training batch waits) are closed as abandoned.
+A state can be stepped only once: stepping an old `t > 0` row (restoring a mid-episode state)
+raises. There is no `planning_cost`: continuous
 tasks are not certified.
 """
 from __future__ import annotations
@@ -52,7 +53,7 @@ def make_env(params: dict) -> gym.Env:
 
 
 # ---------------------------------------------------------------- the pool
-IDLE_STEPS = 2 * MAX_EPISODE_STEPS       # step() calls after which an unstepped env counts as abandoned
+IDLE_STEPS = 20 * MAX_EPISODE_STEPS      # step() calls after which an unstepped env counts as abandoned; outlasts any SFL scouting pause
 SWEEP_EVERY = 256
 _LIVE: dict[int, list] = {}              # handle -> [env, last obs, t, tick of last step]
 _HANDLES = itertools.count(1)
