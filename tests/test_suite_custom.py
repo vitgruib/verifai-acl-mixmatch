@@ -35,7 +35,7 @@ def test_frozenlake_custom_maps_are_all_solvable():
 def test_frozenlake_uses_three_maps_per_case_and_explicit_beyond_values():
     cases = custom_cases(frozenlake)
     assert not any(p["layout_seed"] < 0 for _, p in cases if not _.startswith("held_out"))
-    assert any(label.startswith("slip:max+beyond(0.9)") for label, _ in cases)
+    assert any(label.startswith("size:max+beyond(15)") for label, _ in cases)
     assert any(label.startswith("held_out:4x4") for label, _ in cases)
 
 

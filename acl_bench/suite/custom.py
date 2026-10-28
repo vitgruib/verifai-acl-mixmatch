@@ -5,9 +5,10 @@ the range beyond each edge (the rest at their defaults); settings the environmen
 (`valid`) are dropped. Labels: "default", "<setting>:<min|max>" for an edge and
 "<setting>:<min|max>+10%" / "+50%" beyond it. FrozenLake instead goes beyond its range by
 explicit values, labelled "<setting>:<min|max>+beyond(<value>)" by the side they lie on, and
-adds the held-out maps ("held_out:<name>"); each of its cases is played on 3 fixed random
-maps (label suffix "/map<k>") and a map is kept only if it is winnable (`certify_exact`,
-`optimal_success` >= 0.5). Case labels belong in the manifest: pass
+plays its size and hole_density cases at slip 0 (the slip cases keep the default size and
+density) and adds the held-out maps ("held_out:<name>"); each of its cases is played on 3
+fixed random maps (label suffix "/map<k>") and a map is kept only if it is winnable
+(`certify_exact`, `optimal_success` >= 0.5). Case labels belong in the manifest: pass
 `extra={"custom_cases": [label for label, _ in custom_cases(env)]}` to `save_sets`.
 """
 from __future__ import annotations
@@ -26,6 +27,14 @@ def _is_frozenlake(env) -> bool:
     return "layout_seed" in env.PARAM_BOUNDS
 
 
+def _base(env, setting: str) -> dict:
+    """The defaults; FrozenLake plays its size and hole_density cases at slip 0, since on
+    its default slip big or dense maps are rarely winnable."""
+    if _is_frozenlake(env) and setting != "slip":
+        return {**env.DEFAULTS, "slip": 0.0}
+    return dict(env.DEFAULTS)
+
+
 def _label(setting: str, side: str, offset: float) -> str:
     return f"{setting}:{side}" if offset == 0 else f"{setting}:{side}+{round(offset * 100)}%"
 
@@ -39,13 +48,13 @@ def _swept(env) -> list[tuple[str, dict]]:
             for offset in OFFSETS:
                 if _is_frozenlake(env) and offset:
                     continue
-                out.append((_label(setting, side, offset), {**env.DEFAULTS, setting: edge + sign * offset * (hi - lo)}))
+                out.append((_label(setting, side, offset), {**_base(env, setting), setting: edge + sign * offset * (hi - lo)}))
     if _is_frozenlake(env):
         for setting, values in FROZENLAKE_BEYOND.items():
             lo, hi = env.PARAM_BOUNDS[setting]
             for v in values:
                 side = "min" if v < lo else "max"
-                out.append((f"{setting}:{side}+beyond({v:g})", {**env.DEFAULTS, setting: v}))
+                out.append((f"{setting}:{side}+beyond({v:g})", {**_base(env, setting), setting: v}))
     return [(label, p) for label, p in out if env.valid(p)]
 
 
