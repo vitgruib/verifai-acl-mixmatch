@@ -6,8 +6,8 @@ PyTorch grader. Runs in .venv-jax (no torch):
 
 writes DIR/params.npz (acl_bench.ppo.Agent's state-dict layout, atlas/bridge/export.py) and
 DIR/config.json (the arm, seed, steps, every flag passed to JaxUED, wall time and the final
-level-buffer stats). The settings mirror acl_bench/plr/fast.py FastConfig and
-acl_bench/suite/arms.py; tests/test_bridge.py checks they still agree.
+level-buffer stats). The settings mirror acl_bench/plr/fast.py FastConfig (except the rollout
+length, below) and acl_bench/suite/arms.py; tests/test_bridge.py checks they still agree.
 """
 from __future__ import annotations
 
@@ -26,8 +26,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 JAXUED_DIR = os.environ.get("JAXUED_DIR", os.path.join(ROOT, "third_party", "jaxued"))
 SCRIPT = os.path.join(JAXUED_DIR, "examples", "gymnax", "gymnax_plr.py")
 
-# acl_bench/plr/fast.py FastConfig: 8 envs x 128 steps = 1024 samples per update
-PPO_FLAGS = {"num_train_envs": 8, "num_steps": 128, "num_minibatches": 4, "epoch_ppo": 4, "lr": 3e-4,
+# acl_bench/plr/fast.py FastConfig, except the rollout: 8 envs x 512 steps (JaxUED's gymnax length;
+# 4096 samples per update) rather than our 128, because JaxUED's loop restarts every env each update
+# and scores a level -inf unless an episode ends inside the rollout; CartPole episodes run 500 steps
+PPO_FLAGS = {"num_train_envs": 8, "num_steps": 512, "num_minibatches": 4, "epoch_ppo": 4, "lr": 3e-4,
              "gamma": 0.99, "gae_lambda": 0.95, "clip_eps": 0.2, "max_grad_norm": 0.5,
              "entropy_coeff": 0.01, "critic_coeff": 0.5}
 # acl_bench/suite/arms.py _PLR; our sampler replays once buffer // 10 levels are stored

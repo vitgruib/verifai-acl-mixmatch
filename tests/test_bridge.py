@@ -106,7 +106,7 @@ def test_settings_match_our_training():
     from atlas.bridge.cartpole_jaxued import ARM_FLAGS, PLR_FLAGS, PPO_FLAGS
     cfg, plr = FastConfig(), ARMS["PLR"]
     assert PPO_FLAGS == {
-        "num_train_envs": cfg.n_envs, "num_steps": 1024 // cfg.n_envs, "num_minibatches": cfg.minibatches,
+        "num_train_envs": cfg.n_envs, "num_steps": 512, "num_minibatches": cfg.minibatches,
         "epoch_ppo": cfg.epochs, "lr": cfg.lr, "gamma": cfg.gamma, "gae_lambda": cfg.lam,
         "clip_eps": cfg.clip, "max_grad_norm": cfg.max_grad_norm, "entropy_coeff": cfg.ent,
         "critic_coeff": cfg.vf}
