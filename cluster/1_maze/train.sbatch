@@ -10,7 +10,7 @@
 #SBATCH --output=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
-ALGOS=${ALGOS:-"sfl ref dr plr rplr accel minimax"}; N=${NUM_UPDATES:-30000}
+ALGOS=${ALGOS:-"sfl dr plr rplr accel minimax ref"}; N=${NUM_UPDATES:-30000}
 i=${SLURM_ARRAY_TASK_ID:-0}
 read -r algo seed <<< "$(maze_tasks $ALGOS | sed -n "$((i + 1))p")"
 echo "task=$i algo=$algo seed=$seed host=$(hostname) gpu=${CUDA_VISIBLE_DEVICES:-}"
@@ -60,6 +60,22 @@ finished() { local s; [ -f "$ck/config.json" ] || return 1
   s=$(PYTHONPATH=$ATLAS python -c 'import json, sys; from atlas.maze.exam import _final_step
 print(_final_step(json.load(open(sys.argv[1]))))' "$ck/config.json") && [ -n "$s" ] || return 1
   [ -d "$ck/models/$s" ]; }
+# Reference agents trained on our side are committed under frozen_sets/suite/maze_ref and copied in.
+# A checkout made before they were pushed fetches them from origin (the checkout itself is left
+# alone); if they are not there either, the agent is trained here.
+pre=$ATLAS/frozen_sets/suite/maze_ref/$seed
+if [ "$algo" = ref ] && maze_full && [ -z "${DRY_RUN:-}" ] && ! finished; then
+  if [ ! -d "$pre" ]; then
+    for k in 1 2 3; do git -C "$ATLAS" fetch -q origin main 2>/dev/null && break; sleep $((RANDOM % 30 + 5)); done
+    p=$RUNS/maze_ref_pull; rm -rf "$p/frozen_sets/suite/maze_ref/$seed"; mkdir -p "$p"
+    git -C "$ATLAS" archive origin/main frozen_sets/suite/maze_ref/$seed 2>/dev/null | tar -x -C "$p" 2>/dev/null \
+      && [ -d "$p/frozen_sets/suite/maze_ref/$seed" ] && pre=$p/frozen_sets/suite/maze_ref/$seed
+  fi
+  if [ -d "$pre" ]; then
+    rm -rf "$ck" "$ck.part"; mkdir -p "$(dirname "$ck")"; cp -R "$pre" "$ck.part"; mv "$ck.part" "$ck"
+    echo "copied in: $pre"
+  fi
+fi
 if [ -z "${DRY_RUN:-}" ] && finished; then
   echo "already trained: $RUNS/maze_train/$ck"
 else

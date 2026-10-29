@@ -107,7 +107,7 @@ def main(smoke: str):
     say(f"JOBS_PER_GPU={k} ({why})")
 
     n_up, n_seeds = int(os.environ.get("NUM_UPDATES", "30000")), int(os.environ.get("NSEEDS", "10"))
-    algos = os.environ.get("ALGOS", "sfl ref dr plr rplr accel minimax").split()
+    algos = os.environ.get("ALGOS", "sfl dr plr rplr accel minimax ref").split()
     spu = {a: jaxued_sec_per_update(runs, a) for a in ("dr", "rplr", "accel", "minimax")}
     sfl_sec, note = sfl_full_sec(runs, int(os.environ.get("SFL_STEPS", "245760000")))
     say("smoke speed: " + ", ".join(f"{a} {s:.3f} s/update" for a, s in spu.items()))

@@ -3,7 +3,8 @@
 This runs the Maze part of the generalization suite. Six curriculum (UED) methods (DR, PLR, Robust
 PLR, ACCEL, minimax and SFL) are trained on the Maze benchmark with each paper's own code, 10 seeds
 each, at the paper budget (about 246M environment steps per run). 10 extra DR agents are trained
-only to build the exam. Each agent then takes a three-part exam: 300 random mazes, mazes found with
+only to build the exam; 5 of them are trained on our side, and the run downloads them from GitHub
+when it gets to them (or trains them itself if they are not there). Each agent then takes a three-part exam: 300 random mazes, mazes found with
 VerifAI that the extra DR agents fail, and 14 hand-picked mazes (the standard named test mazes plus a
 few extremes). Last, a CartPole check runs the papers' PLR code (JaxUED) on our CartPole setup, to
 compare it with our own implementation, which the CartPole, FrozenLake and LunarLander results use.
@@ -43,8 +44,8 @@ What the script does:
    patches, and three Python environments.
 2. Runs a short test (DR, Robust PLR, ACCEL, minimax and SFL for a few updates, a small exam,
    grading). If it fails, the script stops there and packs the logs.
-3. Trains the 70 Maze runs (6 methods x 10 seeds, plus the 10 extra DR agents), several at a time
-   on each GPU.
+3. Trains the Maze runs, several at a time on each GPU: 6 methods x 10 seeds, then the 10 extra
+   DR agents (5 trained here, 5 downloaded), 65 to 70 runs in all.
 4. Builds the VerifAI part of the exam from the 10 extra DR agents. The other two parts are already
    in the repo.
 5. Grades the 60 scored agents on the exam.
@@ -54,14 +55,14 @@ What the script does:
 
 ## How long it takes
 
-None of this has run on a GPU yet, so this is a guess: 1 to 3 GPU-hours per training run, 70 to
+None of this has run on a GPU yet, so this is a guess: 1 to 3 GPU-hours per training run, 65 to
 210 GPU-hours in all. The 10 SFL runs will probably take several times longer than the others,
 since SFL also plays about 1.85 billion steps per run to pick its training mazes, so the real total
 may be higher. Assuming several jobs sharing one GPU are no faster than one job at a time:
 
 - 1 GPU: 3 to 9 days
 - 2 GPUs: 1.5 to 4.5 days
-- 4 GPUs: 18 to 53 hours
+- 4 GPUs: 17 to 53 hours
 
 Building the exam and grading come on top of that. The script runs up to 4 jobs per GPU when they
 fit in memory, which may make it faster. After the short test, the log prints how many jobs it
@@ -82,7 +83,8 @@ is in `atlas/runs/slurm/`.
 
 If the computer restarts, run the same command again. It picks up where it stopped: finished
 training runs, the exam and the graded agents are kept, and only the runs that were cut off start
-over. Running the command while it is still going just tells you so.
+over. Running the command while it is still going just tells you so. Please don't `git pull` in
+`atlas` while it runs.
 
 ## What to send back
 

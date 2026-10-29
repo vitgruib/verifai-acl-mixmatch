@@ -44,7 +44,8 @@ pick() { local i=$1; shift; local a=($@); echo "${a[$i]}"; }
 # maze_tasks <algos...>: one "algo seed" line per Maze training task; ref = the reference DR agents
 # (seeds 100-109, never scored), any other algo seeds 0 .. NSEEDS-1
 maze_tasks() { local a; for a; do
-  if [ "$a" = ref ]; then seq 100 109 | sed 's/^/ref /'; else seq 0 $(( ${NSEEDS:-10} - 1 )) | sed "s/^/$a /"; fi
+  # 105-109 first: 100-104 are trained on our side and pushed, fetched when the run gets to them
+  if [ "$a" = ref ]; then printf 'ref %s\n' 105 106 107 108 109 100 101 102 103 104; else seq 0 $(( ${NSEEDS:-10} - 1 )) | sed "s/^/$a /"; fi
 done; }
 # Where the Maze suite and the bridge write scores and the frozen exam: the repo (results/,
 # frozen_sets/) for the full run; under $RUNS/outputs, same layout, for a run with any size setting

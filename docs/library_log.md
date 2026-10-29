@@ -1432,3 +1432,16 @@ reference agents and the exam build once the VerifAI section is committed); new 
 reference agents are trained on a CPU instead of a GPU, which changes their floating-point paths
 but not their distribution. Keeping all 60 scored runs on one kind of machine avoids confounding
 method with hardware. Estimated cost: about 17 hours of the Mac for the agents, plus the exam.
+
+### Batch 22, amendment 2 (2026-10-29, before any scored Maze run): the reference agents are split
+
+Amendment 1 is cut short at the user's request, so the GPU run can start without waiting for the
+Mac: the Mac trains reference agents 100-104 only (all 30,000 updates) and stops, and their final
+checkpoints are committed under `frozen_sets/suite/maze_ref/` (about 5 MB each). The GPU run
+trains the 60 scored runs first, then reference agents 105-109, then 100-104; for each of 100-104
+it fetches the committed checkpoint from GitHub and copies it in, and trains the agent itself only
+if it is not there. The VerifAI section is then built from all 10 with the registered search, as
+originally planned. The reference agents are never scored, so training some of them on a CPU
+changes only which DR agents the exam's failures come from, not how any scored method is
+compared; all 60 scored runs still train on one kind of machine. The scored runs, the exam recipe
+and the analysis are unchanged.

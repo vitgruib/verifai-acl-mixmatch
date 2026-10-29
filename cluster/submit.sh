@@ -67,7 +67,7 @@ count() { set -- $1; echo $(( $# * NSEEDS - 1 )); }
 
 maze_time() { case $1 in sfl) echo 48:00:00;; minimax) echo 36:00:00;; *) echo 24:00:00;; esac; }
 part1() {  # Maze training, exam and grading, and the CartPole bridge; prints the last jobs' ids
-  local A=${ALGOS:-"sfl ref dr plr rplr accel minimax"} a t="" j e g b rc=0
+  local A=${ALGOS:-"sfl dr plr rplr accel minimax ref"} a t="" j e g b rc=0
   if [ -n "${LOCAL:-}" ]; then  # one queue over every slot, no time limit (jobs sharing a GPU run slower)
     t=$(ALGOS="$A" sb --export=ALL --array=0-$(( $(maze_tasks $A | wc -l) - 1 )) cluster/1_maze/train.sbatch) || rc=1
   else
