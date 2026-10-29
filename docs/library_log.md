@@ -1397,3 +1397,25 @@ so a null is strong evidence against these methods on Maze, and a positive resul
 DR" rather than "better curriculum". SFL's uncharged scouting is 7.6x its training, so an SFL
 improvement says nothing about equal compute until the follow-up test. The bridge tests the
 replay code at our CartPole settings only; it says nothing about our ACCEL or SFL.
+
+### Batch 22, CartPole bridge on the Mac CPU (2026-10-29): PASS
+
+The bridge check run in full on the Mac (JAX CPU) ahead of the GPU run: 3 arms x 20 seeds at
+614,400 steps, graded by our grader on `frozen_sets/suite/cartpole`. Output:
+`results/suite/cartpole_jaxued_mac/scores.csv`, `results/suite/analysis/bridge_cartpole_mac.md`.
+The professor's run repeats it into the standard paths; both are reported.
+
+**Verdict: PASS on both pre-registered rules.** Every arm is within 0.10 of ours on VerifAI and
+random, and DR leads PLR and RPLR on VerifAI under JaxUED's code too.
+
+| VerifAI / random (mean over 20 seeds) | ours | JaxUED | difference |
+|---|---|---|---|
+| DR | 0.570 / 0.940 | 0.568 / 0.976 | -0.003 / +0.036 |
+| PLR | 0.470 / 0.876 | 0.468 / 0.961 | -0.002 / +0.085 |
+| RPLR | 0.469 / 0.826 | 0.401 / 0.904 | -0.068 / +0.078 |
+
+**Reading.** Our PyTorch PLR and Robust PLR behave like the papers' code on CartPole, so batch
+21's result is not an artefact of the reimplementation. JaxUED's agents are somewhat better in
+distribution (random +0.04 to +0.09; the one setting that differs is the 512-step rollout), but
+on VerifAI DR and PLR match to 0.003 and the ordering holds. RPLR is the closest call (-0.068 on
+VerifAI, 0.032 inside the margin).
