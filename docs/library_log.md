@@ -1419,3 +1419,16 @@ random, and DR leads PLR and RPLR on VerifAI under JaxUED's code too.
 distribution (random +0.04 to +0.09; the one setting that differs is the 512-step rollout), but
 on VerifAI DR and PLR match to 0.003 and the ordering holds. RPLR is the closest call (-0.068 on
 VerifAI, 0.032 inside the margin).
+
+### Batch 22, amendment 1 (2026-10-29, before any Maze training run): the exam is built on the Mac
+
+The user chose to build the Maze exam on the Mac first: the 10 reference DR agents (seeds
+100-109, the full 30,000 updates, unchanged settings) train on the Mac CPU, then the VerifAI
+section is built from them with the registered search (3,000 CE iterations per agent, kept if at
+least 3 of 10 fail, capped at 3,000) and committed frozen next to the random and custom sections.
+The GPU run then trains and grades only the 60 scored runs (`cluster/submit.sh` skips the
+reference agents and the exam build once the VerifAI section is committed); new entry point
+`bash cluster/submit.sh exam-build`. Nothing about the exam or the scored runs changes; the
+reference agents are trained on a CPU instead of a GPU, which changes their floating-point paths
+but not their distribution. Keeping all 60 scored runs on one kind of machine avoids confounding
+method with hardware. Estimated cost: about 17 hours of the Mac for the agents, plus the exam.

@@ -3,6 +3,7 @@
 #   maze        Maze smoke test, then the full Maze suite and the CartPole bridge if it passes, then collect
 #   maze-smoke  Maze smoke test only (~30 min)
 #   smoke       smoke test of all three environments (~1 h; Kinetix speed probe up to 3 h)
+#   exam-build  the 10 reference DR agents and the exam's VerifAI section only (CPU_JOBS at a time without a GPU)
 #   bridge      the CartPole bridge only (BRIDGE_OUT in bridge.sbatch moves its scores)
 #   1 | 2 | 3   full run of Maze | Kinetix | JaxNav;  all = 1-3
 # Extra sbatch flags go in SBATCH_ARGS. LOCAL=1 runs the jobs on this machine instead of SLURM,
@@ -11,6 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p runs/slurm
 NSEEDS=${NSEEDS:-10}
+# Once the exam's VerifAI section is committed (exam-build), the full run neither retrains the
+# reference agents nor rebuilds the exam; smoke_report.py reads the same ALGOS.
+exam_frozen && export ALGOS=${ALGOS:-"sfl dr plr rplr accel minimax"}
 sb() {  # prints the job id
   echo "${LOCAL:+[local] }sbatch ${SBATCH_ARGS:-} $*" >&2
   if [ -n "${DRY_RUN:-}" ]; then echo DRYRUN
@@ -33,7 +37,7 @@ sb_local() {
     slots=$(echo "${CUDA_VISIBLE_DEVICES:-}" | tr , ' ')
     [ -n "$slots" ] || slots=$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | tr -d ' ' || true)
     slots=$(for s in $slots; do seq ${JOBS_PER_GPU:-1} | sed "s/.*/$s/"; done)
-    [ -n "$slots" ] || slots=cpu
+    [ -n "$slots" ] || slots=$(seq ${CPU_JOBS:-1} | sed 's/^/cpu/')   # no GPU: CPU_JOBS at a time
   else
     slots=$(seq 1 $(( $(getconf _NPROCESSORS_ONLN) / ${c:-1} > 0 ? $(getconf _NPROCESSORS_ONLN) / ${c:-1} : 1 )) | sed 's/^/cpu/')
   fi
@@ -73,11 +77,17 @@ part1() {  # Maze training, exam and grading, and the CartPole bridge; prints th
     done; t=${t#:}
   fi
   # the exam refuses unless all 10 reference agents finished; grading grades whatever finished
-  e=$(JOBS_PER_GPU=1 sb --export=ALL --dependency=afterany:$t cluster/1_maze/exam.sbatch) || rc=1
-  g=$(JOBS_PER_GPU=1 sb --export=ALL --dependency=afterany:$t:$e cluster/1_maze/grade.sbatch) || rc=1
+  if ! exam_frozen; then
+    e=$(JOBS_PER_GPU=1 sb --export=ALL --dependency=afterany:$t cluster/1_maze/exam.sbatch) || rc=1; t=$t:$e
+  fi
+  g=$(JOBS_PER_GPU=1 sb --export=ALL --dependency=afterany:$t cluster/1_maze/grade.sbatch) || rc=1
   b=$(bridge) || rc=1
   echo "$g:$b"
   return $rc
+}
+exam_build() {  # the 10 reference agents, then the exam's VerifAI section; no smoke test
+  local t; t=$(ALGOS=ref sb --export=ALL --array=0-9 cluster/1_maze/train.sbatch) || return 1
+  JOBS_PER_GPU=1 sb --export=ALL --dependency=afterok:$t cluster/1_maze/exam.sbatch
 }
 bridge() {  # CartPole bridge: train the 3 arms, then grade and compare; prints the last job's id
   local b rc=0
@@ -177,7 +187,7 @@ smoke() {
 }
 
 case ${1:-} in
-  maze) maze;; maze-smoke) maze_smoke;; smoke) smoke;; bridge) bridge;; 1) part1;; 2) part2;; 3) part3;;
+  maze) maze;; maze-smoke) maze_smoke;; smoke) smoke;; bridge) bridge;; exam-build) exam_build;; 1) part1;; 2) part2;; 3) part3;;
   all) part1; part2; part3;;
-  *) sed -n '2,8p' "$0"; exit 2;;
+  *) sed -n '2,9p' "$0"; exit 2;;
 esac

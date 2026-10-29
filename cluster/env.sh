@@ -52,4 +52,5 @@ done; }
 maze_full() { [ "${NUM_UPDATES:-30000}" = 30000 ] && [ "${NSEEDS:-10}" = 10 ] && [ -z "${JAXUED_ARGS:-}" ] \
   && [ "${SFL_STEPS:-245760000}" = 245760000 ] && [ -z "${SFL_ARGS:-}" ] && [ "${EXAM_ITERS:-3000}" = 3000 ]; }
 bridge_full() { [ "${BRIDGE_STEPS:-614400}" = 614400 ] && [ "${BRIDGE_SEEDS:-20}" = 20 ]; }
+exam_frozen() { maze_full && grep -q '"verifai"' "$ATLAS/frozen_sets/suite/maze/manifest.json" 2>/dev/null; }
 out_root() { if "$1"; then echo "$ATLAS"; else echo "$RUNS/outputs"; fi; }   # out_root maze_full|bridge_full
