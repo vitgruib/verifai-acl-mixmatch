@@ -3,11 +3,11 @@
     python cluster/1_maze/smoke_report.py <smoke runs dir>
 
 prints the report on stderr and the chosen JOBS_PER_GPU on stdout. JOBS_PER_GPU: the environment
-variable if set, else as many smoke-sized jobs as fit in 90% of the smallest GPU's memory with 25%
+variable if set, else as many smoke-sized jobs as fit in 80% of the smallest GPU's memory with 25%
 headroom over the largest peak the smoke jobs reached (gpu_mem.csv, sampled while they ran one per
-GPU with XLA_PYTHON_CLIENT_PREALLOCATE=false), at most 4; 1 without a GPU. Speeds: JaxUED's from
-the times of the smoke runs' checkpoints (DR stands in for ref; RPLR for PLR and ACCEL; minimax,
-which also trains its antagonist, is taken as twice DR); SFL's from the time between its saves after
+GPU with XLA_PYTHON_CLIENT_PREALLOCATE=false), at most 4; 1 without a GPU. GPUs: those in
+CUDA_VISIBLE_DEVICES if set, as submit.sh uses. Speeds: JaxUED's from the times of the smoke runs'
+checkpoints (DR stands in for ref; RPLR for PLR); SFL's from the time between its saves after
 each smoke round, a fifth of a full round (submit.sh). Exam and grading scale the smoke's
 times. The run sizes come from the same variables train.sbatch reads.
 """
@@ -25,15 +25,15 @@ from pathlib import Path
 from atlas.maze.grade import SFL_RECIPE
 
 MAX_JOBS = 4
-TASK_SPEED = {"ref": ("dr", 1), "dr": ("dr", 1), "minimax": ("dr", 2), "plr": ("rplr", 1),
-              "rplr": ("rplr", 1), "accel": ("rplr", 1)}
+TASK_SPEED = {"ref": "dr", "dr": "dr", "minimax": "minimax", "plr": "rplr", "rplr": "rplr", "accel": "accel"}
 FULL_EXAM_LEVELS = 300 + 14 + 3000   # random, custom, VerifAI cap
 
 
 def gpus() -> list[int]:
-    """Total memory (MiB) of each GPU nvidia-smi lists."""
+    """Total memory (MiB) of each GPU nvidia-smi lists (only CUDA_VISIBLE_DEVICES' if set)."""
+    ids = ["-i", os.environ["CUDA_VISIBLE_DEVICES"]] if os.environ.get("CUDA_VISIBLE_DEVICES") else []
     try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+        out = subprocess.run(["nvidia-smi", *ids, "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return []
@@ -52,7 +52,7 @@ def peak_mib(path: Path) -> int | None:
 
 
 def jaxued_sec_per_update(runs: Path, algo: str) -> float:
-    """Seconds per update between the first and last checkpoint of the smoke run."""
+    """Seconds per update between the first and last checkpoint the smoke run kept."""
     (d,) = glob.glob(str(runs / "maze_train" / "checkpoints" / f"maze_{algo}_n*" / "0"))
     cfg = json.loads((Path(d) / "config.json").read_text())
     steps = sorted(int(p.name) for p in (Path(d) / "models").iterdir() if p.name.isdigit())
@@ -102,16 +102,16 @@ def main(smoke: str):
     elif not n_gpu or not peak:
         k, why = 1, "no GPU memory measured"
     else:
-        k = max(1, min(MAX_JOBS, int(0.9 * min(mem) / (1.25 * peak))))
+        k = max(1, min(MAX_JOBS, int(0.8 * min(mem) / (1.25 * peak))))
         why = f"smoke peak {peak} MiB per job; override with JOBS_PER_GPU=<n>"
     say(f"JOBS_PER_GPU={k} ({why})")
 
     n_up, n_seeds = int(os.environ.get("NUM_UPDATES", "30000")), int(os.environ.get("NSEEDS", "10"))
     algos = os.environ.get("ALGOS", "sfl ref dr plr rplr accel minimax").split()
-    spu = {a: jaxued_sec_per_update(runs, a) for a in ("dr", "rplr")}
+    spu = {a: jaxued_sec_per_update(runs, a) for a in ("dr", "rplr", "accel", "minimax")}
     sfl_sec, note = sfl_full_sec(runs, int(os.environ.get("SFL_STEPS", "245760000")))
-    say(f"smoke speed: DR {spu['dr']:.3f} s/update, RPLR {spu['rplr']:.3f} s/update")
-    per_run = {a: (sfl_sec if a == "sfl" else spu[TASK_SPEED[a][0]] * TASK_SPEED[a][1] * n_up) for a in algos}
+    say("smoke speed: " + ", ".join(f"{a} {s:.3f} s/update" for a, s in spu.items()))
+    per_run = {a: (sfl_sec if a == "sfl" else spu[TASK_SPEED[a]] * n_up) for a in algos}
     say("estimated time per training run, one at a time: "
         + ", ".join(f"{a} {hours(s)}" for a, s in per_run.items()) + note)
     tasks = [per_run[a] for a in algos for _ in range(10 if a == "ref" else n_seeds)]

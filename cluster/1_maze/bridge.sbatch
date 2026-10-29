@@ -11,13 +11,15 @@ set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 STEPS=${BRIDGE_STEPS:-614400}; NB=${BRIDGE_SEEDS:-20}; out=$RUNS/bridge/cartpole
 root=$(out_root bridge_full)   # env.sh: the repo for the full run, else under $RUNS/outputs
+# BRIDGE_OUT=<dir> moves the scores (<dir>/scores.csv) and the comparison (<dir>/../analysis/bridge_<dir
+# name without _jaxued>.md), e.g. results/suite/cartpole_jaxued_mac -> analysis/bridge_cartpole_mac.md
+sd=${BRIDGE_OUT:-$root/results/suite/cartpole_jaxued}; n=$(basename "$sd")
 export JAX_PLATFORMS=cpu
 if [ -n "${BRIDGE_GRADE:-}" ]; then
   source "$TORCH_VENV/bin/activate"
-  python -m atlas.bridge.grade_cartpole --runs "$out" --out "$root/results/suite/cartpole_jaxued/scores.csv"
-  mkdir -p "$root/results/suite/analysis"
-  python -m atlas.bridge.compare --bridge "$root/results/suite/cartpole_jaxued/scores.csv" --budget "$STEPS" \
-    --out "$root/results/suite/analysis/bridge_cartpole.md"
+  python -m atlas.bridge.grade_cartpole --runs "$out" --out "$sd/scores.csv"
+  python -m atlas.bridge.compare --bridge "$sd/scores.csv" --budget "$STEPS" \
+    --out "$(dirname "$sd")/analysis/bridge_${n/_jaxued/}.md"
   exit 0
 fi
 i=${SLURM_ARRAY_TASK_ID:-0}; arm=$(pick $((i / NB)) DR PLR RPLR); seed=$((i % NB + 1)); d=$out/$arm/$seed

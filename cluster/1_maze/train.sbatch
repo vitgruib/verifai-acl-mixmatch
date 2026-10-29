@@ -64,6 +64,8 @@ if [ -z "${DRY_RUN:-}" ] && finished; then
   echo "already trained: $RUNS/maze_train/$ck"
 else
   run rm -rf "$ck" "results/$r/$seed"
-  run python "$JAXUED_DIR/examples/$f" --run_name $r --seed $seed --num_updates $N $x ${JAXUED_ARGS:-}
+  # keep 2 checkpoints, not 60 (~11 GB per minimax run): only the final one is ever read
+  run python "$JAXUED_DIR/examples/$f" --run_name $r --seed $seed --num_updates $N --max_number_of_checkpoints 2 \
+    $x ${JAXUED_ARGS:-}
 fi
 [ -f "results/$r/$seed/results.npz" ] || run python "$JAXUED_DIR/examples/$f" --mode eval --checkpoint_directory $ck

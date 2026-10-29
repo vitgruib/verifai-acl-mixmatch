@@ -13,8 +13,9 @@ compare it with our own implementation, which the CartPole, FrozenLake and Lunar
 - Linux with one or more NVIDIA GPUs, and a driver recent enough for CUDA 12 (`nvidia-smi` shows
   the CUDA version in its top right corner).
 - `python3.11`, `git`, and internet access for the install.
-- About 150 GB of free disk, mostly for checkpoints (each minimax run keeps about 11 GB). This is
-  estimated from the checkpoints of a small test run.
+- About 30 GB of free disk, mostly for the Python environments with their CUDA libraries. Each run
+  keeps its last two checkpoints, about 6 GB in all (most of it minimax, 184 MB per checkpoint),
+  plus about 3 GB of training logs. This is estimated from a small test run.
 
 To see your GPUs:
 
@@ -22,7 +23,12 @@ To see your GPUs:
 nvidia-smi -L
 ```
 
-The script uses every GPU listed there.
+The script uses every GPU listed there. To use only some of them, name them when you start it (and
+again when you rerun it), for example:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 bash atlas/cluster/run_maze.sh
+```
 
 ## Running it
 
@@ -35,8 +41,8 @@ What the script does:
 
 1. Installs everything inside the `atlas` folder: the papers' code at pinned commits with our
    patches, and three Python environments.
-2. Runs a short test (DR, Robust PLR and SFL for a few updates, a small exam, grading). If it
-   fails, the script stops there and packs the logs.
+2. Runs a short test (DR, Robust PLR, ACCEL, minimax and SFL for a few updates, a small exam,
+   grading). If it fails, the script stops there and packs the logs.
 3. Trains the 70 Maze runs (6 methods x 10 seeds, plus the 10 extra DR agents), several at a time
    on each GPU.
 4. Builds the VerifAI part of the exam from the 10 extra DR agents. The other two parts are already
@@ -49,7 +55,9 @@ What the script does:
 ## How long it takes
 
 None of this has run on a GPU yet, so this is a guess: 1 to 3 GPU-hours per training run, 70 to
-210 GPU-hours in all. Assuming several jobs sharing one GPU are no faster than one job at a time:
+210 GPU-hours in all. The 10 SFL runs will probably take several times longer than the others,
+since SFL also plays about 1.85 billion steps per run to pick its training mazes, so the real total
+may be higher. Assuming several jobs sharing one GPU are no faster than one job at a time:
 
 - 1 GPU: 3 to 9 days
 - 2 GPUs: 1.5 to 4.5 days
@@ -62,8 +70,8 @@ over the numbers above.
 
 ## While it runs
 
-It runs in the background, so you can close the terminal. Just leave the computer on. To watch
-progress:
+It runs in the background, so you can close the terminal. Just leave the computer on, with
+automatic suspend (sleep) turned off. To watch progress:
 
 ```bash
 tail -f atlas/run_maze.log

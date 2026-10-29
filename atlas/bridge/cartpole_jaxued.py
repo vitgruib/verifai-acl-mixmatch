@@ -94,8 +94,9 @@ def main(args=None):
               "buffer": {"size": int(flat["sampler/size"]), "finite_scores": int(np.isfinite(scores).sum()),
                          "episode_count": int(flat["sampler/episode_count"])},
               "num_dr_updates": int(flat["num_dr_updates"]), "num_replay_updates": int(flat["num_replay_updates"])}
-    with open(os.path.join(a.out, "config.json"), "w") as fh:
+    with open(os.path.join(a.out, "config.json.part"), "w") as fh:
         json.dump(config, fh, indent=1)
+    os.replace(os.path.join(a.out, "config.json.part"), os.path.join(a.out, "config.json"))   # marks a finished run
     os.remove(raw)
     print(json.dumps({k: config[k] for k in ("arm", "seed", "steps", "wall_time_sec", "buffer",
                                              "num_dr_updates", "num_replay_updates")}))
