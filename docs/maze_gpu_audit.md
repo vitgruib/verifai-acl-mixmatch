@@ -224,7 +224,7 @@ scratchpad; the durable check is `cluster/tests/maze_box_check.py`.
 The whole pipeline (`cluster/run_maze.sh` -> `submit.sh maze`, LOCAL mode) ran on the Mac CPU at a
 tiny size, with all six methods and REF, from a fresh `$RUNS`. The CPU was shared with an 8-worker
 LunarLander run (load average 12-39 throughout), so every wall time below is inflated.
-No code changes were needed.
+No code changes were needed. CPU only; no GPU behaviour tested.
 
 **Command** (from the repo root; `RUNS` was a fresh scratch directory):
 
@@ -259,9 +259,13 @@ batch 21, and 614,400 steps is well past the point where replay starts. All outp
 2. *Bridge with replay.* At 614,400 steps PLR and RPLR each did 45 DR and 105 replay updates
    (buffer 360/1000). DR did 150 DR and 0 replay updates (buffer 1000). The runs were exported
    (`params.npz`) and graded by the real `grade_cartpole` and `compare`. The verdict is FAIL: with
-   n=1 the JaxUED-trained agents pass far less than batch 21 (DR random 0.07 vs 0.94). These are
-   the same numbers as Task 6's bridge run, so the result is reproducible. It is a scientific
-   result and not a pipeline fault.
+   n=1 the JaxUED-trained agents pass far less than batch 21 (DR random 0.07 vs 0.94), the same
+   numbers as Task 6's bridge run. This run predates 7ec1fd9. At that point the bridge used 4
+   minibatches on its 4,096-sample rollout, which meant 2,400 Adam steps per run against our
+   9,600, so the agents were undertrained (root cause in
+   `.superpowers/sdd/2026-10-28-maze-gpu-suite/bridge-debug-report.md`). With the 16-minibatch
+   fix, one full-budget DR seed passes random 0.97, custom 0.96 and verifai 0.447. These bridge
+   numbers are stale, and the bridge stage needs a rerun before its verdict means anything.
 3. *solve_rates on CPU.* `exam.solve_rates(policy, random section, plays=10, batch=256)` on a
    tiny DR checkpoint covers 300 levels (2 jitted batches of 256 levels x 10 plays) and took
    5.80 s (including compile), then 4.54 s and 3.45 s. That is about 1.7-2.3 s per warm batch of
