@@ -1236,6 +1236,37 @@ every random question (question pass share below 0.2), the VerifAI section again
 DR's failures: LunarLander is then dropped and the scored runs are not launched. Estimated cost:
 about 10 hours of the Mac (REF about 1.5 hours, exam about 1 hour, scored runs about 7.5 hours).
 
+### Batch 21 result, LunarLander (2026-10-29): screen negative on all three tasks
+
+The go/no-go passed (REF random pass rates 0.34, 0.88, 0.84, 0.59, 0.83, 0.52, 0.0, 0.84, 0.48,
+0.78: one agent of 10 below 0.2, not 3), so the scored runs went ahead. All 100 LunarLander runs
+completed (5 arms x 20 seeds, no failures). Output: `results/suite/analysis/`, from
+`python -m acl_bench.suite.analyze --envs cartpole frozenlake lunarlander`.
+
+**Primary test: no improvement.** On the VerifAI section every method scores below DR on
+LunarLander too (one-sided p 0.990-0.9998). Over all 12 tests (Holm), no method improves on DR on
+any task; every Holm p is 1.0.
+
+| VerifAI pass rate (mean over 20 seeds) | DR | PLR | RPLR | ACCEL | SFL |
+|---|---|---|---|---|---|
+| CartPole | 0.570 | 0.470 | 0.469 | 0.535 | 0.332 |
+| FrozenLake | 0.141 | 0.056 | 0.043 | 0.032 | 0.054 |
+| LunarLander | 0.254 | 0.199 | 0.141 | 0.141 | 0.106 |
+
+**Also reported, not tested.**
+- Random section: DR 0.66, PLR 0.65, RPLR 0.45, ACCEL 0.42, SFL 0.34. Custom: DR 0.41, PLR 0.35,
+  RPLR 0.21, ACCEL 0.22, SFL 0.17.
+- Seed spread is wide for every arm (random std 0.20-0.36): some seeds of each method never learn
+  to land at this budget, SFL most often.
+- SFL's charged scouting took 0.52 of the budget at 22.5M (mean 11.73M of 22.53M steps, range
+  11.04M-12.62M), inside the 0.4-0.6 target.
+- Custom cases no scored agent passes: `wind_power:max+50%` and `turbulence_power:max+50%`.
+
+**Reading.** Same as CartPole and FrozenLake: DR leads on its own failures, in distribution and on
+the custom cases. PLR is closest to DR here; the no-gradient-on-new-levels methods (RPLR, ACCEL)
+lose most, consistent with them spending fewer gradient steps at a budget where learning the task
+at all is the bottleneck.
+
 ## Batch 22 (registered 2026-10-28, before any Maze or bridge run): the Maze part of the suite on GPUs, and the CartPole bridge check
 
 **Question.** Batch 21's screen on Maze: does any UED method score above DR on the VerifAI section,
