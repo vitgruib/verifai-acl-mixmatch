@@ -9,7 +9,7 @@ export KINETIX_DIR=${KINETIX_DIR:-$TP/kinetix}
 export JAX_VENV=${JAX_VENV:-$ATLAS/.venv-jax}      # JaxUED, VerifAI
 export SFL_VENV=${SFL_VENV:-$ATLAS/.venv-sfl}      # SFL repo (older jax)
 export KINETIX_VENV=${KINETIX_VENV:-$ATLAS/.venv-kinetix}
-export TORCH_VENV=${TORCH_VENV:-$ATLAS/.venv}      # acl_bench (PyTorch): the CartPole bridge's grader
+export TORCH_VENV=${TORCH_VENV:-$ATLAS/.venv-torch}  # acl_bench (PyTorch): the CartPole bridge's grader
 
 # Pinned upstream commits
 export JAXUED_REPO=https://github.com/DramaCow/jaxued.git        JAXUED_COMMIT=0f8f1284677375b889e4f13a32c9617cd009f8c4
@@ -45,3 +45,10 @@ pick() { local i=$1; shift; local a=($@); echo "${a[$i]}"; }
 maze_tasks() { local a; for a; do
   if [ "$a" = ref ]; then seq 100 109 | sed 's/^/ref /'; else seq 0 $(( ${NSEEDS:-10} - 1 )) | sed "s/^/$a /"; fi
 done; }
+# Where the Maze suite and the bridge write scores and the frozen exam: the repo (results/,
+# frozen_sets/) for the full run; under $RUNS/outputs, same layout, for a run with any size setting
+# off its default (smoke, tiny test runs), so the committed files never change.
+maze_full() { [ "${NUM_UPDATES:-30000}" = 30000 ] && [ "${NSEEDS:-10}" = 10 ] && [ -z "${JAXUED_ARGS:-}" ] \
+  && [ "${SFL_STEPS:-245760000}" = 245760000 ] && [ -z "${SFL_ARGS:-}" ] && [ "${EXAM_ITERS:-3000}" = 3000 ]; }
+bridge_full() { [ "${BRIDGE_STEPS:-614400}" = 614400 ] && [ "${BRIDGE_SEEDS:-20}" = 20 ]; }
+out_root() { if "$1"; then echo "$ATLAS"; else echo "$RUNS/outputs"; fi; }   # out_root maze_full|bridge_full

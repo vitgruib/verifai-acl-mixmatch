@@ -41,7 +41,7 @@ sb_local() {
         t0=$(date +%s); rc=0
         ( case $s in cpu*) ;; *) export CUDA_VISIBLE_DEVICES=$s
             [ "${JOBS_PER_GPU:-1}" -gt 1 ] && export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-$(
-              awk "BEGIN {printf \"%.2f\", 0.9 / $JOBS_PER_GPU}")};; esac
+              awk "BEGIN {printf \"%.3f\", 0.9 / $JOBS_PER_GPU}")};; esac
           export SLURM_ARRAY_TASK_ID=$i SLURM_CPUS_PER_TASK=${c:-1} SLURM_SUBMIT_DIR=$PWD
           $tmo bash "$f" ) > "runs/slurm/${name}_${st}_$i.out" 2>&1 || rc=$?
         echo "$i $rc" >> "$tmp/done"; now=$(date +%s); d=$(wc -l < "$tmp/done")
@@ -144,19 +144,6 @@ maze() {  # KD cancels later jobs instead of leaving them pending if the smoke t
   sb --export=ALL --dependency=afterany:$j cluster/collect.sbatch >/dev/null
   echo "maze smoke + full run $([ -n "${LOCAL:-}" ] && echo finished || echo submitted); results -> ${OUT:-$ATLAS/maze_results.tgz}" >&2
   return $rc
-}
-
-smoke() {
-  smoke_env
-  smoke_maze
-  echo "maze smoke submitted; check: ls $RUNS/maze_falsify/*/*/*/summary.json" >&2
-}
-maze() {  # KD cancels later jobs instead of leaving them pending if the smoke test fails
-  export KD=--kill-on-invalid-dep=yes
-  local j; j=$(smoke_env; smoke_maze)
-  j=$(GATE="$KD --dependency=afterok:$j" part1)
-  sb --export=ALL --dependency=afterany:$j cluster/collect.sbatch >/dev/null
-  echo "maze smoke + full run submitted; results -> ${OUT:-$ATLAS/maze_results.tgz}" >&2
 }
 
 smoke() {

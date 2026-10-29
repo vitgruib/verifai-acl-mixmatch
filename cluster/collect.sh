@@ -17,7 +17,7 @@ tar cf "$tmp" -T "$list"
 cd "$(dirname "$RUNS")"; R=$(basename "$RUNS")
 find "$R" \( -name config.json -o -name '*.csv' -o -name train.log -o -name timing.txt \
   -o -name model.safetensors -o -name params.npz -o -path '*/hydra/.hydra/*' -o -path "$R/slurm/*" \
-  -o -path '*/exam/*' -o -path '*_falsify/*' -o -path '*/maze_train/results/*' \
+  -o -path '*/exam/*' -o -path "$R/outputs/*" -o -path '*_falsify/*' -o -path '*/maze_train/results/*' \
   -o -path "$R/kinetix/*/.hydra/config.yaml" -o -path "$R/kinetix/*/ckpt/*/full_model.pbz2" \) -type f > "$list"
 # only the last checkpoint of each JaxUED Maze run
 find "$R" -type d -path '*/maze_train/checkpoints/*/*/models' | while read -r d; do

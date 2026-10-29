@@ -10,9 +10,10 @@
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 N=${NUM_UPDATES:-30000}; NSEEDS=${NSEEDS:-10}
-EXAM_OUT=${EXAM_OUT:-$ATLAS/frozen_sets/suite/maze}; SCORES=${SCORES:-$ATLAS/results/suite/maze/scores.csv}
-# runs trained below the Maze budget (smoke test, tiny test runs) are graded at their own budget
-any=""; [ "$N" = 30000 ] && [ "${SFL_STEPS:-245760000}" = 245760000 ] && [ -z "${SFL_ARGS:-}" ] || any=--any-budget
+root=$(out_root maze_full)   # env.sh: the repo for the full run, else under $RUNS/outputs
+EXAM_OUT=${EXAM_OUT:-$root/frozen_sets/suite/maze}; SCORES=${SCORES:-$root/results/suite/maze/scores.csv}
+# runs off the full settings (smoke test, tiny test runs) are graded at their own budget
+any=""; maze_full || any=--any-budget
 source "$JAX_VENV/bin/activate"
 python -m atlas.maze.grade --runs "$RUNS" --exam "$EXAM_OUT" --out "$SCORES" --run-name "maze_{algo}_n$N" \
   --seeds $(seq 0 $((NSEEDS - 1))) $any ${GRADE_ARGS:-}

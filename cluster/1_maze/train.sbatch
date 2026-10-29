@@ -56,8 +56,10 @@ esac
 r=maze_${algo}_n$N; ck=checkpoints/$r/$seed
 [ -n "${DRY_RUN:-}" ] || { source "$JAX_VENV/bin/activate"; mkdir -p "$RUNS/maze_train"; cd "$RUNS/maze_train"; }
 # finished = a checkpoint at the final step its config.json implies (the step the exam and grader load)
-finished() { [ -f "$ck/config.json" ] && [ -d "$ck/models/$(PYTHONPATH=$ATLAS python -c '
-import json, sys; from atlas.maze.exam import _final_step; print(_final_step(json.load(open(sys.argv[1]))))' "$ck/config.json")" ]; }
+finished() { local s; [ -f "$ck/config.json" ] || return 1
+  s=$(PYTHONPATH=$ATLAS python -c 'import json, sys; from atlas.maze.exam import _final_step
+print(_final_step(json.load(open(sys.argv[1]))))' "$ck/config.json") && [ -n "$s" ] || return 1
+  [ -d "$ck/models/$s" ]; }
 if [ -z "${DRY_RUN:-}" ] && finished; then
   echo "already trained: $RUNS/maze_train/$ck"
 else

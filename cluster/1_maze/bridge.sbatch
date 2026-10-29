@@ -10,12 +10,14 @@
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"; source cluster/env.sh
 STEPS=${BRIDGE_STEPS:-614400}; NB=${BRIDGE_SEEDS:-20}; out=$RUNS/bridge/cartpole
+root=$(out_root bridge_full)   # env.sh: the repo for the full run, else under $RUNS/outputs
 export JAX_PLATFORMS=cpu
 if [ -n "${BRIDGE_GRADE:-}" ]; then
   source "$TORCH_VENV/bin/activate"
-  python -m atlas.bridge.grade_cartpole --runs "$out" --out "$ATLAS/results/suite/cartpole_jaxued/scores.csv"
-  python -m atlas.bridge.compare --bridge "$ATLAS/results/suite/cartpole_jaxued/scores.csv" --budget "$STEPS" \
-    --out "$ATLAS/results/suite/analysis/bridge_cartpole.md"
+  python -m atlas.bridge.grade_cartpole --runs "$out" --out "$root/results/suite/cartpole_jaxued/scores.csv"
+  mkdir -p "$root/results/suite/analysis"
+  python -m atlas.bridge.compare --bridge "$root/results/suite/cartpole_jaxued/scores.csv" --budget "$STEPS" \
+    --out "$root/results/suite/analysis/bridge_cartpole.md"
   exit 0
 fi
 i=${SLURM_ARRAY_TASK_ID:-0}; arm=$(pick $((i / NB)) DR PLR RPLR); seed=$((i % NB + 1)); d=$out/$arm/$seed
