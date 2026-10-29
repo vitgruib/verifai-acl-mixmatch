@@ -8,7 +8,7 @@
 #   1 | 2 | 3   full run of Maze | Kinetix | JaxNav;  all = 1-3
 # Extra sbatch flags go in SBATCH_ARGS. LOCAL=1 runs the jobs on this machine instead of SLURM,
 # JOBS_PER_GPU at a time on each GPU (for maze, chosen after the smoke test unless set); the GPUs are
-# those in CUDA_VISIBLE_DEVICES if set (run_maze.sh sets it to the idle ones), else every one
+# those in CUDA_VISIBLE_DEVICES if set (run_maze.sh requires it), else every one
 # nvidia-smi lists.
 set -euo pipefail
 cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p runs/slurm

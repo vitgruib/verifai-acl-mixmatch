@@ -8,7 +8,7 @@ set -euo pipefail
 # happens to have exported (RUNS, OUT, ...) must not move what this run writes, deletes or packs.
 unset ATLAS TP RUNS OUT JAXUED_DIR SFL_DIR KINETIX_DIR JAX_VENV SFL_VENV KINETIX_VENV TORCH_VENV ATLAS_CACHE \
   ALGOS NSEEDS NUM_UPDATES JAXUED_ARGS SFL_STEPS SFL_ARGS SFL_TIME EXAM_ITERS BRIDGE_GRADE BRIDGE_OUT \
-  BRIDGE_SEEDS BRIDGE_STEPS JOBS_PER_GPU CPU_JOBS REF_COPY REF_DIR EXAM_OUT POOL_OUT SCORES GRADE_ARGS GATE KD \
+  BRIDGE_SEEDS BRIDGE_STEPS CPU_JOBS REF_COPY REF_DIR EXAM_OUT POOL_OUT SCORES GRADE_ARGS GATE KD \
   LOCAL DRY_RUN JAX_EXTRA XLA_PYTHON_CLIENT_MEM_FRACTION
 cd "$(dirname "$0")/.."
 setup() { bash cluster/setup/clone.sh && bash cluster/setup/setup_jax.sh && bash cluster/setup/setup_sfl.sh && bash cluster/setup/setup_torch.sh; }
@@ -49,18 +49,6 @@ if command -v sbatch >/dev/null; then
 fi
 unset SBATCH_ARGS
 
-# Idle GPUs, comma-separated: no compute process and under 1 GB of memory in use (a desktop's display
-# uses some). Prints each GPU skipped, and why, on stderr.
-free_gpus() { local busy idx uuid used why g=""
-  busy=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null || true)
-  while IFS=', ' read -r idx uuid used; do
-    if grep -qxF "$uuid" <<< "$busy"; then why="another program is running on it"
-    elif ! [ "$used" -lt 1024 ] 2>/dev/null; then why="$used MiB of its memory in use"
-    else g=$g,$idx; continue; fi
-    echo "Skipping GPU $idx: $why." >&2
-  done < <(nvidia-smi --query-gpu=index,uuid,memory.used --format=csv,noheader,nounits)
-  echo "${g#,}"; }
-
 if [ -z "${RUN_MAZE_BG:-}" ]; then
   if ! nvidia-smi -L >/dev/null 2>&1 && [ -z "${ALLOW_CPU:-}" ]; then
     echo "No NVIDIA GPU found (nvidia-smi). On CPU this run takes over a month; ALLOW_CPU=1 runs it anyway." >&2
@@ -70,9 +58,8 @@ if [ -z "${RUN_MAZE_BG:-}" ]; then
     echo "Already running. Progress: tail -f $PWD/run_maze.log   Stop: bash $PWD/cluster/run_maze.sh stop"; exit 0
   fi
   if [ -z "${CUDA_VISIBLE_DEVICES:-}" ] && nvidia-smi -L >/dev/null 2>&1; then
-    g=$(free_gpus)
-    [ -n "$g" ] || { echo "Every GPU is in use, so nothing was started. Run it again when one is free, or pick GPUs with CUDA_VISIBLE_DEVICES=0,1." >&2; exit 1; }
-    echo "Using GPUs $g (the idle ones)."; export CUDA_VISIBLE_DEVICES=$g
+    nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv >&2
+    echo "Pick the GPUs to use, e.g. CUDA_VISIBLE_DEVICES=0,1 bash $0" >&2; exit 1
   fi
   if command -v setsid >/dev/null; then
     RUN_MAZE_BG=1 setsid nohup bash "$PWD/cluster/run_maze.sh" "$@" >> run_maze.log 2>&1 < /dev/null &
