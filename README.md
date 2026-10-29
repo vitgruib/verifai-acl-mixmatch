@@ -1,59 +1,68 @@
 # VerifAI × UED: Maze run
 
-## What you need
-
-- Linux with NVIDIA GPU(s) and a CUDA 12 driver (check with `nvidia-smi`)
-- `python3.11` and `git`, with internet access
-- About 30 GB of free disk
-
-## How to run
+Needs Linux with NVIDIA GPU(s) (CUDA 12 driver), `python3.11`, `git`, internet, and ~30 GB of disk.
 
 ```bash
 git clone https://github.com/vitgruib/verifai-acl-mixmatch.git atlas
 cd atlas
-bash cluster/setup/clone.sh        # JaxUED and SFL at pinned commits, patched, into third_party/
-bash cluster/setup/setup_jax.sh    # .venv-jax: JaxUED training, the exam, grading
-bash cluster/setup/setup_sfl.sh    # .venv-sfl: SFL (needs an older jax)
-bash cluster/setup/setup_torch.sh  # .venv-torch: grades the CartPole check
-CUDA_VISIBLE_DEVICES=0,1 LOCAL=1 nohup bash cluster/submit.sh maze > run_maze.log 2>&1 &
 ```
 
-`submit.sh maze` runs a ~30 min smoke test, stops if it fails, and otherwise runs everything below
-and packs `maze_results.tgz`. Send that file back.
+## Install
 
-- **GPUs:** it uses exactly the ones in `CUDA_VISIBLE_DEVICES`. After the smoke test it picks how
-  many jobs share each GPU from their memory use; set `JOBS_PER_GPU=<n>` to choose yourself. Each
-  job sees only its own GPU. With several per GPU, each gets `0.8 / JOBS_PER_GPU` of its memory.
-- **Resuming:** run the same command again. Finished runs are kept and unfinished ones restart.
-- **SLURM:** drop `LOCAL=1` and it submits array jobs instead. Extra sbatch flags go in
-  `SBATCH_ARGS`.
-- `bash cluster/run_maze.sh` does the setup and the `submit.sh` line above in the background, with
-  a `stop` command (`bash cluster/run_maze.sh stop`). It needs `CUDA_VISIBLE_DEVICES` too.
-- Jobs run under `nice -n 10`. W&B is forced offline. Everything stays inside `atlas/`, apart from
-  `/tmp` and, on some GPUs, a CUDA cache in `~/.nv`.
-- Don't `git pull` while it's running. It reads the repo's scripts as it goes.
+```bash
+bash cluster/setup/clone.sh        # JaxUED and SFL at pinned commits, patched, into third_party/
+bash cluster/setup/setup_jax.sh    # .venv-jax: JaxUED training, the exam, grading
+bash cluster/setup/setup_sfl.sh    # .venv-sfl: SFL (needs an older jax than JaxUED)
+bash cluster/setup/setup_torch.sh  # .venv-torch: grades the CartPole check
+```
 
-Where to look:
+Optional quick test (~30 min, prints an estimate of the full run's time on your GPUs):
 
-- `cluster/env.sh`: paths, pinned commits, the task list. Any variable there can be overridden.
-- `cluster/submit.sh`: the job order and the local scheduler.
+```bash
+CUDA_VISIBLE_DEVICES=0 LOCAL=1 bash cluster/submit.sh maze-smoke
+```
+
+## Training
+
+Six methods (SFL, DR, PLR, Robust PLR, ACCEL, minimax) × seeds 0-9, plus 10 reference DR agents.
+Split by seed band, one terminal each. Pick the GPU with `CUDA_VISIBLE_DEVICES`:
+
+| Terminal | Command |
+|----------|---------|
+| 1 | `CUDA_VISIBLE_DEVICES=0 bash run/train.sh 0 4` |
+| 2 | `CUDA_VISIBLE_DEVICES=1 bash run/train.sh 5 9` |
+| 3 | `CUDA_VISIBLE_DEVICES=2 bash run/ref.sh` |
+| 4 | `bash run/bridge.sh` (CPU only) |
+
+- Use any split you like, e.g. `run/train.sh 0 1`, `2 3`, ... across five GPUs. Don't give two
+  terminals the same seed.
+- To put two terminals on one GPU, add `XLA_PYTHON_CLIENT_MEM_FRACTION=0.4` to both (JAX takes 75%
+  of the GPU's memory by default).
+- Rerunning a command skips finished runs and restarts unfinished ones, so it's safe after a crash
+  or reboot.
+- `run/ref.sh` copies in reference agents 100-104 (trained on my side) from GitHub when they are
+  there, and trains them otherwise.
+
+## After training
+
+```bash
+CUDA_VISIBLE_DEVICES=0 bash run/exam.sh    # after run/ref.sh: builds the exam from mazes the reference agents fail
+CUDA_VISIBLE_DEVICES=0 bash run/grade.sh   # after run/train.sh and run/exam.sh: grades the 60 runs
+bash run/pack.sh                           # -> maze_results.tgz, send this back
+```
+
+Logs are in `runs/slurm/`. W&B is forced offline. Everything stays inside `atlas/`, apart from `/tmp`
+and, on some GPUs, a CUDA cache in `~/.nv`. Don't `git pull` while it's running.
+
+All of the above in one command, on SLURM (or `LOCAL=1` on one machine): `bash cluster/submit.sh maze`.
+
+## Where to look
+
+- `run/*.sh`: a few lines each. They call the job scripts below.
 - `cluster/1_maze/train.sbatch`: the exact training command and flags for each method.
-- `cluster/1_maze/exam.sbatch`, `grade.sbatch`: building the exam and grading.
-- `runs/slurm/*.out`: one log per job.
+- `cluster/1_maze/exam.sbatch`, `grade.sbatch`, `bridge.sbatch`: the exam, grading, CartPole check.
+- `cluster/env.sh`: paths and pinned commits. Any variable there can be overridden.
 - `docs/library_log.md`, "Batch 22": the plan and statistics, registered before any run.
 - `docs/maze_gpu_audit.md`: what was checked in the upstream code, and the settings used.
 
-## What it does
-
-1. Trains six curriculum methods (DR, PLR, Robust PLR, ACCEL, minimax, SFL) on Maze, 10 seeds
-   each, at the paper budget (~246M steps per run).
-2. Trains 10 extra DR agents and builds an exam from mazes they fail. Five of these agents
-   (seeds 100-104) are trained on my side and fetched from this repo when the run gets to them.
-   If they aren't there yet, it trains them.
-3. Grades the 60 agents on the exam: 300 random mazes, the VerifAI mazes, and 14 hand-picked
-   ones.
-4. Runs a CartPole check comparing JaxUED's PLR code with ours.
-
-It hasn't run on a GPU yet. My rough estimate is 65-210 GPU-hours (SFL runs take longest), so
-3-9 days on one GPU, or less with several. After the smoke test, the log prints its own estimate
-for your machine.
+Rough cost: 65-210 GPU-hours in total (SFL runs take longest). It hasn't run on a GPU yet.
