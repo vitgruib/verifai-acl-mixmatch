@@ -218,3 +218,71 @@ scratchpad; the durable check is `cluster/tests/maze_box_check.py`.
 | policy | scratch `check_policy.py` on the ACCEL, minimax and SFL checkpoints | section 8 |
 | box check | `.venv-jax/bin/python cluster/tests/maze_box_check.py` | `maze box check OK` |
 | atlas tests | `.venv-jax/bin/python -m pytest tests/test_atlas.py -q` | 8 passed |
+
+## End-to-end CPU run (2026-10-28)
+
+The whole pipeline (`cluster/run_maze.sh` -> `submit.sh maze`, LOCAL mode) ran on the Mac CPU at a
+tiny size, with all six methods and REF, from a fresh `$RUNS`. The CPU was shared with an 8-worker
+LunarLander run (load average 12-39 throughout), so every wall time below is inflated.
+No code changes were needed.
+
+**Command** (from the repo root; `RUNS` was a fresh scratch directory):
+
+```
+ALLOW_CPU=1 RUNS=<scratch>/e2e NUM_UPDATES=50 NSEEDS=1 \
+  JAXUED_ARGS="--eval_freq 10 --checkpoint_save_interval 1" SFL_STEPS=4096 \
+  SFL_ARGS="learning.NUM_ENVS=16 learning.NUM_ENVS_FROM_SAMPLED=8 learning.NUM_ENVS_TO_GENERATE=8 learning.NUM_STEPS=32 learning.EVAL_FREQ=2 learning.NUM_CHECKPOINTS=4 BATCH_SIZE=64 NUM_BATCHES=1 ROLLOUT_STEPS=50 NUM_TO_SAVE=32" \
+  EXAM_ITERS=20 BRIDGE_SEEDS=1 bash cluster/run_maze.sh
+```
+
+`BRIDGE_STEPS` stayed at its default of 614,400. `compare.py` only reads rows at the budget of
+batch 21, and 614,400 steps is well past the point where replay starts. All outputs went under
+`$RUNS/outputs`, and `git status` showed no change under `results/` or `frozen_sets/`.
+
+| stage | wall time (18:07:21 - 18:53:30, 46 min in all) | result |
+|---|---|---|
+| setup (clone, patches, `.venv-jax`, `.venv-sfl`, new `.venv-torch`) | ~3 min | all import checks `ok` |
+| smoke (DR, RPLR, SFL; exam from 10 copies of DR; grade) | 4 min | passed; `JOBS_PER_GPU=1` |
+| training, 16 tasks: SFL, REF 100-109, DR, PLR, RPLR, ACCEL, minimax | 35 min, one at a time (a `--gres=gpu` job on a host without a GPU gets a single `cpu` slot) | 16/16 ok. About 1.5 min each, except minimax at 11 min |
+| exam (`EXAM_ITERS=20`, 10 REF agents) | 1 min | `froze verifai: 196 of 196 levels`; manifest holds random, custom, verifai |
+| grade | 1 min | `scores.csv`: 18 rows, 6 methods x 3 sections |
+| bridge: 3 runs + grade + compare | 1.5 min | DR 24 s, PLR 31 s, RPLR 29 s of training; 9 rows; `bridge_cartpole.md` |
+| collect | <1 min | `maze_results.tgz`, 266 MB (most of it is `runs/slurm` and checkpoints) |
+
+**Carried checks.**
+1. *Every method, real checkpoints.* SFL wrote a real `sfl/maze_sfl/s0/model.safetensors` (1.7 MB)
+   and its `config.json`. Minimax `maze_minimax_n50/0` has `config.json` with `num_updates 50,
+   eval_freq 10, checkpoint_save_interval 1, minimax true, adv_num_steps 28` and `models/0-4`.
+   `exam._final_step` gives 4, so train.sbatch's `finished` check found it on the rerun and the
+   grader loaded it (`MINIMAX 0` graded on all three sections). Every method finished training,
+   wrote its final checkpoint and was graded.
+2. *Bridge with replay.* At 614,400 steps PLR and RPLR each did 45 DR and 105 replay updates
+   (buffer 360/1000). DR did 150 DR and 0 replay updates (buffer 1000). The runs were exported
+   (`params.npz`) and graded by the real `grade_cartpole` and `compare`. The verdict is FAIL: with
+   n=1 the JaxUED-trained agents pass far less than batch 21 (DR random 0.07 vs 0.94). These are
+   the same numbers as Task 6's bridge run, so the result is reproducible. It is a scientific
+   result and not a pipeline fault.
+3. *solve_rates on CPU.* `exam.solve_rates(policy, random section, plays=10, batch=256)` on a
+   tiny DR checkpoint covers 300 levels (2 jitted batches of 256 levels x 10 plays) and took
+   5.80 s (including compile), then 4.54 s and 3.45 s. That is about 1.7-2.3 s per warm batch of
+   256 x 10, under load 13-21.
+4. *Fresh-$RUNS output dirs.* `grade_cartpole` (`out.parent.mkdir`) and `compare`
+   (`Path(out).parent.mkdir`) created `outputs/results/suite/cartpole_jaxued/` and
+   `.../analysis/` themselves. `bridge.sbatch` also runs `mkdir -p` on `analysis`.
+5. *Rerun* (18:54:12 - 18:57:42, 3.5 min, almost all of it setup's pip checks). Every training
+   task printed `already trained`, the exam printed `exam already frozen; nothing to do`, Maze
+   grading graded nothing, the bridge runs printed `already trained`, and `grade_cartpole` found
+   `3 runs found, 0 to grade`. The sha1 of all 76 csv/npz/json/safetensors/md outputs under
+   `$RUNS` was identical before and after. The tarball was produced again.
+6. *Tarball analysis.* Unpacked in the scratchpad, the run files sit under the runs directory's
+   own name (`e2e/outputs/...` here; `runs/outputs/...` with the default `RUNS`).
+   `acl_bench.suite.analyze` has no results option: it reads `results/suite` next to its own
+   package. I copied `acl_bench/` and the tarball's `outputs/results/suite/maze` into a scratch
+   tree and ran `python -m acl_bench.suite.analyze --envs maze --allow-partial` there. It printed
+   the screen and the per-arm table (6 arms, n=1, all near 0.05 random / 0.07 verifai at this
+   size) and wrote `summary.md`, `screen.csv`, `table_maze.csv` and `custom_maze.csv`.
+   `outputs/results/suite/analysis/bridge_cartpole.md` is in the tarball.
+
+**Notes.** In the progress lines, two bridge tasks that finish at the same moment can both print
+`3/3 done`: the counter reads `done` after both have appended to it. This is cosmetic. On a CPU-only
+host the GPU-typed jobs (train, exam, grade) run one at a time.
