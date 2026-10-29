@@ -105,11 +105,16 @@ def test_settings_match_our_training():
     from acl_bench.suite.arms import ARMS, BUDGET
     from atlas.bridge.cartpole_jaxued import ARM_FLAGS, PLR_FLAGS, PPO_FLAGS
     cfg, plr = FastConfig(), ARMS["PLR"]
-    assert PPO_FLAGS == {
-        "num_train_envs": cfg.n_envs, "num_steps": 512, "num_minibatches": cfg.minibatches,
+    ppo = dict(PPO_FLAGS)
+    rollout = ppo.pop("num_train_envs") * ppo.pop("num_steps")
+    minibatches = ppo.pop("num_minibatches")
+    assert rollout // minibatches == 1024 // cfg.minibatches          # minibatch size: 256, as ours
+    assert 614_400 // rollout * minibatches * ppo["epoch_ppo"] == 9_600  # Adam steps: ours 600 x 4 x 4
+    assert ppo == {
         "epoch_ppo": cfg.epochs, "lr": cfg.lr, "gamma": cfg.gamma, "gae_lambda": cfg.lam,
         "clip_eps": cfg.clip, "max_grad_norm": cfg.max_grad_norm, "entropy_coeff": cfg.ent,
         "critic_coeff": cfg.vf}
+    assert PPO_FLAGS["num_train_envs"] == cfg.n_envs
     assert PLR_FLAGS == {
         "score_function": "MaxMC", "level_buffer_capacity": plr.buffer, "temperature": plr.beta,
         "staleness_coeff": plr.staleness, "minimum_fill_ratio": (plr.buffer // 10) / plr.buffer,

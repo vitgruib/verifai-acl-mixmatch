@@ -28,8 +28,9 @@ SCRIPT = os.path.join(JAXUED_DIR, "examples", "gymnax", "gymnax_plr.py")
 
 # acl_bench/plr/fast.py FastConfig, except the rollout: 8 envs x 512 steps (JaxUED's gymnax length;
 # 4096 samples per update) rather than our 128, because JaxUED's loop restarts every env each update
-# and scores a level -inf unless an episode ends inside the rollout; CartPole episodes run 500 steps
-PPO_FLAGS = {"num_train_envs": 8, "num_steps": 512, "num_minibatches": 4, "epoch_ppo": 4, "lr": 3e-4,
+# and scores a level -inf unless an episode ends inside the rollout; CartPole episodes run 500 steps.
+# 16 minibatches keep ours 256 samples each, so the Adam step count matches ours (9,600 at 614,400 steps)
+PPO_FLAGS = {"num_train_envs": 8, "num_steps": 512, "num_minibatches": 16, "epoch_ppo": 4, "lr": 3e-4,
              "gamma": 0.99, "gae_lambda": 0.95, "clip_eps": 0.2, "max_grad_norm": 0.5,
              "entropy_coeff": 0.01, "critic_coeff": 0.5}
 # acl_bench/suite/arms.py _PLR; our sampler replays once buffer // 10 levels are stored
