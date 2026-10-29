@@ -1235,3 +1235,134 @@ the same one-sided test, Holm over all 12 tests (amendment 1's 8 plus LunarLande
 every random question (question pass share below 0.2), the VerifAI section again does not measure
 DR's failures: LunarLander is then dropped and the scored runs are not launched. Estimated cost:
 about 10 hours of the Mac (REF about 1.5 hours, exam about 1 hour, scored runs about 7.5 hours).
+
+## Batch 22 (registered 2026-10-28, before any Maze or bridge run): the Maze part of the suite on GPUs, and the CartPole bridge check
+
+**Question.** Batch 21's screen on Maze: does any UED method score above DR on the VerifAI section,
+built from DR's own failures? Here every method runs its paper's own JAX code at the paper budget,
+on the professor's NVIDIA GPUs (README.md). A second, separate check (the bridge) asks whether our
+PyTorch PLR, behind batch 21, behaves like JaxUED's PLR on CartPole. Spec:
+`docs/superpowers/specs/2026-10-28-maze-gpu-suite-design.md`; plan:
+`docs/superpowers/plans/2026-10-28-maze-gpu-suite.md`; audit of the reused code:
+`docs/maze_gpu_audit.md`.
+
+**Status.** Nothing has run on a GPU. The whole pipeline ran end to end on the Mac CPU at a tiny
+size (`docs/maze_gpu_audit.md`, "End-to-end CPU run"); those runs are pipeline checks, not results.
+
+**Arms and code** (JaxUED @ 0f8f128, SFL repo @ 8b14e2e, changed only by the patches in
+`cluster/patches/`, commands in `cluster/1_maze/train.sbatch`).
+- DR: `maze_dr.py`. PLR: `maze_plr.py --exploratory_grad_updates`. Robust PLR: `maze_plr.py`.
+  ACCEL: `maze_plr.py --use_accel`. Minimax: `maze_paired.py --minimax --adv_num_steps 28`. SFL:
+  `minigrid_sfl.py`.
+- REF: DR on seeds 100-109, used only to build the VerifAI section, never scored.
+- JaxUED methods use JaxUED's Maze defaults (the suite spec's choice; six of them differ from the
+  DCD paper configs, listed in the audit, section 1). SFL uses its own paper's PPO.
+
+**Training box.** 13x13 interior, at most 25 walls, 5x5 view, 250 steps, for every method. SFL's
+repo defaults to 60 walls and runs with `env.N_WALLS=25`.
+
+**Budgets and seeds.** JaxUED methods: 30,000 updates x 32 envs x 256 steps = 245,760,000 env
+steps. Seeds 0-9 per method (60 scored runs) plus the 10 REF runs.
+
+**SFL: full training, scouting not charged (user decision).** SFL trains for the same budget as the
+others and its scouting rollouts are not charged, as in its paper (on the classic tasks they were
+charged, which halved SFL's training and confounded its result). SFL uses Recipe A of the audit
+(sections 4-6): its paper's own Minigrid row and repo config, N = 25,000 levels scouted per round
+(5 batches of 5,000), rollout 2,000, keep 1,000, T = 100 updates per round, rho 0.5. The spec's
+N = 5,000 and T = 50 were the paper's cross-domain defaults, copied by mistake; the governing rule
+is the paper's settings where the paper defines them. With `learning.TOTAL_TIMESTEPS=245760000`
+SFL's loop runs 37 rounds of 100 updates: 242,483,200 trained steps (1.3% short, upstream
+behaviour) and about 1.85e9 scouting steps (37 x 25,000 x 2,000), 7.6x its training. Both are
+reported with the result.
+
+**User's follow-up rule for SFL.** If SFL beats DR on the screen, it gets a finer follow-up test
+that separates the extra scouting compute from the level choice, designed then.
+
+**Deviations kept, and stated with the result.**
+- ACCEL's edits follow JaxUED's mutator: 5 edits per child, each drawn uniformly from no-op, flip a
+  wall, move the goal, so about 5/3 effective wall flips per child, not the ACCEL paper's 5. The
+  spec's one-protocol rule picks JaxUED's defaults.
+- 25-wall caps (audit patches): upstream ACCEL edits drift to 55-66 walls, so
+  `jaxued_accel_cap.patch` skips any edit that would leave more than 25; minimax's adversary with
+  its default 50 steps reaches 47 walls, so it runs with `--adv_num_steps 28` (goal, direction,
+  agent, then 25 wall toggles).
+- Minimax's student has tanh in one 32-unit policy-head layer where the others use ReLU (JaxUED's
+  own PAIRED student, not patched).
+- The VerifAI search space (`dr25` in `atlas/maze/space.py`) places exactly n distinct walls,
+  while JaxUED's generator draws cells with replacement. Both stay inside the 25-wall box.
+
+**Exam** (`atlas/maze/exam.py`, seed 20261028). Every level is played 10 times with the agent's own
+stochastic policy; an agent passes a level when it solves it at least 5 of 10 times; a section's
+score is the share of levels passed.
+- Random: 300 BFS-solvable levels from JaxUED's 25-wall generator.
+- Custom: 14 levels: SixteenRooms, SixteenRooms2, Labyrinth, LabyrinthFlipped, Labyrinth2,
+  StandardMaze, StandardMaze2, StandardMaze3, plus empty, longest start-to-goal path, goal in a dead
+  end, single winding corridor, 30 walls and 50 walls.
+- Random and custom were built on the Mac and are committed frozen with sha256 digests
+  (`frozen_sets/suite/maze/`, commit 9ee87c9); the GPU run loads and digest-checks them.
+- VerifAI: cross-entropy search over the 25-wall `dr25` space against each REF agent, 3,000
+  iterations each; a level is kept if at least 3 of the 10 REF agents fail it and BFS certifies it
+  solvable; capped at 3,000 levels (seeded uniform subset; the full pool is kept in
+  `frozen_sets/suite_pool/maze/`). Built only once all 10 REF agents exist, and frozen before any
+  scored grading.
+
+**Primary test (the Maze screen).** For each of PLR, RPLR, ACCEL, SFL and MINIMAX: one-sided
+Mann-Whitney U across the 10 seeds, the method's VerifAI-section score > DR's, Holm-corrected over
+Maze's 5 tests at alpha = 0.05 (`python -m acl_bench.suite.analyze --envs maze`, which corrects
+over the tests it runs). These 5 are not pooled into batch 21's family; Maze is reported next to the
+classic tasks, and the comparison across tasks is descriptive.
+
+**Decision.** As batch 21: any Holm-significant improvement leads to follow-up testing on the
+random and custom sections, designed then (plus the SFL rule above if SFL is among them). None:
+the line is dropped for Maze too.
+
+**Also reported, not tested.** Random and custom scores per method (mean and spread over seeds);
+each custom level's solve rate per method; custom levels no scored agent passes; SFL's trained and
+scouting steps.
+
+**Scores file.** `results/suite/maze/scores.csv`, batch 21's columns. For SFL, `steps` is the real
+trained steps (242,483,200), `check` and `budget` are 245,760,000, and `scouted_steps` is the
+scouting count; every other method has `scouted_steps` 0. For Maze rows `wall_time_sec` is the
+time spent grading that section, not training time.
+
+**CartPole bridge.** Does JaxUED's PLR code, run on our CartPole with our settings, score like our
+PyTorch PLR on our frozen CartPole exam?
+- Code: JaxUED's `examples/gymnax/gymnax_plr.py` with `cluster/patches/jaxued_cartpole_bridge.patch`
+  (our training box, our 64-64 tanh MLP, our PPO options), run by `atlas/bridge/cartpole_jaxued.py`,
+  on the CPU.
+- Settings: our box (pole half-length 0.25-1.5, pole mass 0.05-0.5, cart mass 0.5-2.0, force 4-16,
+  start spread 0.05-0.3); our PPO (4 epochs, lr 3e-4, Adam eps 1e-5, gamma 0.99, lambda 0.95, clip
+  0.2, max grad norm 0.5, entropy 0.01, value 0.5); our replay (0.8, MaxMC, rank temperature 0.3,
+  staleness 0.3, buffer 1000); 614,400 steps; arms DR (replay 0), PLR, RPLR; 20 seeds each. No ACCEL
+  (that script's ACCEL is broken upstream).
+- Rollout 8 envs x 512 steps (4,096 samples per update, 150 updates), not ours (8 x 128, 600
+  updates). Why: JaxUED's loop resets every level each update and scores a level -inf unless an
+  episode ends inside the rollout; CartPole episodes run 500 steps, so a 128-step rollout would
+  test a broken regime. 512 is JaxUED's own gymnax rollout length and needs only flags.
+- 16 minibatches (256 samples each, as ours, so 9,600 Adam steps, as ours). Why: with 4
+  minibatches copied from ours, the 4x longer rollout gave 1,024-sample minibatches and 2,400 Adam
+  steps; the agents were undertrained (DR random 0.07 against our 0.94, 1 seed). With 16, three DR
+  seeds scored 0.97, 0.96 and 0.98 on random (CPU check, not part of the reading).
+- Grading: the JAX weights are exported into our PyTorch network and graded by our grader on
+  `frozen_sets/suite/cartpole`, so the training code is the only difference.
+
+**Bridge reading** (`atlas/bridge/compare.py`). Compare each arm's mean over 20 seeds with batch
+21's at 614,400 steps (DR 0.570 VerifAI / 0.940 random, PLR 0.470 / 0.876, RPLR 0.469 / 0.826).
+PASS iff every arm's mean is within 0.10 of batch 21's on VerifAI and on random, and DR > PLR and
+DR > RPLR on VerifAI. The order rule is read first: it does not depend on the training schedule.
+The two trainings still differ in schedule (150 updates of 4,096 samples against our 600 of 1,024),
+so a within-0.10 failure with the order intact is still a FAIL, and the write-up states the
+schedule as the known remaining difference. On FAIL, the classic-task results (batch 21) are
+flagged and rechecked before they are reported.
+
+**Cost.** Not measured on a GPU. Guess: 1-3 GPU-hours per training run, 70-210 GPU-hours for the
+70 runs, plus exam and grading on one GPU; the bridge runs on the CPU. The run prints its own
+estimate after its smoke test.
+
+**Self-evaluation.** With 10 seeds per arm the one-sided Mann-Whitney test can reach p = 5.4e-6
+(every method seed above every DR seed), so Holm over 5 can detect a large shift, but power for a
+moderate one is low. As in batch 21 the VerifAI section favors any method over DR by construction,
+so a null is strong evidence against these methods on Maze, and a positive result could be "not
+DR" rather than "better curriculum". SFL's uncharged scouting is 7.6x its training, so an SFL
+improvement says nothing about equal compute until the follow-up test. The bridge tests the
+replay code at our CartPole settings only; it says nothing about our ACCEL or SFL.

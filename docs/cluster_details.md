@@ -1,3 +1,5 @@
+> This describes the earlier failure-atlas run, now superseded. The current run (Maze suite and CartPole check) is in [README.md](../README.md).
+
 # UED failure atlas: cluster run (full details)
 
 The short Maze-only instructions are in [README.md](../README.md). I wrote this code with an AI coding
