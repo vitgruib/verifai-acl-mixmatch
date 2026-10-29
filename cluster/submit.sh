@@ -8,7 +8,8 @@
 #   1 | 2 | 3   full run of Maze | Kinetix | JaxNav;  all = 1-3
 # Extra sbatch flags go in SBATCH_ARGS. LOCAL=1 runs the jobs on this machine instead of SLURM,
 # JOBS_PER_GPU at a time on each GPU (for maze, chosen after the smoke test unless set); the GPUs are
-# those in CUDA_VISIBLE_DEVICES if set, else every one nvidia-smi lists.
+# those in CUDA_VISIBLE_DEVICES if set (run_maze.sh sets it to the idle ones), else every one
+# nvidia-smi lists.
 set -euo pipefail
 cd "$(dirname "$0")/.."; source cluster/env.sh; mkdir -p runs/slurm
 NSEEDS=${NSEEDS:-10}
@@ -25,13 +26,14 @@ sb() {  # prints the job id
 # go to the next free slot: JOBS_PER_GPU slots per GPU, each job seeing only its GPU and, when several
 # share one, XLA_PYTHON_CLIENT_MEM_FRACTION 0.8 / JOBS_PER_GPU of its memory, leaving room for each
 # process's CUDA context (one slot per
-# cpus-per-task cores for CPU jobs); --time is enforced with timeout.
+# cpus-per-task cores for CPU jobs); --time is enforced with timeout. Jobs run under nice, so the
+# machine's other work comes first.
 hms() { local IFS=:; set -- $1; echo $(( 10#$1 * 3600 + 10#$2 * 60 + 10#$3 )); }
 clock() { date -d "@$1" '+%a %d %b %H:%M' 2>/dev/null || date -r "$1" '+%a %d %b %H:%M'; }
 sb_local() {
   local a=0 t="" f="" x
   for x; do case $x in --array=*) a=${x#--array=};; --time=*) t=${x#--time=};; esac; f=$x; done
-  local name c slots tmo="" tasks n st tmp pids=""
+  local name c slots tmo="" tasks n st tmp pids="" rc
   name=$(sed -n 's/^#SBATCH --job-name=//p' "$f"); c=$(sed -n 's/^#SBATCH --cpus-per-task=//p' "$f")
   if grep -q '^#SBATCH --gres=gpu' "$f"; then
     slots=$(echo "${CUDA_VISIBLE_DEVICES:-}" | tr , ' ')
@@ -51,7 +53,7 @@ sb_local() {
             [ "${JOBS_PER_GPU:-1}" -gt 1 ] && export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-$(
               awk "BEGIN {printf \"%.3f\", 0.8 / $JOBS_PER_GPU}")};; esac
           export SLURM_ARRAY_TASK_ID=$i SLURM_CPUS_PER_TASK=${c:-1} SLURM_SUBMIT_DIR=$PWD
-          $tmo bash "$f" ) > "runs/slurm/${name}_${st}_$i.out" 2>&1 || rc=$?
+          nice -n 10 $tmo bash "$f" ) > "runs/slurm/${name}_${st}_$i.out" 2>&1 || rc=$?
         echo "$i $rc" >> "$tmp/done"; now=$(date +%s); d=$(wc -l < "$tmp/done")
         printf '%s  %s task %s %s in %d min (%d/%d done; this stage ends ~%s)\n' "$(date +%H:%M)" "$name" "$i" \
           "$([ $rc = 0 ] && echo ok || echo "FAILED rc=$rc")" $(( (now - t0) / 60 )) $d $n \
@@ -61,7 +63,8 @@ sb_local() {
   done
   for x in $pids; do wait $x || true; done
   echo "local$st"
-  ! awk '$2 != 0 {bad=1} END {exit !bad}' "$tmp/done"
+  rc=0; awk '$2 != 0 {bad=1} END {exit !bad}' "$tmp/done" && rc=1
+  rm -rf "$tmp"; return $rc
 }
 count() { set -- $1; echo $(( $# * NSEEDS - 1 )); }
 
@@ -122,7 +125,8 @@ smoke_maze() {  # DR, RPLR, ACCEL, minimax and SFL, then an exam with 10 copies 
   nvidia-smi -L >/dev/null 2>&1 && gpu=1
   if [ -n "$gpu" ]; then sa=$SFL_SMOKE_GPU ss=3932160; else sa=$SFL_SMOKE_CPU ss=4096; fi
   if [ -n "${LOCAL:-}" ] && [ -n "$gpu" ]; then  # GPU memory while the smoke jobs run, one per GPU
-    while :; do nvidia-smi ${CUDA_VISIBLE_DEVICES:+-i $CUDA_VISIBLE_DEVICES} --query-gpu=index,memory.used,memory.total \
+    # (it also ends when this script does, however that happens)
+    while kill -0 $$ 2>/dev/null; do nvidia-smi ${CUDA_VISIBLE_DEVICES:+-i $CUDA_VISIBLE_DEVICES} --query-gpu=index,memory.used,memory.total \
       --format=csv,noheader,nounits; sleep 2; done \
       >> "$RUNS/gpu_mem.csv" 2>/dev/null &
     p=$!

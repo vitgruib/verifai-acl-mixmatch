@@ -12,4 +12,5 @@ pip install -q -e "$JAXUED_DIR"
 # wandb needs moviepy to log JaxUED's eval GIFs
 pip install -q moviepy==2.2.1 imageio==2.38.1
 pip install -q verifai==2.2.0 scenic==3.1.1 dotmap==1.3.30 safetensors pytest
-cd "$ATLAS"; MPLBACKEND=Agg python -c "import atlas.maze.falsify, jax, jaxued, verifai, scenic, moviepy; print('ok', jax.__version__, jax.devices())"
+# no preallocation: listing the devices would otherwise reserve 75% of every GPU's memory
+cd "$ATLAS"; MPLBACKEND=Agg XLA_PYTHON_CLIENT_PREALLOCATE=false python -c "import atlas.maze.falsify, jax, jaxued, verifai, scenic, moviepy; print('ok', jax.__version__, jax.devices())"

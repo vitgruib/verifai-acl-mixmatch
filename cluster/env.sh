@@ -17,7 +17,9 @@ export SFL_REPO=https://github.com/amacrutherford/sampling-for-learnability.git 
 export KINETIX_REPO=https://github.com/FLAIROx/Kinetix.git     KINETIX_COMMIT=80ee9c292837c825cafaf9889323fdcc212efd1b
 export JAXMARL_REPO=https://github.com/FLAIROx/JaxMARL.git     JAXMARL_COMMIT=976aeb152cb184a5095021968bba94da96eb6394
 
-export WANDB_MODE=${WANDB_MODE:-offline} WANDB_SILENT=true MPLBACKEND=Agg
+# W&B always offline, whatever the caller's environment says: JaxUED's wandb.init takes its mode
+# from WANDB_MODE, and online it would upload every run to the caller's own W&B account.
+export WANDB_MODE=offline WANDB_ERROR_REPORTING=false WANDB_SILENT=true MPLBACKEND=Agg
 
 # Keep caches inside the repo, not in $HOME.
 export ATLAS_CACHE=${ATLAS_CACHE:-$ATLAS/.cache}
@@ -38,6 +40,9 @@ print("taskset -c " + ",".join(map(str, c[k * m:(k + 1) * m] if m else c)))' "$1
 
 # Only see the GPU the scheduler granted.
 [ -z "${CUDA_VISIBLE_DEVICES:-}" ] && [ -n "${SLURM_JOB_GPUS:-}" ] && export CUDA_VISIBLE_DEVICES=$SLURM_JOB_GPUS
+# Number GPUs as nvidia-smi does (CUDA's default order puts the fastest first), so CUDA_VISIBLE_DEVICES
+# and the nvidia-smi queries name the same GPUs.
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
 
 # pick <i> <list...>: the i-th item
 pick() { local i=$1; shift; local a=($@); echo "${a[$i]}"; }

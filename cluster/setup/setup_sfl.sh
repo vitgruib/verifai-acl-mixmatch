@@ -14,7 +14,8 @@ pip install -q "jax[${JAX_EXTRA-cuda12}]==0.4.30" flax==0.8.5 chex==0.1.86 optax
   distrax==0.1.5 orbax-checkpoint==0.5.20 tensorflow-probability==0.24.0 "matplotlib<3.10" gymnax==0.0.9
 pip install -q verifai==2.2.0 scenic==3.1.1 dotmap==1.3.30
 pip install -q antlr4-python3-runtime==4.9.3   # hydra needs 4.9; Scenic pulls 4.13
-cd "$ATLAS"; MPLBACKEND=Agg python -c "import atlas.jaxnav.falsify, jax, hydra, omegaconf, sfl, jaxmarl, jaxued, distrax, wandb, safetensors; import verifai, scenic; omegaconf.OmegaConf.create({'a': '\${b}', 'b': 1}).a; print('ok', jax.__version__, jax.devices())"
+# no preallocation: listing the devices would otherwise reserve 75% of every GPU's memory
+cd "$ATLAS"; MPLBACKEND=Agg XLA_PYTHON_CLIENT_PREALLOCATE=false python -c "import atlas.jaxnav.falsify, jax, hydra, omegaconf, sfl, jaxmarl, jaxued, distrax, wandb, safetensors; import verifai, scenic; omegaconf.OmegaConf.create({'a': '\${b}', 'b': 1}).a; print('ok', jax.__version__, jax.devices())"
 python -c "import importlib.metadata as m, sys
 for p, c in zip(sys.argv[1::2], sys.argv[2::2]):
     u = m.distribution(p).read_text('direct_url.json'); assert c in u, p + ' is not at ' + c + ': ' + u" \

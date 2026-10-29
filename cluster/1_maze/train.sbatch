@@ -62,11 +62,12 @@ print(_final_step(json.load(open(sys.argv[1]))))' "$ck/config.json") && [ -n "$s
   [ -d "$ck/models/$s" ]; }
 # Reference agents trained on our side are committed under frozen_sets/suite/maze_ref and copied in.
 # A checkout made before they were pushed fetches them from origin (the checkout itself is left
-# alone); if they are not there either, the agent is trained here.
+# alone, and git never asks for a login on the terminal); if they are not there either, the agent
+# is trained here.
 pre=$ATLAS/frozen_sets/suite/maze_ref/$seed
 if [ "$algo" = ref ] && maze_full && [ -z "${DRY_RUN:-}" ] && ! finished; then
   if [ ! -d "$pre" ]; then
-    for k in 1 2 3; do git -C "$ATLAS" fetch -q origin main 2>/dev/null && break; sleep $((RANDOM % 30 + 5)); done
+    for k in 1 2 3; do GIT_TERMINAL_PROMPT=0 git -C "$ATLAS" fetch -q origin main 2>/dev/null && break; sleep $((RANDOM % 30 + 5)); done
     p=$RUNS/maze_ref_pull; rm -rf "$p/frozen_sets/suite/maze_ref/$seed"; mkdir -p "$p"
     git -C "$ATLAS" archive origin/main frozen_sets/suite/maze_ref/$seed 2>/dev/null | tar -x -C "$p" 2>/dev/null \
       && [ -d "$p/frozen_sets/suite/maze_ref/$seed" ] && pre=$p/frozen_sets/suite/maze_ref/$seed
