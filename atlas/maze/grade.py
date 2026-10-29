@@ -3,7 +3,7 @@
   python -m atlas.maze.grade --runs runs --exam frozen_sets/suite/maze --out results/suite/maze/scores.csv
 
 Runs are where cluster/1_maze/train.sbatch puts them under --runs: JaxUED's
-maze_train/checkpoints/maze_<algo>_n30000/<seed> (orbax, graded at the final step its
+maze_train/checkpoints/<--run-name>/<seed> (orbax, graded at the final step its
 config.json implies, as atlas.maze.exam does) and SFL's sfl/maze_sfl/s<seed> (model.safetensors
 plus a config.json that must give `total_timesteps`). One row per (arm, seed, section):
 `check` = `budget` = BUDGET, `steps` the trained env steps (BUDGET, except SFL's rounds
@@ -16,7 +16,8 @@ solve_rate), for acl_bench.suite.analyze's per-case breakdown.
 Rows already in --out are kept and only missing ones are graded. The section digests graded
 are recorded beside --out (<name>.exam.json); a later exam whose section differs is refused.
 A run that is missing, trained for another budget or lacks its final checkpoint is listed on
-stderr, and the command exits non-zero after grading the rest.
+stderr, and the command exits non-zero after grading the rest. --any-budget (tiny test runs)
+accepts any budget; `check` and `budget` then give each run's own trained steps.
 """
 from __future__ import annotations
 
@@ -47,23 +48,24 @@ def _load(run_dir: str, step: int):
     return Policy(run_dir, step)
 
 
-def _jaxued_run(runs: Path, arm: str, seed: int):
-    """-> (run dir, step to grade, trained steps, scouted steps), or a problem string."""
-    d = runs / "maze_train" / "checkpoints" / f"maze_{ARMS[arm]}_n30000" / str(seed)
+def _jaxued_run(runs: Path, arm: str, seed: int, run_name: str, budget: int | None):
+    """-> (run dir, step to grade, trained steps, scouted steps, budget), or a problem string.
+    `budget` None accepts any."""
+    d = runs / "maze_train" / "checkpoints" / run_name.format(algo=ARMS[arm]) / str(seed)
     if not (d / "config.json").exists():
         return "missing"
     with open(d / "config.json") as f:
         cfg = json.load(f)
     steps = cfg["num_updates"] * cfg["num_train_envs"] * cfg["student_num_steps" if arm == "MINIMAX" else "num_steps"]
-    if steps != BUDGET:
-        return f"trains {steps} env steps, not the budget {BUDGET}"
+    if budget is not None and steps != budget:
+        return f"trains {steps} env steps, not the budget {budget}"
     step = exam._final_step(cfg)
     if not (d / "models" / str(step)).is_dir():
         return f"no checkpoint at its final step {step} (training unfinished)"
-    return str(d), step, BUDGET, 0
+    return str(d), step, steps, 0, steps
 
 
-def _sfl_run(runs: Path, seed: int):
+def _sfl_run(runs: Path, seed: int, budget: int | None):
     d = runs / "sfl" / "maze_sfl" / f"s{seed}"
     if not (d / "config.json").exists():
         return "missing"
@@ -73,13 +75,13 @@ def _sfl_run(runs: Path, seed: int):
         cfg = {**SFL_RECIPE, **json.load(f)}
     if "total_timesteps" not in cfg:
         return "config.json has no total_timesteps"
-    if cfg["total_timesteps"] != BUDGET:
-        return f"trains {cfg['total_timesteps']} env steps, not the budget {BUDGET}"
+    if budget is not None and cfg["total_timesteps"] != budget:
+        return f"trains {cfg['total_timesteps']} env steps, not the budget {budget}"
     # scouting runs once per round, before each round's eval_freq updates; updates past the
     # last whole round never run
     rounds = cfg["total_timesteps"] // cfg["num_steps"] // cfg["num_envs"] // cfg["eval_freq"]
     return (str(d), -1, rounds * cfg["eval_freq"] * cfg["num_steps"] * cfg["num_envs"],
-            rounds * cfg["num_batches"] * cfg["batch_size"] * cfg["rollout_steps"])
+            rounds * cfg["num_batches"] * cfg["batch_size"] * cfg["rollout_steps"], cfg["total_timesteps"])
 
 
 def _check_exam(sets: dict, record: Path) -> None:
@@ -129,8 +131,11 @@ def main(argv=None):
     ap.add_argument("--out", default="results/suite/maze/scores.csv")
     ap.add_argument("--arms", nargs="+", choices=list(ARMS), default=list(ARMS))
     ap.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
+    ap.add_argument("--run-name", default="maze_{algo}_n30000",
+                    help="JaxUED run dir under maze_train/checkpoints; {algo} = dr, plr, rplr, accel, minimax")
+    ap.add_argument("--any-budget", action="store_true", help="accept runs of any budget (tiny test runs)")
     a = ap.parse_args(argv)
-    runs, out = Path(a.runs), Path(a.out)
+    runs, out, budget = Path(a.runs), Path(a.out), None if a.any_budget else BUDGET
     sets = suite.load_sets(a.exam)
     os.makedirs(out.parent, exist_ok=True)
     _check_exam(sets, out.with_suffix(".exam.json"))
@@ -140,11 +145,11 @@ def main(argv=None):
             todo = [name for name in sets if (arm, seed, name) not in done]
             if not todo:
                 continue
-            run = _sfl_run(runs, seed) if arm == "SFL" else _jaxued_run(runs, arm, seed)
+            run = _sfl_run(runs, seed, budget) if arm == "SFL" else _jaxued_run(runs, arm, seed, a.run_name, budget)
             if isinstance(run, str):
                 problems.append(f"{arm} {seed}: {run}")
                 continue
-            run_dir, step, trained, scouted = run
+            run_dir, step, trained, scouted, run_budget = run
             policy = _load(run_dir, step)
             for name in todo:
                 t0 = time.time()
@@ -153,10 +158,10 @@ def main(argv=None):
                     _drop_cases(cases, arm, seed)
                     _append(cases, [{"arm": arm, "seed": seed, "case": case, "solve_rate": float(rate)}
                                     for case, rate in zip(sets[name].labels, rates)], CASE_COLUMNS)
-                _append(out, [{"arm": arm, "seed": seed, "section": name, "check": BUDGET,
+                _append(out, [{"arm": arm, "seed": seed, "section": name, "check": run_budget,
                                "n_questions": len(rates), "pass_rate": float((rates >= exam.TAU).mean()),
                                "play_rate": float(rates.mean()), "steps": trained, "scouted_steps": scouted,
-                               "budget": BUDGET, "n_checks": 1, "wall_time_sec": time.time() - t0}], COLUMNS)
+                               "budget": run_budget, "n_checks": 1, "wall_time_sec": time.time() - t0}], COLUMNS)
             print(f"graded {arm} {seed}", flush=True)
     if problems:
         print(f"{len(problems)} runs not graded:\n  " + "\n  ".join(problems), file=sys.stderr, flush=True)

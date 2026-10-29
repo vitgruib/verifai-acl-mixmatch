@@ -9,6 +9,7 @@ export KINETIX_DIR=${KINETIX_DIR:-$TP/kinetix}
 export JAX_VENV=${JAX_VENV:-$ATLAS/.venv-jax}      # JaxUED, VerifAI
 export SFL_VENV=${SFL_VENV:-$ATLAS/.venv-sfl}      # SFL repo (older jax)
 export KINETIX_VENV=${KINETIX_VENV:-$ATLAS/.venv-kinetix}
+export TORCH_VENV=${TORCH_VENV:-$ATLAS/.venv}      # acl_bench (PyTorch): the CartPole bridge's grader
 
 # Pinned upstream commits
 export JAXUED_REPO=https://github.com/DramaCow/jaxued.git        JAXUED_COMMIT=0f8f1284677375b889e4f13a32c9617cd009f8c4
@@ -39,3 +40,8 @@ print("taskset -c " + ",".join(map(str, c[k * m:(k + 1) * m] if m else c)))' "$1
 
 # pick <i> <list...>: the i-th item
 pick() { local i=$1; shift; local a=($@); echo "${a[$i]}"; }
+# maze_tasks <algos...>: one "algo seed" line per Maze training task; ref = the reference DR agents
+# (seeds 100-109, never scored), any other algo seeds 0 .. NSEEDS-1
+maze_tasks() { local a; for a; do
+  if [ "$a" = ref ]; then seq 100 109 | sed 's/^/ref /'; else seq 0 $(( ${NSEEDS:-10} - 1 )) | sed "s/^/$a /"; fi
+done; }

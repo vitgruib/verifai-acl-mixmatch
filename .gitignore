@@ -12,3 +12,4 @@ third_party/
 .cache/
 maze_results.tgz
 run_maze.log
+run_maze.pid

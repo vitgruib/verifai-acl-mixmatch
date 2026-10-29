@@ -1,5 +1,5 @@
 #!/bin/bash
-# Packs the results once the Maze run ends, whether or not it succeeded.
+# Packs the results (cluster/collect.sh) once the Maze run ends, whether or not it succeeded.
 #SBATCH --job-name=atlas-collect
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G

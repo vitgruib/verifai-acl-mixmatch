@@ -11,13 +11,6 @@ get() {  # dir repo commit
 get jaxued "$JAXUED_REPO" "$JAXUED_COMMIT"
 get kinetix "$KINETIX_REPO" "$KINETIX_COMMIT"
 get sfl "$SFL_REPO" "$SFL_COMMIT"
-# jaxued: headless GIF logging, and a --minimax flag (JaxUED has no minimax baseline)
-for p in gif minimax; do
-  git -C "$TP/jaxued" apply --check "$ATLAS/cluster/patches/jaxued_$p.patch" 2>/dev/null \
-    && git -C "$TP/jaxued" apply "$ATLAS/cluster/patches/jaxued_$p.patch" && echo "jaxued: $p patch applied" \
-    || echo "jaxued: $p patch already applied"
-done
-# kinetix: fixes for upstream bugs on jax 0.9.  sfl: a minimax baseline for JaxNav.
 apply_once() {  # repo patch
   if git -C "$TP/$1" apply --check "$ATLAS/cluster/patches/$2" 2>/dev/null; then
     git -C "$TP/$1" apply "$ATLAS/cluster/patches/$2" && echo "$1: $2 applied"
@@ -27,7 +20,11 @@ apply_once() {  # repo patch
     echo "ERROR: $2 neither applies nor is already applied to $TP/$1"; exit 1
   fi
 }
+# jaxued: headless GIF logging, and a --minimax flag (JaxUED has no minimax baseline)
+apply_once jaxued jaxued_gif.patch
+apply_once jaxued jaxued_minimax.patch
 apply_once jaxued jaxued_accel_cap.patch   # ACCEL's edits capped at the 25-wall box (docs/maze_gpu_audit.md)
 apply_once jaxued jaxued_cartpole_bridge.patch   # gymnax PLR on our CartPole box and PPO (atlas/bridge)
+# kinetix: fixes for upstream bugs on jax 0.9.  sfl: a minimax baseline for JaxNav.
 apply_once kinetix kinetix_acl27.patch
 apply_once sfl sfl_minimax.patch

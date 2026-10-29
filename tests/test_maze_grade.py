@@ -154,3 +154,25 @@ def test_changed_exam_refuses_to_regrade(tmp_path, exam_dir, loads):
     with pytest.raises(SystemExit, match="custom"):
         grade_cli(runs, exam_dir, out, "--arms", "DR", "--seeds", "0")
     assert out.read_bytes() == before
+
+
+def test_smoke_runs_graded_with_run_name_and_any_budget(tmp_path, exam_dir, loads):
+    """train.sbatch's smoke: maze_<algo>_n50 with eval_freq 10, interval 1 (last step 4), tiny SFL."""
+    runs, out = tmp_path / "runs", tmp_path / "scores.csv"
+    dr = runs / "maze_train" / "checkpoints" / "maze_dr_n50" / "0"
+    (dr / "models" / "4").mkdir(parents=True)
+    (dr / "config.json").write_text(json.dumps({"seed": 0, "num_updates": 50, "eval_freq": 10,
+                                                "checkpoint_save_interval": 1, "num_steps": 256,
+                                                "num_train_envs": 32}))
+    sfl = sfl_run(runs, 0, total_timesteps=4096)
+    (sfl / "config.json").write_text(json.dumps({"total_timesteps": 4096, "num_steps": 32, "num_envs": 16,
+                                                 "eval_freq": 2, "num_batches": 1, "batch_size": 64,
+                                                 "rollout_steps": 50}))
+    grade_cli(runs, exam_dir, out, "--arms", "DR", "SFL", "--seeds", "0",
+              "--run-name", "maze_{algo}_n50", "--any-budget")
+    rows = read(out)
+    # DR: 50 updates x 32 envs x 256 steps; SFL: 8 updates in 4 rounds of 2, each scouting 64 levels x 50 steps
+    assert {(r["arm"], int(r["steps"]), int(r["check"]), int(r["budget"]), int(r["scouted_steps"]))
+            for r in rows} == {("DR", 409_600, 409_600, 409_600, 0), ("SFL", 4096, 4096, 4096, 12_800)}
+    assert len(rows) == 6
+    assert sorted(loads) == sorted([(str(dr), 4), (str(sfl), -1)])
