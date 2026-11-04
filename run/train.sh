@@ -50,5 +50,5 @@ if [ -n "$bridge" ]; then
 fi
 wait
 f=$(find "$claims" -name '*failed' | wc -l | tr -d ' ')
-[ "$f" = 0 ] && say "all done. Next: CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES%%,*} bash run/finish.sh" \
+[ "$f" = 0 ] && say "done. Once every terminal says done: CUDA_VISIBLE_DEVICES=0 bash run/finish.sh" \
   || { say "$f failed (logs above); rerun the same command to retry them"; exit 1; }
